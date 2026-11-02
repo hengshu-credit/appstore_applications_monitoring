@@ -1,0 +1,195 @@
+{
+  "at": 1793616428.0976498,
+  "storage": "mysql",
+  "server_version": "8.4.6",
+  "pool": [
+    {
+      "store": "apple",
+      "count": 2396109
+    },
+    {
+      "store": "google",
+      "count": 3044767
+    }
+  ],
+  "jobs": {
+    "total": 5440876,
+    "due": 5440872,
+    "leased": 0,
+    "retrying": 0
+  },
+  "listings": [
+    {
+      "store": "apple",
+      "country": "us",
+      "language": "en",
+      "state": "available",
+      "count": 2,
+      "newest_success": 1793616427.282581,
+      "oldest_success": 1793613385.4304442
+    },
+    {
+      "store": "google",
+      "country": "us",
+      "language": "en",
+      "state": "available",
+      "count": 2,
+      "newest_success": 1793616428.046548,
+      "oldest_success": 1793613579.0162234
+    }
+  ],
+  "freshness": [
+    {
+      "store": "apple",
+      "country": "us",
+      "language": "en",
+      "observed": 2,
+      "succeeded_last_24h": 2,
+      "never_succeeded": 0
+    },
+    {
+      "store": "google",
+      "country": "us",
+      "language": "en",
+      "observed": 2,
+      "succeeded_last_24h": 2,
+      "never_succeeded": 0
+    }
+  ],
+  "imports": [
+    {
+      "digest": "f542b257f319791b55785892dc0b6c38c97182c821d96326cce66953a674bdd6",
+      "path": "E:\\workspace\\appstore_applications_monitoring\\data\\raw\\store_apps.tsv.xz",
+      "source": "appgoblin:adfe37876dfc3687279b8d0402f961f4b64c7dfc",
+      "processed": 5440809,
+      "valid": 5440809,
+      "added": 5440670,
+      "rejected": 0,
+      "status": "complete",
+      "started": 1793613334.0901492,
+      "finished": 1793613849.9906487
+    },
+    {
+      "digest": "617e6242b79e76ab3863300656fc98829a505ebe7d554694fa0830445fae675a",
+      "path": "E:\\workspace\\appstore_applications_monitoring\\data\\raw\\live_store_apps.tsv.xz",
+      "source": "appgoblin-tree:adfe37876dfc3687279b8d0402f961f4b64c7dfc",
+      "processed": 3102170,
+      "valid": 3102170,
+      "added": 4,
+      "rejected": 0,
+      "status": "complete",
+      "started": 1793613921.7421255,
+      "finished": 1793614136.2424057
+    }
+  ],
+  "events": [
+    {
+      "kind": "first_verified",
+      "count": 4
+    },
+    {
+      "kind": "metadata_changed",
+      "count": 2
+    }
+  ],
+  "requests": [
+    {
+      "outcome": "ok",
+      "count": 6
+    },
+    {
+      "outcome": "error",
+      "count": 2
+    }
+  ],
+  "discovery": [
+    {
+      "id": 10,
+      "source": "google:us:developer:WhatsApp+LLC",
+      "observed_at": 1793614188.7727904,
+      "count": 2,
+      "added": 0,
+      "error": null
+    },
+    {
+      "id": 9,
+      "source": "apple:us:developer:310634000",
+      "observed_at": 1793614114.8174841,
+      "count": 2,
+      "added": 0,
+      "error": null
+    },
+    {
+      "id": 8,
+      "source": "apple:us:developer:281956209",
+      "observed_at": 1793614114.0943558,
+      "count": 75,
+      "added": 14,
+      "error": null
+    },
+    {
+      "id": 7,
+      "source": "google:us:developer:5700313618786177705",
+      "observed_at": 1793614110.5502775,
+      "count": 11,
+      "added": 0,
+      "error": null
+    },
+    {
+      "id": 6,
+      "source": "google:us:developer:WhatsApp+LLC",
+      "observed_at": 1793614107.589071,
+      "count": 0,
+      "added": 0,
+      "error": "Google discovery page unavailable"
+    },
+    {
+      "id": 5,
+      "source": "google:us:search:finance",
+      "observed_at": 1793614106.3606844,
+      "count": 29,
+      "added": 0,
+      "error": null
+    },
+    {
+      "id": 4,
+      "source": "apple:us:search:finance",
+      "observed_at": 1793614104.491385,
+      "count": 186,
+      "added": 23,
+      "error": null
+    },
+    {
+      "id": 3,
+      "source": "google:us:chart:FINANCE",
+      "observed_at": 1793613934.9971564,
+      "count": 33,
+      "added": 1,
+      "error": null
+    },
+    {
+      "id": 2,
+      "source": "apple:us:chart:top-paid",
+      "observed_at": 1793613588.310416,
+      "count": 100,
+      "added": 77,
+      "error": null
+    },
+    {
+      "id": 1,
+      "source": "apple:us:chart:top-free",
+      "observed_at": 1793613585.106431,
+      "count": 100,
+      "added": 83,
+      "error": null
+    }
+  ],
+  "coverage_note": "Known IDs only. Imported IDs are not live-verified. Region unavailable is not global delisting.",
+  "live_mysql_smoke": {
+    "processed": 2,
+    "ok": 2,
+    "missing": 0,
+    "error": 0,
+    "stale": 0
+  }
+}

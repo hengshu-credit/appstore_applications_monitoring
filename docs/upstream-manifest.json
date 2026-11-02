@@ -1,0 +1,75 @@
+[
+  {
+    "name": "adscrawler",
+    "url": "https://github.com/appgoblin-dev/adscrawler",
+    "license": {
+      "key": "mit",
+      "name": "MIT License",
+      "spdx_id": "MIT",
+      "url": "https://api.github.com/licenses/mit",
+      "node_id": "MDc6TGljZW5zZTEz"
+    },
+    "pushed_at": "2025-11-10T05:44:49Z",
+    "tree_sha": "6bb4105f4cf19b4ebfd6b4134c512651ca851b49"
+  },
+  {
+    "name": "appgoblin",
+    "url": "https://github.com/appgoblin-dev/appgoblin",
+    "license": null,
+    "pushed_at": "2026-11-02T08:10:57Z",
+    "tree_sha": "c2853348023108c8d7ca0039658de3a94b53bab2"
+  },
+  {
+    "name": "appgoblin-data",
+    "url": "https://github.com/appgoblin-dev/appgoblin-data",
+    "license": {
+      "key": "other",
+      "name": "Other",
+      "spdx_id": "NOASSERTION",
+      "url": null,
+      "node_id": "MDc6TGljZW5zZTA="
+    },
+    "pushed_at": "2026-08-07T15:40:42Z",
+    "tree_sha": "adfe37876dfc3687279b8d0402f961f4b64c7dfc"
+  },
+  {
+    "name": "appgoblin-android",
+    "url": "https://github.com/appgoblin-dev/appgoblin-android",
+    "license": null,
+    "pushed_at": "2026-03-14T07:55:29Z",
+    "tree_sha": "0666bdb266ae59900e1a4c4b5718c144048a2d63"
+  },
+  {
+    "name": ".github",
+    "url": "https://github.com/appgoblin-dev/.github",
+    "license": null,
+    "pushed_at": "2026-03-12T02:16:12Z",
+    "tree_sha": "5e04ad74aa6292aca5e33d50cd00f1ceb30cca61"
+  },
+  {
+    "name": "appgoblin-play-scraper",
+    "url": "https://github.com/appgoblin-dev/appgoblin-play-scraper",
+    "license": {
+      "key": "other",
+      "name": "Other",
+      "spdx_id": "NOASSERTION",
+      "url": null,
+      "node_id": "MDc6TGljZW5zZTA="
+    },
+    "pushed_at": "2026-10-27T01:13:50Z",
+    "tree_sha": "8f41211f2e3213bc97d5e22c31ed75fbba5f2ea3"
+  },
+  {
+    "name": "appgoblin-itunes-scraper",
+    "url": "https://github.com/appgoblin-dev/appgoblin-itunes-scraper",
+    "license": {
+      "key": "mit",
+      "name": "MIT License",
+      "spdx_id": "MIT",
+      "url": "https://api.github.com/licenses/mit",
+      "node_id": "MDc6TGljZW5zZTEz"
+    },
+    "pushed_at": "2026-07-19T01:31:12Z",
+    "tree_sha": "30bf0239a209f942a0d7c6bf223031c829aa94fc"
+  }
+]

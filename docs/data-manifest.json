@@ -1,0 +1,82 @@
+[
+  {
+    "file": "live_store_apps.tsv.xz",
+    "bytes": 90214084,
+    "rows": 3102170,
+    "by_store": {
+      "Apple": 1525469,
+      "Google": 1576701
+    },
+    "columns": [
+      "store",
+      "store_id",
+      "app_name",
+      "developer_id",
+      "app_category",
+      "price",
+      "store_last_updated",
+      "ad_supported",
+      "in_app_purchases",
+      "release_date",
+      "appgoblin_updated_at",
+      "last_crawl_result"
+    ],
+    "sha256": "617e6242b79e76ab3863300656fc98829a505ebe7d554694fa0830445fae675a",
+    "git_blob": "22153daf47716fac3dd57fc179b414061441a377",
+    "repository_tree": "adfe37876dfc3687279b8d0402f961f4b64c7dfc",
+    "source_updated_min": "2025-04-08",
+    "source_updated_max": "2025-11-17",
+    "license": "CC-BY-4.0",
+    "attribution": "Data provided by AppGoblin. https://appgoblin.info"
+  },
+  {
+    "file": "store_apps.tsv.xz",
+    "bytes": 100484632,
+    "rows": 5440809,
+    "by_store": {
+      "Google": 3044766,
+      "Apple": 2396043
+    },
+    "columns": [
+      "store",
+      "store_id",
+      "developer_id",
+      "store_last_updated",
+      "ad_supported",
+      "in_app_purchases",
+      "release_date",
+      "appgoblin_updated_at",
+      "last_crawl_result"
+    ],
+    "sha256": "f542b257f319791b55785892dc0b6c38c97182c821d96326cce66953a674bdd6",
+    "git_blob": "2600be5862d328f5545b5943691e27fe47eefbc5",
+    "repository_tree": "adfe37876dfc3687279b8d0402f961f4b64c7dfc",
+    "source_updated_min": "2025-04-08",
+    "source_updated_max": "2025-11-17",
+    "license": "CC-BY-4.0",
+    "attribution": "Data provided by AppGoblin. https://appgoblin.info"
+  },
+  {
+    "file": "store_apps_metrics.tsv.xz",
+    "bytes": 32305060,
+    "rows": 3102170,
+    "by_store": {
+      "Apple": 1525469,
+      "Google": 1576701
+    },
+    "columns": [
+      "store",
+      "store_id",
+      "app_category",
+      "installs",
+      "rating_count"
+    ],
+    "sha256": "5f2b6a84f472005044b673ff2d6904a20882db7a752f88e7522a50bc9ce31508",
+    "git_blob": "942cd83391e9e4d896d701354a8443b2e0fcd2f9",
+    "repository_tree": "adfe37876dfc3687279b8d0402f961f4b64c7dfc",
+    "source_updated_min": null,
+    "source_updated_max": null,
+    "license": "CC-BY-4.0",
+    "attribution": "Data provided by AppGoblin. https://appgoblin.info"
+  }
+]

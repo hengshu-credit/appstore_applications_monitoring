@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "appstore-applications-monitoring"
+version = "0.2.0"
+description = "Resumable Google Play and Apple App Store application pool monitoring"
+requires-python = ">=3.11"
+dependencies = ["requests>=2.31,<3", "PyMySQL[rsa]>=1.2,<2", "python-dotenv>=1,<2"]
+
+[project.scripts]
+appmon = "appmon.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.data-files]
+"share/appmon/licenses" = ["licenses/appgoblin-play-scraper.txt", "licenses/appgoblin-data.txt"]

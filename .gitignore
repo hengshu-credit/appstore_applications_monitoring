@@ -1,0 +1,11 @@
+data/*
+!data/.gitkeep
+upstream/
+work/
+.venv/
+.env
+__pycache__/
+*.egg-info/
+build/
+dist/
+.pytest_cache/

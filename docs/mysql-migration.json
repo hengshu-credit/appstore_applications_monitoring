@@ -1,0 +1,53 @@
+{
+  "storage": "mysql",
+  "source_sha256": "f24291eb2e0636c79c2801cba77b72e578ad8cdf55c9fb3e3c8fb5635c8f55d5",
+  "started": 1793614921.3097553,
+  "tables": {
+    "apps": {
+      "rows": 5440876,
+      "sha256": "ee95c3b0edcb7a0528fb31f156f548c004b55d3471b57e6f8db6eba269136fdd",
+      "verified": true
+    },
+    "imports": {
+      "rows": 2,
+      "sha256": "11376e06470139dc865d9e5624814ed2f19dd495c6a601e888b2b48b254b0c2d",
+      "verified": true
+    },
+    "jobs": {
+      "rows": 5440876,
+      "sha256": "0e7d454a4152330e62d4cc6a19871958d4d3d962f3e4a651db1d6acdedc92e6d",
+      "verified": true
+    },
+    "listings": {
+      "rows": 4,
+      "sha256": "61075f4af53d6a88efa1760da8534ff2b2a7756ffbf1a02c2b13783499b681c8",
+      "verified": true
+    },
+    "snapshots": {
+      "rows": 4,
+      "sha256": "8185765b64f16d5c3c6326e991795f3eb3443ddd28688f179a88089a789b0cb0",
+      "verified": true
+    },
+    "events": {
+      "rows": 4,
+      "sha256": "64c5e136a275d66b5b4e2a99a1cffbcb5834d6c6aabb09f3b1c3bfff97c2bfd9",
+      "verified": true
+    },
+    "requests": {
+      "rows": 6,
+      "sha256": "a83d0a77be149c84f3808bbb9a0db763e905cf2ffd0dbeefd23bb67af23fde99",
+      "verified": true
+    },
+    "schedules": {
+      "rows": 11,
+      "sha256": "6e382a0f013f9f90262f81357191cbb7d4f4261b15474723870a87d21a20b446",
+      "verified": true
+    },
+    "discovery_runs": {
+      "rows": 10,
+      "sha256": "98920a93ba145c9f98270da146f856d3b629d067c6636ef471f963b66049609a",
+      "verified": true
+    }
+  },
+  "finished": 1793616393.9030545
+}

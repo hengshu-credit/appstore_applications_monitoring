@@ -1,0 +1,20 @@
+# Global ID pool; detail availability is verified separately per configured storefront.
+data_dir = "data"
+countries = ["us"]
+language = "en"
+refresh_hours = 24
+missing_confirmations = 3
+missing_recheck_hours = 24
+lease_seconds = 600
+timeout_seconds = 30
+# Local proxy compatibility; TLS certificate verification remains enabled.
+tls_maximum_version = "1.2"
+min_free_gb = 2
+google_interval_seconds = 2.5
+apple_interval_seconds = 3.5
+batch_size = 200
+discovery_hours = 24
+seed_sync_hours = 24
+search_terms = ["finance", "business", "education", "health", "games", "shopping", "travel", "tools"]
+google_categories = ["FINANCE", "BUSINESS", "EDUCATION", "HEALTH_AND_FITNESS", "GAME", "SHOPPING", "TRAVEL_AND_LOCAL", "TOOLS"]
+# Optional HTTP(S)_PROXY environment variables; no credentials in this file.
