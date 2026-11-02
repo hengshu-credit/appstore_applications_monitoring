@@ -270,16 +270,22 @@ export function createResearchPages(ctx) {
     $("#aso-workspace").innerHTML =
       `<div class="callout">公开文案最近成功：${esc(stamp(data.last_success))} · 基准快照 ${data.snapshot?.id || "暂无"} · 未提供字段：${data.unavailable_fields.map((k) => esc(fieldNames[k] || k)).join("、") || "无"}</div><div class="research-grid"><section class="panel"><h2>文案编辑</h2><form id="aso-editor">${field("草稿名称", "draft_name", "文案优化草稿", "text", 'required maxlength="120"')}${fields.map((f) => `<label class="spacer">${esc(f.label)}<textarea data-aso-field="${f.field}" name="${f.field}" rows="${f.field === "description" ? 7 : 2}">${esc(data.metadata[f.field])}</textarea><span class="field-counter" data-counter="${f.field}"></span></label>`).join("")}<label class="spacer">本次修改说明<textarea name="note" rows="2" maxlength="4000"></textarea></label><div class="toolbar spacer"><button type="submit">保存本地草稿</button><button type="button" class="secondary" id="aso-check">核查文案</button><button type="button" class="secondary" id="aso-new">另存新草稿</button></div></form></section><section class="panel"><h2>商店文案预览</h2><div class="listing-preview">${link(data.creative?.icon) ? `<img class="preview-icon" src="${link(data.creative.icon)}" alt="应用图标">` : '<div class="preview-icon">◈</div>'}<div><h3 id="preview-title"></h3><p id="preview-summary" class="sub"></p><span class="badge neutral">本地草稿 · 未发布</span></div></div><h3 class="spacer">核查词库</h3><label>每行一个关键词<textarea id="aso-words">${esc(data.keywords.map((w) => w.keyword).join("\n"))}</textarea></label><p class="sub">文本命中不代表被商店索引；排名来自当前已跟踪词库。</p><div id="aso-findings"></div><div id="aso-coverage"></div></section></div>${panel(
         "草稿版本库",
-        table(
-          ["名称", "版本", "最近保存", "操作"],
-          data.drafts.map((d) => [
-            esc(d.name),
-            "v" + d.revision,
-            stamp(d.updated_at),
-            `<button class="link" data-draft-id="${d.id}">加载 / 历史</button>`,
-          ]),
-        ),
+        '<div id="aso-draft-list"></div>',
       )}<div id="aso-versions"></div>`;
+    function renderDraftList() {
+      $("#aso-draft-list").innerHTML = data.drafts.length
+        ? table(
+            ["名称", "版本", "最近保存", "操作"],
+            data.drafts.map((d) => [
+              esc(d.name),
+              "v" + d.revision,
+              stamp(d.updated_at),
+              `<button class="link" data-draft-id="${d.id}">加载 / 历史</button>`,
+            ]),
+          )
+        : empty("还没有本地草稿", "保存文案后，会在此显示可回溯的修订记录。");
+    }
+    renderDraftList();
     const editor = $("#aso-editor");
     const metadata = () =>
       Object.fromEntries(
@@ -368,6 +374,8 @@ export function createResearchPages(ctx) {
       const draft = await api("/research/aso/drafts/" + id);
       if (rev !== currentRevision()) return;
       activeDraft = draft;
+      data.drafts = [draft, ...data.drafts.filter((d) => d.id !== draft.id)];
+      renderDraftList();
       editor.elements.draft_name.value = draft.name;
       editor.elements.note.value = draft.note;
       for (const f of fields)

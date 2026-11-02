@@ -281,6 +281,9 @@ test("ASO workbench edits a versioned local draft and never submits to a store",
     await tick();
     assert.equal(saved.metadata.name, "Edited title");
     assert.equal(saved.app_id, "com.example.app");
+    assert.ok(
+      window.document.querySelector('#aso-draft-list [data-draft-id="1"]'),
+    );
     assert.match(window.document.querySelector("#toast").textContent, /未发布/);
     assert.ok(calls.every((c) => c.path.startsWith("/api/")));
   } finally {
