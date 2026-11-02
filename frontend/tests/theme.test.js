@@ -1,0 +1,106 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { Window } from "happy-dom";
+import {
+  DEFAULT_THEME,
+  PRESETS,
+  normalizeTheme,
+  resolveTheme,
+  applyTheme,
+  initTheme,
+  THEME_KEY,
+  contrast,
+} from "../src/theme.js";
+
+test("theme validates configuration and custom colors without CSS injection", () => {
+  assert.equal(PRESETS.length, 12);
+  assert.equal(
+    normalizeTheme({
+      ...DEFAULT_THEME,
+      customSolidColor: "url(https://evil.test)",
+    }).accentMode,
+    "PRESET",
+  );
+  assert.deepEqual(normalizeTheme({ schemaVersion: 99 }), DEFAULT_THEME);
+  assert.equal(
+    resolveTheme({ ...DEFAULT_THEME, colorScheme: "SYSTEM" }, true).dark,
+    true,
+  );
+  assert.equal(
+    resolveTheme({ ...DEFAULT_THEME, colorScheme: "SYSTEM" }, false).dark,
+    false,
+  );
+  assert.ok(
+    contrast(
+      resolveTheme({
+        ...DEFAULT_THEME,
+        accentMode: "CUSTOM_SOLID",
+        customSolidColor: "#ffffee",
+      }).accentText,
+      "#ffffff",
+    ) >= 4.5,
+  );
+});
+
+test("every preset supplies readable text in both color schemes and square corners", async () => {
+  const win = new Window();
+  try {
+    for (const preset of PRESETS)
+      for (const colorScheme of ["LIGHT", "DARK"]) {
+        const config = {
+          ...DEFAULT_THEME,
+          accentPreset: preset[0],
+          colorScheme,
+        };
+        const state = resolveTheme(config);
+        applyTheme(config, win);
+        assert.ok(
+          contrast(state.accentText, state.dark ? "#151d31" : "#ffffff") >= 4.5,
+        );
+        assert.equal(
+          win.document.documentElement.style.getPropertyValue("--radius"),
+          "0px",
+        );
+        assert.equal(
+          win.document.documentElement.dataset.theme,
+          colorScheme.toLowerCase(),
+        );
+      }
+  } finally {
+    await win.happyDOM.close();
+  }
+});
+
+test("theme previews cancel cleanly; saving persists; corrupted storage recovers", async () => {
+  const win = new Window({ url: "http://localhost:5173" });
+  win.document.body.innerHTML = '<button id="open-theme">主题设置</button>';
+  win.localStorage.setItem(THEME_KEY, "broken");
+  try {
+    const controller = initTheme(win);
+    assert.equal(controller.get().colorScheme, "LIGHT");
+    win.document.querySelector("#open-theme").click();
+    const scheme = win.document.querySelector("[name=colorScheme]");
+    scheme.value = "DARK";
+    scheme.dispatchEvent(new win.Event("change", { bubbles: true }));
+    assert.equal(win.document.documentElement.dataset.theme, "dark");
+    assert.equal(win.localStorage.getItem(THEME_KEY), "broken");
+    win.document.querySelector("#theme-settings").close();
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(win.document.documentElement.dataset.theme, "light");
+    win.document.querySelector("#open-theme").click();
+    scheme.value = "DARK";
+    scheme.dispatchEvent(new win.Event("change", { bubbles: true }));
+    win.document
+      .querySelector("#theme-form")
+      .dispatchEvent(
+        new win.Event("submit", { bubbles: true, cancelable: true }),
+      );
+    assert.equal(
+      JSON.parse(win.localStorage.getItem(THEME_KEY)).colorScheme,
+      "DARK",
+    );
+    assert.equal(win.document.documentElement.dataset.theme, "dark");
+  } finally {
+    await win.happyDOM.close();
+  }
+});

@@ -30,9 +30,9 @@ def migrate(cfg, source_path, *, batch_size=5000, report_path=None):
     source.execute("BEGIN")
     target = connect(cfg, allow_migration=True)
     report = {"storage": "mysql", "source_sha256": source_sha, "started": time.time(), "tables": {}}
-    # The legacy schema predates keyword tracking. New tables must remain empty,
-    # but must not be required in a historical SQLite source.
-    names = [name for name in TABLES if name != "migration_progress" and not name.startswith("keyword_")]
+    # Freeze the historical schema. Additive console/keyword tables never existed
+    # in the original SQLite source and must not become migration prerequisites.
+    names = ["apps", "imports", "jobs", "listings", "snapshots", "events", "requests", "schedules", "discovery_runs"]
     try:
         lock_name = "appmon:migrate:" + hashlib.sha256(cfg["mysql"]["database"].encode()).hexdigest()[:32]
         lock = target.execute("SELECT GET_LOCK(%s,0) acquired", (lock_name,)).fetchone()

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>观星 · App Observatory</title>
+    <meta name="description" content="双商店应用监控、榜单、关键词与竞品分析" />
+    <script type="module" src="/src/main.js"></script>
+  </head>
+  <body>
+    <aside>
+      <a class="brand" href="#overview"
+        ><span class="mark">◈</span
+        ><span>观星<small>APP OBSERVATORY</small></span></a
+      >
+      <div class="nav-label">应用情报工作台</div>
+      <nav id="navigation" aria-label="主导航"></nav>
+      <div class="side-note">
+        <span class="status-dot"></span>公开观察 · 可追溯历史
+        <p>保留来源与采集时间<br />以实际观察记录为依据</p>
+      </div>
+    </aside>
+    <div class="shell">
+      <header>
+        <div>
+          <span class="eyebrow">WORKSPACE / INTELLIGENCE</span>
+          <h1 id="page-title">监控概览</h1>
+        </div>
+        <div class="market">
+          <label
+            >商店<select id="global-store">
+              <option value="google">Google Play</option>
+              <option value="apple">App Store</option>
+            </select></label
+          ><label
+            >国家<input
+              id="global-country"
+              value="us"
+              maxlength="2"
+              aria-label="国家代码" /></label
+          ><label
+            >语言<input
+              id="global-language"
+              value="en"
+              maxlength="16"
+              aria-label="请求语言" /></label
+          ><button id="refresh-page" class="secondary">刷新</button
+          ><button id="open-theme" class="secondary">主题设置</button>
+        </div>
+      </header>
+      <main id="content" aria-live="polite">
+        <div class="empty">正在连接数据工作台…</div>
+      </main>
+      <footer>
+        AppGoblin 提供应用基线 · 商店公开观察 · 时间按浏览器所在时区显示
+        <a href="/api/openapi.json" target="_blank" rel="noopener">API 定义</a>
+      </footer>
+    </div>
+    <div id="toast" role="status"></div>
+    <dialog id="login">
+      <form id="login-form">
+        <h2>连接工作台</h2>
+        <p>此服务已启用访问保护，请输入部署时设置的访问令牌。</p>
+        <label
+          >访问令牌<input
+            name="token"
+            type="password"
+            required
+            autocomplete="off" /></label
+        ><button type="submit">连接</button>
+        <p id="login-error" role="alert"></p>
+      </form>
+    </dialog>
+  </body>
+</html>

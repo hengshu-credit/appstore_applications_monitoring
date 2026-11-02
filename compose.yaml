@@ -52,3 +52,26 @@ services:
       service: monitor
     profiles: [keywords]
     command: ["appmon", "keywords", "daemon"]
+  web:
+    extends:
+      service: monitor
+    profiles: [console]
+    command: ["appmon", "web", "--host", "0.0.0.0", "--port", "8765"]
+    ports:
+      - "127.0.0.1:${APPMON_WEB_PORT:-8765}:8765"
+    environment:
+      APPMON_API_TOKEN: ${APPMON_API_TOKEN:-}
+      APPMON_ALLOWED_HOSTS: ${APPMON_ALLOWED_HOSTS:-localhost,127.0.0.1}
+  console:
+    extends:
+      service: monitor
+    profiles: [console]
+    command: ["appmon", "console", "daemon"]
+  frontend:
+    build: ./frontend
+    profiles: [console]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${APPMON_FRONTEND_PORT:-5173}:80"
+    depends_on:
+      - web

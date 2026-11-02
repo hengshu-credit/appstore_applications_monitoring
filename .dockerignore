@@ -6,3 +6,4 @@ work
 tests
 **/__pycache__
 .env
+frontend

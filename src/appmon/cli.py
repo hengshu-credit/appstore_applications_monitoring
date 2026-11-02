@@ -21,6 +21,12 @@ def main():
     parser.add_argument("--config", default="config.toml")
     sub = parser.add_subparsers(dest="command", required=True)
     configure_cli(sub)
+    web = sub.add_parser("web", help="Start the local observation console")
+    web.add_argument("--host", default="127.0.0.1")
+    web.add_argument("--port", type=int, default=8765)
+    console = sub.add_parser("console", help="Priority monitoring, charts, reviews, alerts and exports")
+    console.add_argument("action", choices=["run", "daemon"])
+    console.add_argument("--limit", type=int, default=5)
     sub.add_parser("init")
     sub.add_parser("sync-seed")
     imp = sub.add_parser("import")
@@ -47,6 +53,10 @@ def main():
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     cfg = load(args.config)
+    if args.command == "web":
+        from .console import serve
+        serve(cfg, args.host, args.port)
+        return 0
     if args.command == "migrate-sqlite":
         from .migrate import migrate
         result = migrate(cfg, args.path, report_path=args.report)
@@ -54,7 +64,15 @@ def main():
         return 0
     db = connect(cfg)
     try:
-        if args.command == "keywords":
+        if args.command == "console":
+            from .console import run_once, worker
+            if args.limit <= 0:
+                parser.error("limit must be positive")
+            if args.action == "daemon":
+                worker(cfg, db)
+                return 0
+            result = run_once(cfg, db, args.limit)
+        elif args.command == "keywords":
             try:
                 result = execute_cli(args, cfg, db)
             except ValueError as exc:
@@ -103,6 +121,8 @@ def main():
             result = {"rows": count, "path": str(target)}
         print(json.dumps(result, ensure_ascii=False, indent=2))
         if args.command == "run" and result["error"]:
+            return 2
+        if args.command == "console" and any(result[k]["error"] for k in ("watchlist", "observations", "keywords")):
             return 2
         if args.command == "keywords" and args.keyword_command == "run" and result["error"]:
             return 2

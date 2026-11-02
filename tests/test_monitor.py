@@ -248,9 +248,7 @@ class MonitorTest(MySQLTestCase):
         import sqlite3
         path = self.folder / "legacy.sqlite3"
         old = sqlite3.connect(path)
-        for table in TABLES:
-            if table == "migration_progress" or table.startswith("keyword_"):
-                continue
+        for table in ("apps", "imports", "jobs", "listings", "snapshots", "events", "requests", "schedules", "discovery_runs"):
             columns = self.db.execute(f"SHOW COLUMNS FROM `{table}`").fetchall()
             definitions = []
             primary = []

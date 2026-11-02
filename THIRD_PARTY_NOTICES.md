@@ -27,3 +27,15 @@ Data provided by [AppGoblin](https://appgoblin.info).
   tracking concepts (market-scoped history and captured-depth semantics).
   No AsoBeast code is incorporated. Its source remains in the ignored research
   directory and is licensed AGPL-3.0 by its authors.
+- The Google chart RPC projection in `src/appmon/google_chart_request.json`
+  and chart/review mappings in `observation_stores.py` are adapted from the
+  same pinned `MrAdex77/google-play-scraper` MIT source listed above, specifically
+  `src/features/list/specs.ts` and `src/features/reviews/specs.ts`.
+- Apple chart/review RSS structures are adapted from the same pinned
+  `facundoolano/app-store-scraper` MIT source (`lib/list.js`, `lib/reviews.js`).
+  HTTPS endpoints are used. Apple Today parsing is an independent implementation
+  of the public page's structured editorial cards.
+- AsoBeast was also consulted for console feature organization, observation
+  provenance and explainable ASO actions. No AGPL source is copied into the console.
+- FastAPI, Starlette, Uvicorn and HTTPX are installed as dependencies under their
+  respective upstream licenses; dependency packages retain their license files.

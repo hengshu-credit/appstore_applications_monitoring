@@ -134,6 +134,11 @@ def connect(cfg, *, initialize=True, allow_migration=False):
         raise
 
 
+# Kept in the same registry so initialization, test isolation and exports agree.
+from .intelligence_schema import TABLES as INTELLIGENCE_TABLES
+TABLES.update(INTELLIGENCE_TABLES)
+
+
 def add_apps(db, rows, source, now=None):
     now = time.time() if now is None else now
     values = [(s, a, n, c, now, now, source) for s, a, n, c in rows]

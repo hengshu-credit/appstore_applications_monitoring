@@ -3,6 +3,29 @@ on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
 jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - name: Build independent frontend image
+        run: docker build -t appmon-frontend-ci .
+      - name: Validate production Nginx configuration
+        run: docker run --rm --add-host web:127.0.0.1 appmon-frontend-ci nginx -t
+      - name: Build Python collector and API image
+        working-directory: .
+        run: docker build -t appmon-backend-ci .
   test:
     strategy:
       fail-fast: false
@@ -29,7 +52,7 @@ jobs:
           my-cnf: |
             character-set-server=utf8mb4
             collation-server=utf8mb4_bin
-      - run: python -m pip install .
+      - run: python -m pip install ".[test]"
       - run: python -m compileall -q src tests
       - run: python -m unittest discover -s tests -v
       - run: python scripts/create_ci_database.py

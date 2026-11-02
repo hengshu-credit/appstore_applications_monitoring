@@ -35,10 +35,16 @@ class Client:
         self.session.headers["User-Agent"] = "Mozilla/5.0 (compatible; AppPoolMonitor/0.1)"
 
     def get(self, store, url, params=None, headers=None):
+        return self.request(store, "GET", url, params=params, headers=headers)
+
+    def request(self, store, method, url, **kwargs):
         delay = reserve(self.db, f"rate:{store}", self.cfg[f"{store}_interval_seconds"])
         time.sleep(delay)
         try:
-            r = self.session.get(url, params=params, headers=headers, timeout=self.cfg["timeout_seconds"])
+            if method == "GET":
+                r = self.session.get(url, timeout=self.cfg["timeout_seconds"], **kwargs)
+            else:
+                r = self.session.request(method, url, timeout=self.cfg["timeout_seconds"], **kwargs)
         except requests.RequestException as e:
             # Do not persist exception URLs, proxy credentials or bearer tokens.
             raise FetchError(type(e).__name__) from e
@@ -80,7 +86,9 @@ class Client:
                        "developer": "artistName", "developer_id": "artistId", "category": "primaryGenreName",
                        "price": "price", "currency": "currency", "rating": "averageUserRating",
                        "ratings": "userRatingCount", "updated": "currentVersionReleaseDate",
-                       "released": "releaseDate", "bundle_id": "bundleId", "url": "trackViewUrl"}
+                       "released": "releaseDate", "bundle_id": "bundleId", "url": "trackViewUrl",
+                       "icon": "artworkUrl512", "screenshots": "screenshotUrls",
+                       "release_notes": "releaseNotes", "languages": "languageCodesISO2A"}
         else:
             from appgoblin_play_scraper.features.app import parse_dom
             r = self.get(store, "https://play.google.com/store/apps/details",
@@ -98,7 +106,9 @@ class Client:
             mapping = {"name": "title", "version": "version", "description": "description",
                        "developer": "developer", "developer_id": "developerId", "category": "genreId",
                        "price": "price", "currency": "currency", "rating": "score", "ratings": "ratings",
-                       "installs": "minInstalls", "updated": "updated", "released": "released", "url": "url"}
+                       "installs": "minInstalls", "updated": "updated", "released": "released", "url": "url",
+                       "icon": "icon", "screenshots": "screenshots", "video": "video",
+                       "release_notes": "recentChanges", "summary": "summary"}
         payload = {k: app.get(v) for k, v in mapping.items()}
         return Result("ok", payload, r.content)
 

@@ -1,5 +1,18 @@
 # Google Play / Apple App Store 应用池监控
 
+现已增加**独立前端项目 `frontend/` + Python HTTP API + 重点池采集 worker**。前端展示应用池、关键词、榜单、ASO 核查、竞品、评论、素材变更和告警；Python 负责抓取、调度、MySQL 存储及数据接口。主题参考天枢，支持预设/自定义、深浅色和布局配置，矩形组件统一直角。详见 [控制台使用与边界](docs/console.md)、[前端项目](frontend/README.md)、[开发规范](docs/frontend-guidelines.md)。
+
+```powershell
+# 后端 API：在仓库根目录运行
+.\.venv\Scripts\python.exe -m pip install ".[test]"
+.\.venv\Scripts\python.exe -m appmon web --port 8765
+# 另一个终端启动重点池采集、关键词、榜单、评论、告警和导出
+.\.venv\Scripts\python.exe -m appmon console daemon
+# 前端：在 frontend 目录运行 npm ci，再运行 npm run dev
+```
+
+前端入口 `http://127.0.0.1:5173/`，API 健康检查 `http://127.0.0.1:8765/health`。首次启动会幂等新增控制台表，保留原应用池及历史。没有运行 worker 时仍可查看已有数据，但新建/刷新任务和导出会等待处理。
+
 远程仓库：[hengshu-credit/appstore_applications_monitoring](https://github.com/hengshu-credit/appstore_applications_monitoring)（私有）。[查看远程 CI](https://github.com/hengshu-credit/appstore_applications_monitoring/actions/workflows/ci.yml)。
 
 本地仓库：`E:\workspace\appstore_applications_monitoring`。源码、上游研究副本、压缩原始数据、数据库、历史快照均在本目录。

@@ -91,4 +91,4 @@ docker compose -f compose.yaml --env-file .env --profile keywords stop keywords
 .\.venv\Scripts\python.exe -m appmon export keyword_ranks data/exports/keyword-ranks.jsonl
 ```
 
-当前交互入口为 CLI 和 MySQL；没有新增 HTTP API 或网页。部署、测试和真实采集结果见 [关键词验收记录](keyword-verification.md)。
+当前保留 CLI 和 MySQL 入口，并新增独立前端与 HTTP API，见 [应用情报控制台](console.md)。关键词采集本身的部署、测试和真实采集结果见 [关键词验收记录](keyword-verification.md)。

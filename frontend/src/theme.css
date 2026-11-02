@@ -1,0 +1,325 @@
+:root {
+  color-scheme: light;
+  --radius: 0px;
+  --ink: #172033;
+  --muted: #5b6678;
+  --line: #cbd5e1;
+  --line-soft: #e2e8f0;
+  --bg: #f3f4f6;
+  --surface: #ffffff;
+  --white: var(--surface);
+  --soft: #f8fafc;
+  --hover: #eef2f7;
+  --accent: #2639e9;
+  --accent-text: #2030bb;
+  --chart-accent: var(--accent-text);
+  --on-accent: #ffffff;
+  --on-brand: #ffffff;
+  --brand-background: var(--accent);
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  --red: #b42318;
+  --green: #166534;
+  --danger-bg: #fef3f2;
+  --success-bg: #ecfdf3;
+  --warning-bg: #fff7ed;
+  --warning-text: #9a3412;
+  --mask: #0f172a77;
+  --shadow: #0f172a26;
+  --nav: #191f3a;
+  --nav-text: #cbd5e1;
+  --nav-active-text: #ffffff;
+  --nav-hover: #262d4f;
+  --nav-muted: #a7b5ca;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
+  }
+}
+input[type="color"]::-webkit-color-swatch {
+  border-radius: 0;
+  border: 0;
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #edf2ff;
+  --muted: #aab7cd;
+  --line: #34415d;
+  --line-soft: #28344d;
+  --bg: #0b1020;
+  --surface: #151d31;
+  --soft: #182238;
+  --hover: #26324d;
+  --accent-soft: color-mix(in srgb, var(--accent) 20%, var(--surface));
+  --red: #fda29b;
+  --green: #86efac;
+  --danger-bg: #442329;
+  --success-bg: #173a2d;
+  --warning-bg: #422e19;
+  --warning-text: #fed7aa;
+  --mask: #020617b8;
+  --shadow: #00000055;
+}
+[data-sidebar="light"] {
+  --nav: var(--surface);
+  --nav-text: var(--ink);
+  --nav-active-text: var(--ink);
+  --nav-hover: var(--hover);
+  --nav-muted: var(--muted);
+}
+::selection {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+/* All rectangular surfaces share a non-configurable square-corner contract. */
+button,
+input,
+select,
+textarea,
+.panel,
+.metric,
+.badge,
+.pill,
+dialog,
+details,
+pre,
+.callout,
+.errorbox,
+.appicon,
+.screenshots img,
+nav a,
+#toast,
+.bar,
+.bar-fill {
+  border-radius: var(--radius);
+}
+button {
+  color: var(--on-accent);
+}
+a,
+button.link {
+  color: var(--accent-text);
+}
+button.secondary {
+  background: var(--surface);
+  color: var(--ink);
+}
+aside,
+.brand {
+  color: var(--nav-text);
+}
+.brand small,
+.nav-label,
+.side-note,
+.side-note p {
+  color: var(--nav-muted);
+}
+.mark {
+  color: var(--nav-text);
+}
+nav a {
+  color: var(--nav-text);
+}
+nav a.active {
+  background: var(--brand-background);
+  color: var(--on-brand);
+  box-shadow: inset 3px 0 var(--on-brand);
+}
+nav a:hover {
+  background: var(--nav-hover);
+  color: var(--nav-active-text);
+}
+.status-dot {
+  background: var(--nav-text);
+}
+.metric {
+  border-top-color: var(--accent);
+}
+.callout {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+  color: var(--accent-text);
+}
+th {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+td {
+  border-bottom-color: var(--line-soft);
+}
+.chart text {
+  fill: var(--muted);
+}
+.chart .gridline {
+  stroke: var(--line-soft);
+}
+.chart polyline {
+  stroke: var(--chart-accent);
+}
+.chart circle,
+.bar-chart .bar-value {
+  fill: var(--chart-accent);
+}
+.bar-chart .bar-track {
+  fill: var(--hover);
+}
+dialog {
+  background: var(--surface);
+  color: var(--ink);
+}
+dialog::backdrop {
+  background: var(--mask);
+}
+#toast {
+  background: var(--ink);
+  color: var(--surface);
+  box-shadow: 0 8px 24px var(--shadow);
+}
+#theme-settings {
+  position: fixed;
+  inset: 0 0 0 auto;
+  margin: 0;
+  height: 100dvh;
+  max-height: 100dvh;
+  width: 400px;
+  max-width: 100vw;
+  border: 0;
+  border-left: 1px solid var(--line);
+  padding: 24px;
+  overflow: auto;
+}
+#theme-settings .form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+#theme-settings label {
+  margin: 0;
+}
+#theme-settings .drawer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+#theme-settings .drawer-head button {
+  width: auto;
+}
+#theme-settings .drawer-head h2 {
+  margin: 0;
+}
+#theme-settings .toolbar {
+  margin-top: 22px;
+}
+#theme-settings .toolbar button {
+  width: auto;
+}
+.check-label {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+}
+.theme-swatches {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+#theme-settings .theme-swatch {
+  width: 100%;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+}
+#theme-error {
+  color: var(--red);
+}
+[data-width="fixed"] main,
+[data-width="fixed"] footer {
+  max-width: 1440px;
+  margin-inline: auto;
+}
+[data-table-scroll="fixed"] .table-wrap {
+  max-height: 60vh;
+  overflow: auto;
+}
+[data-table-scroll="fixed"] th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  box-shadow: inset 0 -1px var(--line);
+}
+[data-fixed-sidebar="false"] aside {
+  position: absolute;
+  min-height: 100vh;
+  bottom: auto;
+}
+[data-color-weak="true"] .shell,
+[data-color-weak="true"] aside {
+  filter: grayscale(1);
+}
+[data-navigation="top"] aside {
+  position: sticky;
+  inset: 0 0 auto;
+  width: 100%;
+  min-height: 0;
+  padding: 12px 24px;
+  flex-direction: row;
+  align-items: center;
+  gap: 22px;
+  border-bottom: 1px solid var(--line);
+  overflow: visible;
+}
+[data-navigation="top"] .brand {
+  padding: 0;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+[data-navigation="top"] .brand small,
+[data-navigation="top"] .nav-label,
+[data-navigation="top"] .side-note {
+  display: none;
+}
+[data-navigation="top"] nav {
+  display: flex;
+  overflow: auto;
+  gap: 3px;
+  flex: 1;
+}
+[data-navigation="top"] nav a {
+  white-space: nowrap;
+  padding: 8px 12px;
+  margin: 0;
+}
+[data-navigation="top"] .nav-icon {
+  display: none;
+}
+[data-navigation="top"] .shell {
+  margin-left: 0;
+}
+[data-navigation="top"][data-fixed-sidebar="false"] aside {
+  position: static;
+}
+@media (max-width: 750px) {
+  [data-fixed-sidebar="false"] aside {
+    position: static;
+    min-height: 0;
+  }
+  [data-navigation="top"] aside {
+    display: block;
+    padding: 14px 18px;
+  }
+  [data-navigation="top"] nav {
+    margin-top: 12px;
+  }
+  .market {
+    gap: 8px;
+  }
+  #theme-settings {
+    width: min(400px, 100vw);
+  }
+}

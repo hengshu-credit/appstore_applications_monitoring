@@ -1,0 +1,45 @@
+{
+  "verified_at": 1793642603.747465,
+  "checks": [
+    {
+      "kind": "chart",
+      "store": "google",
+      "count": 50,
+      "source": "google-play-chart-rpc",
+      "coverage": "returned_chart_range",
+      "ok": true
+    },
+    {
+      "kind": "chart",
+      "store": "apple",
+      "count": 50,
+      "source": "apple-rss-chart",
+      "coverage": "returned_chart_range",
+      "ok": true
+    },
+    {
+      "kind": "reviews",
+      "store": "google",
+      "count": 50,
+      "source": "google-public-reviews",
+      "coverage": "recent_reviews_bounded",
+      "ok": true
+    },
+    {
+      "kind": "reviews",
+      "store": "apple",
+      "count": 50,
+      "source": "apple-public-reviews",
+      "coverage": "recent_reviews_bounded",
+      "ok": true
+    },
+    {
+      "kind": "featured",
+      "store": "apple",
+      "count": 36,
+      "source": "apple-today-public",
+      "coverage": "visible_editorial_cards",
+      "ok": true
+    }
+  ]
+}
