@@ -175,7 +175,7 @@ def observation_report(db, target_id, run_id=None):
 
 def work_watchlist(cfg, db, limit=10, client=None):
     client = client or Client(cfg, db)
-    count = dict(processed=0, ok=0, error=0)
+    count = dict(processed=0, ok=0, error=0, stale=0)
     for _ in range(limit):
         now = time.time()
         with db:
@@ -192,11 +192,12 @@ def work_watchlist(cfg, db, limit=10, client=None):
         try:
             result = client.fetch(job)
         except FetchError as exc:
-            save_result(db, local_cfg, job, error=exc)
-            count["error"] += 1
+            accepted = save_result(db, local_cfg, job, error=exc)
+            outcome = "error"
         else:
-            save_result(db, local_cfg, job, result=result)
-            count["ok"] += 1
+            accepted = save_result(db, local_cfg, job, result=result)
+            outcome = "ok"
+        count[outcome if accepted else "stale"] += 1
         count["processed"] += 1
     return count
 

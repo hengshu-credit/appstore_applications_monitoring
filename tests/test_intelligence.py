@@ -128,6 +128,17 @@ class IntelligenceTest(MySQLTestCase):
         times = self.db.execute("SELECT DISTINCT observed_at FROM alerts").fetchall()
         self.assertEqual(times, [{"observed_at": 200.0}])
 
+    def test_replaced_watch_lease_is_not_counted_as_success(self):
+        watch(self.db, dict(store="google", app_id="com.a.app", country="us", language="en"))
+        db = self.db
+        class Replaced:
+            def fetch(self, job):
+                db.execute("UPDATE jobs SET token='new-owner',lease_until=%s", (time.time()+300,))
+                return Result("ok", {"name": "Obsolete"}, b"obsolete")
+        result = work_watchlist(self.cfg, self.db, 1, Replaced())
+        self.assertEqual((result["processed"], result["ok"], result["stale"]), (1, 0, 1))
+        self.assertEqual(self.db.execute("SELECT count(*) n FROM listings").fetchone()["n"], 0)
+
     def test_export_roundtrip_filters_and_no_arbitrary_table_or_path(self):
         add_apps(self.db, [("apple", "123", "A", None), ("google", "com.a.app", "G", None)], "fixture")
         request = request_export(self.db, "apps", {"store": "apple"})
