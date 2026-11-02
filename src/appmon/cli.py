@@ -9,12 +9,18 @@ from .config import load
 from .db import add_apps, connect, enqueue, status
 from .ingest import import_file, sync_seed, valid_id
 from .monitor import daemon, discover, work
+from .keywords import configure_cli, execute_cli
 
 
 def main():
+    # Windows redirected consoles may default to GBK, which cannot print Thai
+    # keywords. JSON output is UTF-8 on every platform, including redirected files.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="Global known app pool and regional store monitoring")
     parser.add_argument("--config", default="config.toml")
     sub = parser.add_subparsers(dest="command", required=True)
+    configure_cli(sub)
     sub.add_parser("init")
     sub.add_parser("sync-seed")
     imp = sub.add_parser("import")
@@ -35,7 +41,8 @@ def main():
     report = sub.add_parser("status")
     report.add_argument("--output")
     exp = sub.add_parser("export")
-    exp.add_argument("table", choices=["apps", "events", "snapshots", "listings", "requests"])
+    exp.add_argument("table", choices=["apps", "events", "snapshots", "listings", "requests",
+                                       "keyword_targets", "keyword_runs", "keyword_ranks"])
     exp.add_argument("path")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -47,7 +54,12 @@ def main():
         return 0
     db = connect(cfg)
     try:
-        if args.command == "init":
+        if args.command == "keywords":
+            try:
+                result = execute_cli(args, cfg, db)
+            except ValueError as exc:
+                parser.error(str(exc))
+        elif args.command == "init":
             result = {"database": cfg["mysql"]["database"], "storage": "mysql"}
         elif args.command == "sync-seed":
             result = sync_seed(cfg, db)
@@ -91,6 +103,8 @@ def main():
             result = {"rows": count, "path": str(target)}
         print(json.dumps(result, ensure_ascii=False, indent=2))
         if args.command == "run" and result["error"]:
+            return 2
+        if args.command == "keywords" and args.keyword_command == "run" and result["error"]:
             return 2
         if args.command == "discover" and any("error" in r for r in result):
             return 2

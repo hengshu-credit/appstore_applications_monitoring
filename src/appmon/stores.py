@@ -34,11 +34,11 @@ class Client:
             self.session.mount("https://", TLS12Adapter())
         self.session.headers["User-Agent"] = "Mozilla/5.0 (compatible; AppPoolMonitor/0.1)"
 
-    def get(self, store, url, params=None):
+    def get(self, store, url, params=None, headers=None):
         delay = reserve(self.db, f"rate:{store}", self.cfg[f"{store}_interval_seconds"])
         time.sleep(delay)
         try:
-            r = self.session.get(url, params=params, timeout=self.cfg["timeout_seconds"])
+            r = self.session.get(url, params=params, headers=headers, timeout=self.cfg["timeout_seconds"])
         except requests.RequestException as e:
             # Do not persist exception URLs, proxy credentials or bearer tokens.
             raise FetchError(type(e).__name__) from e

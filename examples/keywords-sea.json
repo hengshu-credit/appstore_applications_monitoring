@@ -1,0 +1,10 @@
+[
+  {"store": "google", "country": "th", "language": "th", "keyword": "เงินกู้", "depth": 50, "refresh_hours": 24},
+  {"store": "apple", "country": "th", "language": "th", "keyword": "เงินกู้", "depth": 50, "refresh_hours": 24},
+  {"store": "google", "country": "vn", "language": "vi", "keyword": "vay tiền", "depth": 50, "refresh_hours": 24},
+  {"store": "apple", "country": "vn", "language": "vi", "keyword": "vay tiền", "depth": 50, "refresh_hours": 24},
+  {"store": "google", "country": "ph", "language": "en", "keyword": "loan", "depth": 50, "refresh_hours": 24},
+  {"store": "apple", "country": "ph", "language": "en", "keyword": "loan", "depth": 50, "refresh_hours": 24},
+  {"store": "google", "country": "ph", "language": "fil", "keyword": "utang", "depth": 50, "refresh_hours": 24},
+  {"store": "apple", "country": "ph", "language": "fil", "keyword": "utang", "depth": 50, "refresh_hours": 24}
+]

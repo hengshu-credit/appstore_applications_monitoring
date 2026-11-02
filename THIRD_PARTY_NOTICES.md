@@ -14,3 +14,16 @@ Data provided by [AppGoblin](https://appgoblin.info).
   monitoring package or its distributable wheel.
 - Store responses are collected from their respective public services;
   the AppGoblin data license does not grant rights to unrelated store assets.
+- `src/appmon/keyword_stores.py`: Google search dataset mappings adapted to
+  Python from `MrAdex77/google-play-scraper` at
+  `1b8f957aaacc026edfa62a05cdc7633b208bd060` (MIT, copyright 2026 MrAdex77).
+  Full notice in `licenses/mradex-google-play-scraper.txt`.
+- Apple native search protocol and `src/appmon/apple_markets.json` adapted from
+  `facundoolano/app-store-scraper` at
+  `05d59c110240104901fa47622f64a7c6ed841a3b`. The repository LICENSE is MIT,
+  copyright 2017 LambdaClass; retained in `licenses/app-store-scraper.txt`
+  (its package.json separately labels the package ISC).
+- AsoBeast at `c49f547b75b8899d27aeeda45b6bea7191c0acaa` was consulted for
+  tracking concepts (market-scoped history and captured-depth semantics).
+  No AsoBeast code is incorporated. Its source remains in the ignored research
+  directory and is licensed AGPL-3.0 by its authors.

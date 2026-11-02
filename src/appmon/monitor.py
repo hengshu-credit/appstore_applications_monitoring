@@ -22,7 +22,7 @@ def raw_save(folder, raw):
         with gzip.open(tmp, "wb") as f:
             f.write(raw)
         os.replace(tmp, path)
-    return str(path.relative_to(folder))
+    return path.relative_to(folder).as_posix()
 
 
 def save_result(db, cfg, job, result=None, error=None, now=None):
@@ -165,7 +165,11 @@ def discover(cfg, db, client=None, max_sources=None):
 
 
 def daemon(cfg, db):
+    from .keywords import work_keywords
     while True:
+        keyword_counts = work_keywords(cfg, db, cfg["batch_size"])
+        if keyword_counts["processed"]:
+            log.info("Keyword batch %s", keyword_counts)
         row = db.execute("SELECT next_at FROM schedules WHERE name='seed-sync'").fetchone()
         if not row or row["next_at"] <= time.time():
             try:

@@ -15,7 +15,7 @@ from appmon.monitor import save_result, work
 from appmon.stores import Client, FetchError, Result
 
 
-class MonitorTest(unittest.TestCase):
+class MySQLTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cfg = load(Path(__file__).parents[1] / 'config.toml')
@@ -50,6 +50,8 @@ class MonitorTest(unittest.TestCase):
         self.db.close()
         self.temp.cleanup()
 
+
+class MonitorTest(MySQLTestCase):
     def seed(self):
         with self.db:
             add_apps(self.db, [("google", "com.example.app", "Old", None)], "test", 10)
@@ -247,7 +249,7 @@ class MonitorTest(unittest.TestCase):
         path = self.folder / "legacy.sqlite3"
         old = sqlite3.connect(path)
         for table in TABLES:
-            if table == "migration_progress":
+            if table == "migration_progress" or table.startswith("keyword_"):
                 continue
             columns = self.db.execute(f"SHOW COLUMNS FROM `{table}`").fetchall()
             definitions = []

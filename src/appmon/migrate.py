@@ -30,7 +30,9 @@ def migrate(cfg, source_path, *, batch_size=5000, report_path=None):
     source.execute("BEGIN")
     target = connect(cfg, allow_migration=True)
     report = {"storage": "mysql", "source_sha256": source_sha, "started": time.time(), "tables": {}}
-    names = [name for name in TABLES if name != "migration_progress"]
+    # The legacy schema predates keyword tracking. New tables must remain empty,
+    # but must not be required in a historical SQLite source.
+    names = [name for name in TABLES if name != "migration_progress" and not name.startswith("keyword_")]
     try:
         lock_name = "appmon:migrate:" + hashlib.sha256(cfg["mysql"]["database"].encode()).hexdigest()[:32]
         lock = target.execute("SELECT GET_LOCK(%s,0) acquired", (lock_name,)).fetchone()
@@ -40,7 +42,8 @@ def migrate(cfg, source_path, *, batch_size=5000, report_path=None):
         if previous and any(r["source_sha256"] != source_sha for r in previous):
             raise ValueError("Migration source differs from the recorded source")
         if not previous:
-            if any(target.execute(f"SELECT 1 FROM `{name}` LIMIT 1").fetchone() for name in names):
+            if any(target.execute(f"SELECT 1 FROM `{name}` LIMIT 1").fetchone()
+                   for name in TABLES if name != "migration_progress"):
                 raise ValueError("Initial migration requires empty destination tables; existing data is never overwritten")
             with target:
                 target.executemany("INSERT INTO migration_progress(source_sha256,table_name) VALUES(%s,%s)",

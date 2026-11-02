@@ -37,6 +37,26 @@ TABLES = {
         table_name VARCHAR(64) CHARACTER SET ascii NOT NULL, rows_copied BIGINT NOT NULL DEFAULT 0,
         last_key TEXT, status VARCHAR(32) NOT NULL DEFAULT 'copying',
         PRIMARY KEY(source_sha256,table_name)''',
+    'keyword_targets': f'''id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        store VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, {REGION},
+        keyword VARCHAR(255) NOT NULL, depth INT NOT NULL, refresh_hours DOUBLE NOT NULL,
+        enabled BOOLEAN NOT NULL DEFAULT TRUE, due DOUBLE NOT NULL DEFAULT 0,
+        lease_until DOUBLE NOT NULL DEFAULT 0, token CHAR(32) CHARACTER SET ascii,
+        failures INT NOT NULL DEFAULT 0, last_error TEXT,
+        latest_attempt_id BIGINT, latest_success_id BIGINT, previous_success_id BIGINT,
+        UNIQUE KEY keyword_identity(store,country,language,keyword),
+        INDEX keyword_due(enabled,due,lease_until)''',
+    'keyword_runs': '''id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        target_id BIGINT NOT NULL, observed_at DOUBLE NOT NULL,
+        outcome VARCHAR(16) NOT NULL, source VARCHAR(64) NOT NULL,
+        parser_version VARCHAR(32) NOT NULL, requested_depth INT NOT NULL,
+        returned_count INT, coverage VARCHAR(32) NOT NULL, raw_path TEXT, error TEXT,
+        INDEX keyword_history(target_id,id)''',
+    'keyword_ranks': '''run_id BIGINT NOT NULL,
+        app_id VARCHAR(512) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+        position INT NOT NULL, name TEXT,
+        PRIMARY KEY(run_id,app_id), UNIQUE KEY keyword_position(run_id,position),
+        INDEX keyword_app(app_id,run_id)''',
 }
 
 
@@ -196,6 +216,11 @@ def status(db):
         'events': list(db.execute('SELECT kind,count(*) count FROM events GROUP BY kind')),
         'requests': list(db.execute('SELECT outcome,count(*) count FROM requests GROUP BY outcome')),
         'discovery': list(db.execute('SELECT * FROM discovery_runs ORDER BY id DESC LIMIT 30')),
+        'keywords': db.execute('''SELECT count(*) total,
+            CAST(coalesce(sum(enabled=1),0) AS UNSIGNED) enabled,
+            CAST(coalesce(sum(enabled=1 AND due<=%s AND lease_until<=%s),0) AS UNSIGNED) due,
+            CAST(coalesce(sum(failures>0),0) AS UNSIGNED) retrying
+            FROM keyword_targets''', (now, now)).fetchone(),
         'coverage_note': 'Known IDs only. Imported IDs are not live-verified. Region unavailable is not global delisting.',
     }
 

@@ -77,6 +77,8 @@ Compose 中的 MySQL 已实际启动并配置自动重启，持久化在 `data/m
 
 ## 数据模型与查看
 
+新增：[多国家、多语言关键词排名追踪](docs/keywords.md)。可批量维护词库、定期保存双商店有序搜索快照，并通过 `appmon keywords app` 反查应用在各关键词/地区的排名、变化与历史。见 [真实采集验收](docs/keyword-verification.md)。
+
 | 位置/表 | 含义 |
 |---|---|
 | `upstream/` | 七个仓库的研究副本；数据仓库的大文件在 `data/raw/` |

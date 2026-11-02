@@ -1,0 +1,395 @@
+{
+  "targets": 8,
+  "rank_rows": 315,
+  "results": [
+    {
+      "id": 1,
+      "store": "google",
+      "country": "th",
+      "language": "th",
+      "keyword": "เงินกู้",
+      "run_id": 1,
+      "observed_at": 1793639007.137895,
+      "returned_count": 30,
+      "raw_path": "responses\\95\\9579f393f901f2eeaeebb8df8cbbe588a0842b7756290c5c55e9457c361fad09.gz",
+      "observed_at_shanghai": "2026-11-03T01:03:27.137895+08:00",
+      "top3": [
+        {
+          "app_id": "com.hahimoney.android.loan",
+          "position": 1,
+          "name": "ฟินนิกซ์: อนุมัติไวสุดใน 5 วิ",
+          "previous_position": null,
+          "change": null
+        },
+        {
+          "app_id": "com.scbabacus.l2020",
+          "position": 2,
+          "name": "MoneyThunder กู้เงินถูกกฎหมาย",
+          "previous_position": null,
+          "change": null
+        },
+        {
+          "app_id": "com.thai.credit.finance.reliable.loan.android",
+          "position": 3,
+          "name": "EASY สินเชื่อ-กู้เงินถูกกฎหมาย",
+          "previous_position": null,
+          "change": null
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "store": "apple",
+      "country": "th",
+      "language": "th",
+      "keyword": "เงินกู้",
+      "run_id": 2,
+      "observed_at": 1793639008.2209814,
+      "returned_count": 50,
+      "raw_path": "responses\\10\\1030e3bd5fd8cd02485bf9be0be41b0281e00e6aa9676fa8e02efa9278af5e13.gz",
+      "observed_at_shanghai": "2026-11-03T01:03:28.220981+08:00",
+      "top3": [
+        {
+          "app_id": "6745085576",
+          "position": 1,
+          "name": null,
+          "previous_position": null,
+          "change": null
+        },
+        {
+          "app_id": "6796220919",
+          "position": 2,
+          "name": null,
+          "previous_position": null,
+          "change": null
+        },
+        {
+          "app_id": "6757423897",
+          "position": 3,
+          "name": null,
+          "previous_position": null,
+          "change": null
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "store": "google",
+      "country": "vn",
+      "language": "vi",
+      "keyword": "vay tiền",
+      "run_id": 3,
+      "observed_at": 1793639009.2426946,
+      "returned_count": 30,
+      "raw_path": "responses\\91\\910400b505f6fa785b9ba907f90a1156b9e2e3a3189e1e6e8c803faad299a6ac.gz",
+      "observed_at_shanghai": "2026-11-03T01:03:29.242695+08:00",
+      "top3": [
+        {
+          "app_id": "com.viet.dong68",
+          "position": 1,
+          "name": "Vietdong-Vay nhanh online",
+          "previous_position": null,
+          "change": null
+        },
+        {
+          "app_id": "vn.homecredit.capp",
+          "position": 2,
+          "name": "Home Credit Tài Chính Online",
+          "previous_position": null,
+          "change": null
+        },
+        {
+          "app_id": "happycredito.com.vn",
+          "position": 3,
+          "name": "Think Vay",
+          "previous_position": null,
+          "change": null
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "store": "apple",
+      "country": "vn",
+      "language": "vi",
+      "keyword": "vay tiền",
+      "run_id": 4,
+      "observed_at": 1793639011.4564214,
+      "returned_count": 50,
+      "raw_path": "responses\\17\\17bd2d3f2f521fe668dffd8da5b0cbd85062da6465ae1f6e7416996653181b96.gz",
+      "observed_at_shanghai": "2026-11-03T01:03:31.456421+08:00",
+      "top3": [
+        {
+          "app_id": "6787979303",
+          "position": 1,
+          "name": null,
+          "previous_position": null,
+          "change": null
+        },
+        {
+          "app_id": "6758127511",
+          "position": 2,
+          "name": null,
+          "previous_position": null,
+          "change": null
+        },
+        {
+          "app_id": "1553761073",
+          "position": 3,
+          "name": null,
+          "previous_position": null,
+          "change": null
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "store": "google",
+      "country": "ph",
+      "language": "en",
+      "keyword": "loan",
+      "run_id": 5,
+      "observed_at": 1793639011.9795809,
+      "returned_count": 26,
+      "raw_path": "responses\\30\\30fc56b3eddde4b71ebc377f402756b24ff852c9a09508d888edcaef56536198.gz",
+      "observed_at_shanghai": "2026-11-03T01:03:31.979581+08:00",
+      "top3": [
+        {
+          "app_id": "com.happy.cash.fast.credit.loan.mobile.lending",
+          "position": 1,
+          "name": "Happycash-Easy and happy loan",
+          "previous_position": null,
+          "change": null
+        },
+        {
+          "app_id": "com.juanhand.fast.cash.peso.loan.app",
+          "position": 2,
+          "name": "JuanHand-online cash loan App",
+          "previous_position": null,
+          "change": null
+        },
+        {
+          "app_id": "com.mocamoca",
+          "position": 3,
+          "name": "MocaMoca - Safe and fast loan",
+          "previous_position": null,
+          "change": null
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "store": "apple",
+      "country": "ph",
+      "language": "en",
+      "keyword": "loan",
+      "run_id": 6,
+      "observed_at": 1793639014.805623,
+      "returned_count": 50,
+      "raw_path": "responses\\d4\\d4ef1a0e8595b74c7af3e824c319c6b8122260ff20c604f87b1a2f86c99134a9.gz",
+      "observed_at_shanghai": "2026-11-03T01:03:34.805623+08:00",
+      "top3": [
+        {
+          "app_id": "6502511711",
+          "position": 1,
+          "name": null,
+          "previous_position": null,
+          "change": null
+        },
+        {
+          "app_id": "6820890205",
+          "position": 2,
+          "name": null,
+          "previous_position": null,
+          "change": null
+        },
+        {
+          "app_id": "6817322136",
+          "position": 3,
+          "name": null,
+          "previous_position": null,
+          "change": null
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "store": "google",
+      "country": "ph",
+      "language": "fil",
+      "keyword": "utang",
+      "run_id": 7,
+      "observed_at": 1793639015.23272,
+      "returned_count": 29,
+      "raw_path": "responses\\7f\\7f5befee6318307168cf31ca55c5c8f58540466c7d90773eaacdd74fee877201.gz",
+      "observed_at_shanghai": "2026-11-03T01:03:35.232720+08:00",
+      "top3": [
+        {
+          "app_id": "com.mocamoca",
+          "position": 1,
+          "name": "MocaMoca - Safe and fast loan",
+          "previous_position": null,
+          "change": null
+        },
+        {
+          "app_id": "com.mgcaguioa.utang",
+          "position": 2,
+          "name": "Utang: Credit & Debt Tracker",
+          "previous_position": null,
+          "change": null
+        },
+        {
+          "app_id": "com.kakqwezxc.utangtime",
+          "position": 3,
+          "name": "Utang Bells: Debt Tracker",
+          "previous_position": null,
+          "change": null
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "store": "apple",
+      "country": "ph",
+      "language": "fil",
+      "keyword": "utang",
+      "run_id": 8,
+      "observed_at": 1793639018.3599207,
+      "returned_count": 50,
+      "raw_path": "responses\\9c\\9ca735d6168c609da22ab313319348bf69ca86a4c89d9c23ede7c12ad4b66dec.gz",
+      "observed_at_shanghai": "2026-11-03T01:03:38.359921+08:00",
+      "top3": [
+        {
+          "app_id": "6771232874",
+          "position": 1,
+          "name": null,
+          "previous_position": null,
+          "change": null
+        },
+        {
+          "app_id": "6771651132",
+          "position": 2,
+          "name": null,
+          "previous_position": null,
+          "change": null
+        },
+        {
+          "app_id": "6820890205",
+          "position": 3,
+          "name": null,
+          "previous_position": null,
+          "change": null
+        }
+      ]
+    }
+  ],
+  "reverse_query_example": {
+    "store": "google",
+    "app_id": "com.happy.cash.fast.credit.loan.mobile.lending",
+    "coverage": [
+      {
+        "target": {
+          "id": 5,
+          "store": "google",
+          "country": "ph",
+          "language": "en",
+          "keyword": "loan",
+          "depth": 50,
+          "refresh_hours": 24.0,
+          "enabled": 1,
+          "due": 1793725411.9795809,
+          "lease_until": 0.0,
+          "failures": 0,
+          "last_error": null,
+          "latest_attempt_id": 5,
+          "latest_success_id": 5,
+          "previous_success_id": null
+        },
+        "latest_attempt": {
+          "id": 5,
+          "target_id": 5,
+          "observed_at": 1793639011.9795809,
+          "outcome": "ok",
+          "source": "google-play-public-search",
+          "parser_version": "serp-v1",
+          "requested_depth": 50,
+          "returned_count": 26,
+          "coverage": "first_response",
+          "raw_path": "responses\\30\\30fc56b3eddde4b71ebc377f402756b24ff852c9a09508d888edcaef56536198.gz",
+          "error": null
+        },
+        "latest_success": {
+          "id": 5,
+          "target_id": 5,
+          "observed_at": 1793639011.9795809,
+          "outcome": "ok",
+          "source": "google-play-public-search",
+          "parser_version": "serp-v1",
+          "requested_depth": 50,
+          "returned_count": 26,
+          "coverage": "first_response",
+          "raw_path": "responses\\30\\30fc56b3eddde4b71ebc377f402756b24ff852c9a09508d888edcaef56536198.gz",
+          "error": null
+        },
+        "previous_success": null,
+        "stale": false,
+        "position": 1,
+        "previous_position": null,
+        "status": "observed",
+        "change": null
+      },
+      {
+        "target": {
+          "id": 7,
+          "store": "google",
+          "country": "ph",
+          "language": "fil",
+          "keyword": "utang",
+          "depth": 50,
+          "refresh_hours": 24.0,
+          "enabled": 1,
+          "due": 1793725415.23272,
+          "lease_until": 0.0,
+          "failures": 0,
+          "last_error": null,
+          "latest_attempt_id": 7,
+          "latest_success_id": 7,
+          "previous_success_id": null
+        },
+        "latest_attempt": {
+          "id": 7,
+          "target_id": 7,
+          "observed_at": 1793639015.23272,
+          "outcome": "ok",
+          "source": "google-play-public-search",
+          "parser_version": "serp-v1",
+          "requested_depth": 50,
+          "returned_count": 29,
+          "coverage": "first_response",
+          "raw_path": "responses\\7f\\7f5befee6318307168cf31ca55c5c8f58540466c7d90773eaacdd74fee877201.gz",
+          "error": null
+        },
+        "latest_success": {
+          "id": 7,
+          "target_id": 7,
+          "observed_at": 1793639015.23272,
+          "outcome": "ok",
+          "source": "google-play-public-search",
+          "parser_version": "serp-v1",
+          "requested_depth": 50,
+          "returned_count": 29,
+          "coverage": "first_response",
+          "raw_path": "responses\\7f\\7f5befee6318307168cf31ca55c5c8f58540466c7d90773eaacdd74fee877201.gz",
+          "error": null
+        },
+        "previous_success": null,
+        "stale": false,
+        "position": 9,
+        "previous_position": null,
+        "status": "observed",
+        "change": null
+      }
+    ],
+    "note": "Only tracked keywords where this app has been observed. Missing means not in the returned results, not delisted."
+  }
+}

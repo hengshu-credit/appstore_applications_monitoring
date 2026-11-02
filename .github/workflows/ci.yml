@@ -35,3 +35,6 @@ jobs:
       - run: python scripts/create_ci_database.py
       - run: appmon init
       - run: appmon status
+      - run: appmon keywords import examples/keywords-sea.json
+      - run: appmon keywords list
+      - run: appmon keywords app google com.example.app
