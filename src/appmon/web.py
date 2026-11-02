@@ -19,6 +19,8 @@ import pymysql
 from .db import connect
 from .ingest import valid_id
 from . import catalog
+from . import aso, review_desk, insights, collection
+from datetime import date, datetime, timezone
 from . import keywords, intelligence as intel, analytics, alerts, exports
 
 
@@ -149,7 +151,9 @@ def create_app(cfg):
 
     @api.get("/apps")
     def apps(q: str = Query("", max_length=255), store: str = "", country: str = "us", language: str = "en", category: str = "",
-             developer: str = "", state: str = "", after_store: str = "", after_id: str = "", limit: int = Query(50, ge=1, le=200), db=DB):
+             developer: str = "", state: str = "", after_store: str = "", after_id: str = "", limit: int = Query(50, ge=1, le=200),
+             min_rating: float | None = Query(None, ge=0, le=5), min_ratings: int | None = Query(None,ge=0),
+             pricing: str = '', updated_since: str = '', released_since: str = '', db=DB):
         clauses, args = [], [country, language]
         for key, value in (("a.store", store), ("l.state", state)):
             if value:
@@ -170,6 +174,20 @@ def create_app(cfg):
         if developer:
             clauses.append("JSON_UNQUOTE(JSON_EXTRACT(l.payload,'$.developer'))=%s")
             args.append(developer)
+        for field, minimum in (('rating',min_rating),('ratings',min_ratings)):
+            if minimum is not None:
+                clauses.append(f"JSON_TYPE(JSON_EXTRACT(l.payload,'$.{field}')) IN ('INTEGER','DOUBLE') AND CAST(JSON_UNQUOTE(JSON_EXTRACT(l.payload,'$.{field}')) AS DECIMAL(20,6))>=%s")
+                args.append(minimum)
+        if pricing:
+            if pricing not in ('free','paid'):raise ValueError('售价筛选无效')
+            clauses.append("JSON_TYPE(JSON_EXTRACT(l.payload,'$.price')) IN ('INTEGER','DOUBLE') AND CAST(JSON_UNQUOTE(JSON_EXTRACT(l.payload,'$.price')) AS DECIMAL(20,6))"+('=0' if pricing=='free' else '>0'))
+        for field, minimum in (('updated',updated_since),('released',released_since)):
+            if minimum:
+                day=date.fromisoformat(minimum)
+                epoch=datetime.combine(day,datetime.min.time(),tzinfo=timezone.utc).timestamp()
+                path=f"JSON_EXTRACT(l.payload,'$.{field}')"
+                clauses.append(f"((JSON_TYPE({path}) IN ('INTEGER','DOUBLE') AND CAST(JSON_UNQUOTE({path}) AS DECIMAL(20,6))>=%s) OR (JSON_UNQUOTE({path}) REGEXP '^[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}' AND LEFT(JSON_UNQUOTE({path}),10)>=%s))")
+                args.extend((epoch,minimum))
         if after_store or after_id:
             clauses.append("(a.store,a.app_id)>(%s,%s)")
             args.extend([after_store, after_id])
@@ -343,6 +361,78 @@ def create_app(cfg):
         if kind == "observations":
             return analytics.import_ad_observations(db, rows)
         raise ValueError("Unknown ad import kind")
+
+    @api.get('/research/events')
+    def event_center(store: str, country: str='us', language: str='en', app_id: str='', kind: str='', field: str='',
+                     group_name: str='', days: int=Query(30,ge=1,le=365), db=DB):
+        return insights.event_feed(db,dict(store=store,country=country,language=language,app_id=app_id,kind=kind,field=field,group_name=group_name,days=days))
+
+    @api.post('/research/annotations')
+    def annotate(value:dict=Body(...),db=DB):return insights.add_annotation(db,value)
+
+    @api.get('/research/markets/{store}/{app_id}')
+    def market_matrix(store:str,app_id:str,db=DB):return insights.app_markets(db,store,app_id)
+
+    @api.get('/research/developers')
+    def developer_list(store:str,q:str='',db=DB):return insights.developers(db,store,q)
+
+    @api.get('/research/developer-apps')
+    def developer_detail(store:str,name:str,developer_id:str='',db=DB):return insights.developer_apps(db,store,name,developer_id)
+
+    @api.get('/research/aso')
+    def aso_workspace(store:str,app_id:str,country:str='us',language:str='en',db=DB):
+        return aso.workspace(db,dict(store=store,app_id=app_id,country=country,language=language))
+
+    @api.post('/research/aso/check')
+    def aso_check(value:dict=Body(...)):
+        words=value.get('keywords',[])
+        if not isinstance(words,list) or len(words)>500 or any(not isinstance(w,str) or len(w)>255 for w in words):raise ValueError('核查词库无效')
+        return aso.check_metadata(value.get('store'),value.get('metadata'),words)
+
+    @api.post('/research/aso/drafts')
+    def draft_save(value:dict=Body(...),db=DB):return aso.save_draft(db,value)
+
+    @api.get('/research/aso/drafts/{identifier}')
+    def draft_get(identifier:int,db=DB):return aso.draft_detail(db,identifier)
+
+    @api.get('/research/reviews')
+    def review_inbox(store:str,country:str='us',language:str='en',app_id:str='',status:str='',q:str='',version:str='',label:str='',reply_status:str='',
+                     rating:int|None=Query(None,ge=1,le=5),since:float|None=Query(None,ge=0),offset:int=Query(0,ge=0,le=100000),db=DB):
+        return review_desk.desk(db,dict(store=store,country=country,language=language,app_id=app_id,status=status,q=q,version=version,label=label,reply_status=reply_status,rating=rating,since=since,offset=offset))
+
+    @api.post('/research/reviews/workflow')
+    def review_save(value:dict=Body(...),db=DB):return review_desk.save_case(db,value)
+
+    @api.post('/research/reviews/history')
+    def review_versions(value:dict=Body(...),db=DB):return review_desk.review_history(db,value)
+
+    @api.get('/research/comparisons')
+    def sets(db=DB):
+        rows=db.execute('SELECT * FROM comparison_sets ORDER BY updated_at DESC LIMIT 100').fetchall()
+        for row in rows:row['members']=json.loads(row['members'])
+        return rows
+
+    @api.post('/research/comparisons')
+    def save_set(value:dict=Body(...),db=DB):return insights.save_comparison(db,value)
+
+    @api.get('/research/comparisons/{identifier}')
+    def get_set(identifier:int,db=DB):return insights.comparison_detail(db,identifier)
+
+    @api.get('/research/collection')
+    def data_center(db=DB):return collection.quality(db)
+
+    @api.post('/research/plans/preview')
+    def preview_collection(value:dict=Body(...)):return collection.preview_plan(value)
+
+    @api.post('/research/plans')
+    def save_plan(value:dict=Body(...),db=DB):return collection.create_plan(db,value)
+
+    @api.post('/research/plans/{identifier}/retry')
+    def retry_plan(identifier:int,db=DB):
+        row=db.execute('SELECT status FROM collection_plans WHERE id=%s',(identifier,)).fetchone()
+        if not row or row['status']!='error':raise ValueError('只有失败计划可以重试')
+        db.execute("UPDATE collection_plans SET status='queued',error=NULL,updated_at=%s WHERE id=%s",(time.time(),identifier))
+        return {'id':identifier,'status':'queued'}
 
     app.include_router(api)
     @app.get("/health")

@@ -30,7 +30,8 @@ TABLES = {
     'events': f'''id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, {APP_KEY}, {REGION},
         observed_at DOUBLE NOT NULL, kind VARCHAR(64) NOT NULL, changes LONGTEXT NOT NULL''',
     'requests': f'''id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, {APP_KEY}, {REGION},
-        observed_at DOUBLE NOT NULL, outcome VARCHAR(32) NOT NULL, error TEXT''',
+        observed_at DOUBLE NOT NULL, outcome VARCHAR(32) NOT NULL, error TEXT,
+        INDEX requests_app(store,app_id,country,language,id)''',
     'schedules': '''name VARCHAR(512) NOT NULL PRIMARY KEY, next_at DOUBLE NOT NULL''',
     'discovery_runs': '''id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, source TEXT NOT NULL,
         observed_at DOUBLE NOT NULL, count BIGINT NOT NULL, added BIGINT NOT NULL, error TEXT''',
@@ -125,11 +126,12 @@ def connect(cfg, *, initialize=True, allow_migration=False):
         if initialize:
             for table, columns in TABLES.items():
                 db.execute(f'CREATE TABLE IF NOT EXISTS `{table}` ({columns}){ENGINE}')
-            index = db.execute("SHOW INDEX FROM apps WHERE Key_name='apps_store_category'").fetchone()
-            if not index:
-                with db.named_lock('apps-category-index'):
-                    if not db.execute("SHOW INDEX FROM apps WHERE Key_name='apps_store_category'").fetchone():
-                        db.execute('ALTER TABLE apps ADD INDEX apps_store_category(store,category(64))')
+            for table,name,columns in [('apps','apps_store_category','store,category(64)'),
+                                       ('requests','requests_app','store,app_id,country,language,id')]:
+                if not db.execute(f"SHOW INDEX FROM {table} WHERE Key_name=%s",(name,)).fetchone():
+                    with db.named_lock(name):
+                        if not db.execute(f"SHOW INDEX FROM {table} WHERE Key_name=%s",(name,)).fetchone():
+                            db.execute(f'ALTER TABLE {table} ADD INDEX {name}({columns})')
         if not allow_migration:
             running = db.execute("SELECT 1 FROM migration_progress WHERE status!='verified' LIMIT 1").fetchone()
             if running:

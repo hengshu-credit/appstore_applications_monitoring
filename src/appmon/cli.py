@@ -122,7 +122,7 @@ def main():
         print(json.dumps(result, ensure_ascii=False, indent=2))
         if args.command == "run" and result["error"]:
             return 2
-        if args.command == "console" and any(result[k]["error"] for k in ("watchlist", "observations", "keywords")):
+        if args.command == "console" and any(result[k]["error"] for k in ("plans", "watchlist", "observations", "keywords")):
             return 2
         if args.command == "keywords" and args.keyword_command == "run" and result["error"]:
             return 2

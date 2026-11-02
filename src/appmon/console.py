@@ -12,7 +12,9 @@ log = logging.getLogger(__name__)
 
 
 def run_once(cfg, db, limit=5):
-    result = {"watchlist": work_watchlist(cfg, db, limit),
+    from .collection import work_plans
+    plans = work_plans(db)
+    result = {"plans": plans, "watchlist": work_watchlist(cfg, db, limit),
               "observations": work_observations(cfg, db, limit),
               "keywords": work_keywords(cfg, db, limit), "alerts": evaluate(db)}
     result["export"] = work_export(cfg, db)

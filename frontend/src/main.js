@@ -3,6 +3,8 @@ import "./style.css";
 import "./theme.css";
 import "./fonts.css";
 import "./selectors.css";
+import "./research.css";
+import { createResearchPages } from "./research.js";
 import { createSelectors } from "./selectors.js";
 import { initTheme } from "./theme.js";
 initTheme();
@@ -74,14 +76,18 @@ let accessToken = "",
   revision = 0;
 const nav = [
   ["overview", "◈", "监控概览"],
+  ["events", "▥", "事件中心"],
   ["apps", "▦", "应用库"],
   ["watchlist", "◎", "重点监控"],
   ["charts", "↗", "榜单中心"],
   ["featured", "✦", "精品推荐"],
   ["keywords", "⌕", "关键词中心"],
-  ["compare", "⇄", "竞品对比"],
-  ["reviews", "▤", "评论洞察"],
-  ["market", "◷", "市场与开发者"],
+  ["aso", "✎", "ASO 工作台"],
+  ["compare", "⇄", "竞品集合"],
+  ["reviews", "▤", "评论工作台"],
+  ["market", "◷", "市场分布"],
+  ["developers", "▣", "开发者"],
+  ["collection", "⟳", "采集中心"],
   ["ads", "◇", "广告观察"],
   ["alerts", "◉", "告警与日报"],
   ["exports", "↓", "数据导出"],
@@ -131,7 +137,7 @@ function panel(title, body, extra = "") {
 }
 function empty(
   message = "尚无数据",
-  detail = "添加监控目标后，后台采集将保存真实观察记录。",
+  detail = "请调整筛选，或添加对应数据后刷新。",
 ) {
   return `<div class="empty"><strong>${esc(message)}</strong>${esc(detail)}</div>`;
 }
@@ -199,7 +205,7 @@ function bindForm(id, callback) {
 function controlButtons(resource, row) {
   return `<div class="actions"><button class="secondary small" data-control="${resource}" data-id="${row.id}" data-action="${row.enabled ? "pause" : "resume"}">${row.enabled ? "暂停" : "恢复"}</button>${resource === "rules" ? "" : `<button class="secondary small" data-control="${resource}" data-id="${row.id}" data-action="refresh">安排刷新</button>`}</div>`;
 }
-function chart(points, invert = false) {
+function chart(points, invert = false, formatAt = stamp) {
   if (!points.some((p) => p.value != null))
     return empty("暂无可绘制的历史", "至少需要一个成功观察时间点。");
   const w = 800,
@@ -221,7 +227,7 @@ function chart(points, invert = false) {
     } else current.push([x(i), y(p.value), p]);
   });
   if (current.length) segments.push(current);
-  return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="观察历史趋势">${[lo, hi].map((v) => `<line class="gridline" x1="${pad}" x2="${w - pad}" y1="${y(v)}" y2="${y(v)}"/><text x="0" y="${y(v) + 4}">${esc(v)}</text>`).join("")}${segments.map((s) => `<polyline points="${s.map((p) => p.slice(0, 2).join(",")).join(" ")}"/>${s.map(([xx, yy, p]) => `<circle cx="${xx}" cy="${yy}" r="3"><title>${esc(stamp(p.at))}：${esc(p.value)}</title></circle>`).join("")}`).join("")}<text x="${pad}" y="${h - 3}">${esc(stamp(points[0].at))}</text><text text-anchor="end" x="${w - pad}" y="${h - 3}">${esc(stamp(points.at(-1).at))}</text></svg>`;
+  return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="观察历史趋势">${[lo, hi].map((v) => `<line class="gridline" x1="${pad}" x2="${w - pad}" y1="${y(v)}" y2="${y(v)}"/><text x="0" y="${y(v) + 4}">${esc(v)}</text>`).join("")}${segments.map((s) => `<polyline points="${s.map((p) => p.slice(0, 2).join(",")).join(" ")}"/>${s.map(([xx, yy, p]) => `<circle cx="${xx}" cy="${yy}" r="3"><title>${esc(formatAt(p.at))}：${esc(p.value)}</title></circle>`).join("")}`).join("")}<text x="${pad}" y="${h - 3}">${esc(formatAt(points[0].at))}</text><text text-anchor="end" x="${w - pad}" y="${h - 3}">${esc(formatAt(points.at(-1).at))}</text></svg>`;
 }
 function bars(rows) {
   const max = Math.max(1, ...rows.map((r) => Number(r.count)));
@@ -323,9 +329,25 @@ async function applications(rev, filters = {}) {
           ["region_unavailable", "地区不可用"],
           ["suspected_missing", "待确认"],
         ],
-      )}<button type="submit">筛选</button></form>${table(
-        ["应用", "商店 / 分类", "状态", "评分 / 评分数", "最后成功"],
+      )}<button type="submit">筛选</button><details class="advanced-filters"><summary>更多条件：评分、售价与商店日期</summary><div class="toolbar">${field("最低商店评分", "min_rating", filters.min_rating || "", "number", 'min="0" max="5" step="0.1"')}${field("最低累计评分数", "min_ratings", filters.min_ratings || "", "number", 'min="0" step="1"')}${select(
+        "售价",
+        "pricing",
+        [
+          ["", "全部"],
+          ["free", "免费"],
+          ["paid", "付费"],
+        ],
+      )}${field("商店更新时间不早于", "updated_since", filters.updated_since || "", "date")}${field("商店发布日期不早于", "released_since", filters.released_since || "", "date")}</div><p class="sub">仅筛选已观察且具备相应字段的地区记录；未知日期不会当作0。</p></details></form><div class="bulk-toolbar"><button type="button" id="bulk-monitor" class="secondary" disabled>批量加入监控</button><button type="button" id="bulk-compare" class="secondary" disabled>保存竞品集合</button><span id="pool-selection-count" class="selection-count">选择当前页应用；监控最多50个，对比2–6个。</span></div>${table(
+        [
+          '<input id="pool-select-all" type="checkbox" aria-label="选择本页全部应用">',
+          "应用",
+          "商店 / 分类",
+          "状态",
+          "评分 / 评分数",
+          "最后成功",
+        ],
         data.items.map((r) => [
+          `<input type="checkbox" data-pool-select="${esc(r.app_id)}" aria-label="选择 ${esc(r.payload?.name || r.name || r.app_id)}">`,
           appLink(
             r.store,
             r.app_id,
@@ -346,6 +368,33 @@ async function applications(rev, filters = {}) {
   )
     return;
   $("[name=state]", $("#app-search")).value = filters.state || "";
+  $("[name=pricing]", $("#app-search")).value = filters.pricing || "";
+  const picked = () =>
+    Array.from(document.querySelectorAll("[data-pool-select]:checked")).map(
+      (n) => n.dataset.poolSelect,
+    );
+  function selection() {
+    const count = picked().length;
+    $("#pool-selection-count").textContent = "已选 " + count + " 个应用";
+    $("#bulk-monitor").disabled = count < 1 || count > 50;
+    $("#bulk-compare").disabled = count < 2 || count > 6;
+  }
+  $("#pool-select-all")?.addEventListener("change", (event) => {
+    document
+      .querySelectorAll("[data-pool-select]")
+      .forEach((n) => (n.checked = event.target.checked));
+    selection();
+  });
+  document
+    .querySelectorAll("[data-pool-select]")
+    .forEach((n) => n.addEventListener("change", selection));
+  $("#bulk-monitor").addEventListener("click", () =>
+    researchPages.planForApps(picked()),
+  );
+  $("#bulk-compare").addEventListener("click", () =>
+    researchPages.setForApps(picked()),
+  );
+
   selectors.mountSidebar(market().store, filters.category || "", (category) =>
     applications(++revision, { ...formData($("#app-search")), category }).catch(
       (e) => toast(e.message),
@@ -373,7 +422,7 @@ async function appDetail(store, id, rev = ++revision) {
     m = { ...market(), store, app_id: id };
   if (
     !mount(
-      `<div class="panel-heading"><div>${appLink(store, id, p.name || data.app.name, p.icon)}<p class="sub">${esc(store)} · ${esc(m.country.toUpperCase())} · ${esc(m.language)} · ${esc(p.developer || "开发者待采集")}</p></div><button id="quick-watch">加入重点监控</button></div><div class="callout">最近成功：${esc(stamp(data.listing?.last_success))} · ${data.listing ? esc(data.listing.state) : "未采集"}${data.job?.last_error ? " · 最近失败：" + esc(data.job.last_error) : ""}</div><div class="cards">${metric("商店评分", p.rating, "来自最近一次商店观察")}${metric("评分数", p.ratings, "累计公开评分数量")}${metric("版本快照", data.snapshots.length, "显示最近最多100次变更")}${metric("覆盖关键词", data.keywords.coverage.length, "仅限本系统已跟踪词库")}</div><div class="grid2">${panel("当前商店资料", `<h3>${esc(p.name || "等待采集")}</h3><p>版本 ${esc(p.version || "—")} · ${esc(data.app.category_name || p.category || "—")}</p><p>${esc(p.summary || "")}</p><details><summary>描述与版本说明</summary><div class="review-text">${esc(p.description || "暂无描述")}</div><h3 class="spacer">版本说明</h3><div class="review-text">${esc(p.release_notes || "暂无版本说明")}</div></details>${safeURL(p.url) ? `<a href="${safeURL(p.url)}" target="_blank" rel="noopener">查看商店原页 ↗</a>` : ""}`)}${panel("评分变化", chart([...data.snapshots].reverse().map((r) => ({ at: r.observed_at, value: r.payload?.rating }))))}</div>${panel("素材与版本历史", `<label>选择历史快照<select id="snapshot-choice">${data.snapshots.map((r, i) => `<option value="${i}">${esc(stamp(r.observed_at))} · ${esc(r.payload?.version || "")}</option>`).join("")}</select></label><div id="snapshot-view"></div>`)}${panel(
+      `<div class="panel-heading"><div>${appLink(store, id, p.name || data.app.name, p.icon)}<p class="sub">${esc(store)} · ${esc(m.country.toUpperCase())} · ${esc(m.language)} · ${esc(p.developer || "开发者待采集")}</p></div><div class="actions"><button id="quick-watch">加入重点监控</button><button class="secondary" id="open-aso-workbench">ASO 工作台</button></div></div><div class="callout">最近成功：${esc(stamp(data.listing?.last_success))} · ${data.listing ? esc(data.listing.state) : "未采集"}${data.job?.last_error ? " · 最近失败：" + esc(data.job.last_error) : ""}</div><div class="cards">${metric("商店评分", p.rating, "来自最近一次商店观察")}${metric("评分数", p.ratings, "累计公开评分数量")}${metric("版本快照", data.snapshots.length, "显示最近最多100次变更")}${metric("覆盖关键词", data.keywords.coverage.length, "仅限本系统已跟踪词库")}</div><div class="grid2">${panel("当前商店资料", `<h3>${esc(p.name || "等待采集")}</h3><p>版本 ${esc(p.version || "—")} · ${esc(data.app.category_name || p.category || "—")}</p><p>${esc(p.summary || "")}</p><details><summary>描述与版本说明</summary><div class="review-text">${esc(p.description || "暂无描述")}</div><h3 class="spacer">版本说明</h3><div class="review-text">${esc(p.release_notes || "暂无版本说明")}</div></details>${safeURL(p.url) ? `<a href="${safeURL(p.url)}" target="_blank" rel="noopener">查看商店原页 ↗</a>` : ""}`)}${panel("评分变化", chart([...data.snapshots].reverse().map((r) => ({ at: r.observed_at, value: r.payload?.rating }))))}</div><div id="app-market-matrix"></div>${panel("素材与版本历史", `<label>选择历史快照<select id="snapshot-choice">${data.snapshots.map((r, i) => `<option value="${i}">${esc(stamp(r.observed_at))} · ${esc(r.payload?.version || "")}</option>`).join("")}</select></label><div id="snapshot-view"></div>`)}${panel(
         "关键词覆盖",
         table(
           ["关键词", "最近位置", "变化", "数据时间", "状态"],
@@ -390,6 +439,11 @@ async function appDetail(store, id, rev = ++revision) {
     )
   )
     return;
+  researchPages.marketMatrix(store, id, rev).catch((e) => toast(e.message));
+  $("#open-aso-workbench").addEventListener("click", () => {
+    location.hash =
+      "aso/" + encodeURIComponent(store) + "/" + encodeURIComponent(id);
+  });
   const renderSnapshot = () => {
     const i = Number($("#snapshot-choice").value),
       snapshot = data.snapshots[i],
@@ -706,89 +760,10 @@ async function rankHistory(id, appId) {
   );
 }
 async function comparison(rev) {
-  mount(
-    `<p class="lead">选择同一商店、国家和语言的 2–6 个应用，比较资料与关键词覆盖。只用未过期的成功排名。</p>${panel("选择竞品", `<form id="compare-form"><label>应用 ID（每行一个）<textarea name="ids" placeholder="com.example.app1\ncom.example.app2" required></textarea></label><button type="submit" class="spacer">比较应用</button></form>`)}<div id="comparison-result"></div>`,
-    rev,
-  );
-  bindForm("#compare-form", async (data) => {
-    const r = await api(
-      "/compare",
-      data.ids
-        .split(/\s+/)
-        .filter(Boolean)
-        .map((id) => ({ ...market(), app_id: id })),
-    );
-    $("#comparison-result").innerHTML =
-      panel(
-        "应用资料",
-        table(
-          ["应用", "开发者", "版本", "评分 / 评分数", "最后成功"],
-          r.apps.map((a) => [
-            appLink(a.store, a.app_id, a.payload?.name, a.payload?.icon),
-            esc(a.payload?.developer),
-            esc(a.payload?.version),
-            num(a.payload?.rating) + " / " + num(a.payload?.ratings),
-            stamp(a.listing?.last_success),
-          ]),
-        ),
-      ) +
-      panel(
-        "关键词重合与缺口",
-        `<p class="sub">共同覆盖 ${r.common.length} 个词；首个应用未观察到而竞品命中 ${r.gaps_for_first.length} 个词。</p>` +
-          table(
-            ["关键词", ...r.apps.map((a) => esc(a.payload?.name || a.app_id))],
-            r.keywords.map((k) => [esc(k.keyword), ...k.positions.map(num)]),
-          ),
-      );
-  });
+  return researchPages.competitors(rev);
 }
-async function reviewPage(rev, filters = {}) {
-  const r = await api("/reviews?" + qs({ ...market(), ...filters }));
-  if (
-    !mount(
-      `<p class="lead">评分分布与主题来自已采集评论。主题通过明确关键词匹配，统计范围与规则均可查看。</p><div class="grid2">${panel("已采集评分分布", bars(r.summary.ratings))}${panel("评论主题", bars(Object.entries(r.summary.topics).map(([label, count]) => ({ label, count }))) + `<details><summary>匹配规则与范围</summary><p>${esc(r.summary.scope)} · 本次 ${r.summary.topic_sample_size} 条</p>${jsonBlock(r.summary.topic_rules)}</details>`)}</div>${panel(
-        "评论列表",
-        `<form id="review-filter" class="toolbar">${field("应用 ID", "app_id", filters.app_id || "")}${select(
-          "评分",
-          "rating",
-          [
-            ["", "全部"],
-            ["1", "1 星"],
-            ["2", "2 星"],
-            ["3", "3 星"],
-            ["4", "4 星"],
-            ["5", "5 星"],
-          ],
-        )}<button type="submit">筛选</button><button id="review-target" class="secondary" type="button">配置评论采集</button></form>` +
-          table(
-            ["应用", "评分", "评论", "版本 / 发布时间"],
-            r.items.map((a) => [
-              appLink(a.store, a.app_id),
-              a.rating + " ★",
-              `<strong>${esc(a.title)}</strong><div class="review-text">${esc(a.content)}</div>`,
-              esc(a.version) +
-                '<div class="sub">' +
-                esc(a.published_at) +
-                "</div>",
-            ]),
-          ) +
-          (r.next_offset
-            ? '<button id="more-reviews" class="secondary spacer">下一页</button>'
-            : ""),
-      )}`,
-      rev,
-    )
-  )
-    return;
-  bindForm("#review-filter", (data) => reviewPage(revision, data));
-  $("#review-target").addEventListener("click", () =>
-    observations(++revision, "reviews").catch((e) => toast(e.message)),
-  );
-  $("#more-reviews")?.addEventListener("click", () =>
-    reviewPage(revision, { ...filters, offset: r.next_offset }).catch((e) =>
-      toast(e.message),
-    ),
-  );
+async function reviewPage(rev) {
+  return researchPages.reviews(rev);
 }
 async function marketPage(rev) {
   const r = await api("/market?" + qs(market()));
@@ -981,6 +956,12 @@ async function exportPage(rev) {
           ["alerts", "告警"],
           ["ad_observations", "广告观察"],
           ["ad_reports", "广告日报"],
+          ["aso_drafts", "ASO草稿"],
+          ["aso_draft_versions", "ASO修订历史"],
+          ["review_workflow", "评论处理记录"],
+          ["comparison_sets", "竞品集合"],
+          ["event_annotations", "复盘注记"],
+          ["collection_plans", "采集计划"],
         ])}${field("过滤条件（JSON 对象）", "filters", "{}", "text", "required")}<button type="submit">创建导出</button></form><p class="sub">示例：{"store":"google"} 或 {"store":"apple","country":"us"}；关键词与榜单快照可按 run_id 导出。</p>`,
       )}${panel(
         "导出任务",
@@ -1014,8 +995,40 @@ async function exportPage(rev) {
   });
 }
 
+const researchPages = createResearchPages({
+  $,
+  api,
+  esc,
+  stamp,
+  num,
+  panel,
+  table,
+  chart,
+  bars,
+  metric,
+  field,
+  select,
+  formData,
+  bindForm,
+  mount,
+  market,
+  toast,
+  selectors,
+  appLink,
+  empty,
+  controlButtons,
+  currentRevision: () => revision,
+  nextRevision: () => ++revision,
+  reviewTargets: () => {
+    location.hash = "collection";
+  },
+});
 const routes = {
   overview,
+  events: researchPages.events,
+  aso: researchPages.aso,
+  developers: researchPages.developers,
+  collection: researchPages.collectionCenter,
   apps: applications,
   watchlist,
   charts: (r) => observations(r, "chart"),
@@ -1029,10 +1042,13 @@ const routes = {
   exports: exportPage,
 };
 async function render() {
+  $("#research-dialog")?.close();
   const name = location.hash.slice(1) || "overview",
     route = routes[name] || overview,
     rev = ++revision;
-  $("#page-title").textContent = (nav.find((n) => n[0] === name) || nav[0])[2];
+  $("#page-title").textContent = (nav.find(
+    (n) => n[0] === name.split("/")[0],
+  ) || nav[0])[2];
   document
     .querySelectorAll("[data-nav]")
     .forEach((a) => a.classList.toggle("active", a.dataset.nav === name));
@@ -1041,7 +1057,11 @@ async function render() {
     await selectors.ready();
     selectors.syncCountry();
     const parts = name.split("/");
-    if (parts[0] === "app" && parts.length === 3)
+    if (parts[0] === "aso" && parts.length === 3) {
+      $("#global-store").value = decodeURIComponent(parts[1]);
+      saveMarket();
+      await researchPages.aso(rev, decodeURIComponent(parts[2]));
+    } else if (parts[0] === "app" && parts.length === 3)
       await appDetail(
         decodeURIComponent(parts[1]),
         decodeURIComponent(parts[2]),
@@ -1069,11 +1089,13 @@ document.addEventListener("click", async (event) => {
       $("#global-country").value = el.dataset.country;
       $("#global-language").value = el.dataset.language;
       saveMarket();
-      location.hash =
+      const nextHash =
         "app/" +
         encodeURIComponent(el.dataset.store) +
         "/" +
         encodeURIComponent(el.dataset.app);
+      if (location.hash.slice(1) === nextHash) await render();
+      else location.hash = nextHash;
     } else if (el.dataset.target) location.hash = "target/" + el.dataset.target;
     else if (el.dataset.keyword)
       location.hash = "keyword/" + el.dataset.keyword;
