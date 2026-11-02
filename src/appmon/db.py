@@ -11,7 +11,8 @@ REGION = 'country CHAR(2) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, langua
 ENGINE = ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin'
 TABLES = {
     'apps': f'''{APP_KEY}, name TEXT, category TEXT, first_seen DOUBLE NOT NULL,
-        last_seen DOUBLE NOT NULL, source TEXT NOT NULL, PRIMARY KEY(store,app_id)''',
+        last_seen DOUBLE NOT NULL, source TEXT NOT NULL, PRIMARY KEY(store,app_id),
+        INDEX apps_store_category(store,category(64))''',
     'imports': '''digest CHAR(64) CHARACTER SET ascii PRIMARY KEY, path TEXT NOT NULL,
         source TEXT NOT NULL, processed BIGINT NOT NULL DEFAULT 0, valid BIGINT NOT NULL DEFAULT 0,
         added BIGINT NOT NULL DEFAULT 0, rejected BIGINT NOT NULL DEFAULT 0,
@@ -124,6 +125,11 @@ def connect(cfg, *, initialize=True, allow_migration=False):
         if initialize:
             for table, columns in TABLES.items():
                 db.execute(f'CREATE TABLE IF NOT EXISTS `{table}` ({columns}){ENGINE}')
+            index = db.execute("SHOW INDEX FROM apps WHERE Key_name='apps_store_category'").fetchone()
+            if not index:
+                with db.named_lock('apps-category-index'):
+                    if not db.execute("SHOW INDEX FROM apps WHERE Key_name='apps_store_category'").fetchone():
+                        db.execute('ALTER TABLE apps ADD INDEX apps_store_category(store,category(64))')
         if not allow_migration:
             running = db.execute("SELECT 1 FROM migration_progress WHERE status!='verified' LIMIT 1").fetchone()
             if running:

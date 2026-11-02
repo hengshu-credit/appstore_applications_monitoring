@@ -9,6 +9,17 @@ const html = (
 const themeSource = (
   await readFile(new URL("../src/theme.js", import.meta.url), "utf8")
 ).replace(/^export /gm, "");
+const selectorSource = (
+  await readFile(new URL("../src/selectors.js", import.meta.url), "utf8")
+)
+  .replace(/^export /gm, "")
+  .replace(/^import .*;$/gm, "");
+const catalogFixture = JSON.parse(
+  await readFile(
+    new URL("../../src/appmon/store_catalog.json", import.meta.url),
+    "utf8",
+  ),
+);
 const source = (
   await readFile(new URL("../src/main.js", import.meta.url), "utf8")
 ).replace(/import ['"]\.\/style\.css['"];?/, "");
@@ -39,11 +50,22 @@ async function setup(responder) {
   const calls = [];
   window.fetch = async (path, options = {}) => {
     calls.push({ path, options });
-    let data = path === "/api/overview" ? overview : responder?.(path, options);
+    let data =
+      path === "/api/catalog"
+        ? catalogFixture
+        : path === "/api/overview"
+          ? overview
+          : responder?.(path, options);
     if (data === undefined) throw new Error("Unmocked route " + path);
     return { ok: true, status: 200, json: async () => data };
   };
-  window.eval(themeSource + "\n" + source.replace(/^import .*;$/gm, ""));
+  window.eval(
+    themeSource +
+      "\n" +
+      selectorSource +
+      "\n" +
+      source.replace(/^import .*;$/gm, ""),
+  );
   await tick();
   return { window, calls };
 }

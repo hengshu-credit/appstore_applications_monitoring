@@ -19,7 +19,7 @@ appmon = "appmon.cli:main"
 where = ["src"]
 
 [tool.setuptools.data-files]
-"share/appmon/licenses" = ["licenses/appgoblin-play-scraper.txt", "licenses/appgoblin-data.txt", "licenses/mradex-google-play-scraper.txt", "licenses/app-store-scraper.txt"]
+"share/appmon/licenses" = ["licenses/appgoblin-play-scraper.txt", "licenses/appgoblin-data.txt", "licenses/mradex-google-play-scraper.txt", "licenses/app-store-scraper.txt", "licenses/unicode-cldr.txt"]
 
 [tool.setuptools.package-data]
-appmon = ["apple_markets.json", "google_chart_request.json"]
+appmon = ["apple_markets.json", "google_chart_request.json", "store_catalog.json"]

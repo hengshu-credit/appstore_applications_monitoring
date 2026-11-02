@@ -9,6 +9,7 @@ import uuid
 from .db import add_apps, claim, dump, enqueue, key, reserve
 from .ingest import disk_check, sync_seed, valid_id
 from .stores import Client, FetchError
+from .catalog import listing_category
 
 log = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ def save_result(db, cfg, job, result=None, error=None, now=None):
                                 VALUES(%s,%s,%s,%s,%s,%s,%s,%s)""", (*k, now, new_digest, raw_path, new_payload))
                 payload, digest = new_payload, new_digest
                 db.execute("UPDATE apps SET name=%s,category=%s WHERE store=%s AND app_id=%s",
-                           (result.payload.get("name"), result.payload.get("category"), job["store"], job["app_id"]))
+                           (result.payload.get("name"), listing_category(job["store"], result.payload), job["store"], job["app_id"]))
             elif outcome == "missing":
                 misses = (previous["misses"] if previous else 0)
                 # Repeated manual invocations cannot accelerate confirmation.

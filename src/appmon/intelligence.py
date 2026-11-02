@@ -11,6 +11,7 @@ from .ingest import valid_id, disk_check
 from .keywords import validate_target, observation, comparable, app_coverage
 from .monitor import raw_save, save_result
 from .stores import Client, FetchError
+from .catalog import BY_ID
 
 
 def market(value, require_app=True):
@@ -65,6 +66,9 @@ def add_observation_target(db, value):
         raise ValueError("Invalid category identifier")
     if m["store"] == "apple" and category and not category.isdigit():
         raise ValueError("Apple categories use numeric genre IDs")
+    if category and category != ('APPLICATION' if m['store']=='google' else ''):
+        if category not in BY_ID[m['store']] or BY_ID[m['store']][category]['legacy']:
+            raise ValueError('请选择该商店当前支持的官方分类')
     depth = value.get("depth", 100)
     if type(depth) is not int or not 1 <= depth <= 500:
         raise ValueError("depth must be an integer from 1 to 500")

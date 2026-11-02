@@ -88,7 +88,8 @@ class Client:
                        "ratings": "userRatingCount", "updated": "currentVersionReleaseDate",
                        "released": "releaseDate", "bundle_id": "bundleId", "url": "trackViewUrl",
                        "icon": "artworkUrl512", "screenshots": "screenshotUrls",
-                       "release_notes": "releaseNotes", "languages": "languageCodesISO2A"}
+                       "release_notes": "releaseNotes", "languages": "languageCodesISO2A",
+                       "category_id": "primaryGenreId", "genre_ids": "genreIds", "genres": "genres"}
         else:
             from appgoblin_play_scraper.features.app import parse_dom
             r = self.get(store, "https://play.google.com/store/apps/details",
@@ -108,7 +109,7 @@ class Client:
                        "price": "price", "currency": "currency", "rating": "score", "ratings": "ratings",
                        "installs": "minInstalls", "updated": "updated", "released": "released", "url": "url",
                        "icon": "icon", "screenshots": "screenshots", "video": "video",
-                       "release_notes": "recentChanges", "summary": "summary"}
+                       "release_notes": "recentChanges", "summary": "summary", "category_id": "genreId"}
         payload = {k: app.get(v) for k, v in mapping.items()}
         return Result("ok", payload, r.content)
 

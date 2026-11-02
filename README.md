@@ -2,6 +2,8 @@
 
 现已增加**独立前端项目 `frontend/` + Python HTTP API + 重点池采集 worker**。前端展示应用池、关键词、榜单、ASO 核查、竞品、评论、素材变更和告警；Python 负责抓取、调度、MySQL 存储及数据接口。主题参考天枢，支持预设/自定义、深浅色和布局配置，矩形组件统一直角。详见 [控制台使用与边界](docs/console.md)、[前端项目](frontend/README.md)、[开发规范](docs/frontend-guidelines.md)。
 
+国家与应用分类已改为分组搜索选择器，分类按两商店官方ID独立管理并兼容历史数据；全站离线嵌入阿里妈妈方圆体VF SemiBold。见 [国家、分类与字体说明](docs/store-catalog.md)。
+
 ```powershell
 # 后端 API：在仓库根目录运行
 .\.venv\Scripts\python.exe -m pip install ".[test]"

@@ -1,0 +1,30 @@
+/* Offline assets mirrored byte-for-byte from the Tianshu frontend. */
+@font-face {
+  font-family: "AlimamaFangYuanTiVF";
+  src:
+    url("/fonts/font.woff2") format("woff2"),
+    url("/fonts/font.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+:root {
+  --app-font-family:
+    "AlimamaFangYuanTiVF", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --app-font-variation: "wght" 600, "BEVL" 80;
+  font-family: var(--app-font-family);
+  font-variation-settings: var(--app-font-variation);
+}
+body,
+button,
+input,
+select,
+textarea,
+pre,
+code,
+kbd,
+samp,
+.appid {
+  font-family: var(--app-font-family);
+  font-variation-settings: var(--app-font-variation);
+}

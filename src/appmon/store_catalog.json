@@ -1,0 +1,4847 @@
+{
+  "version": "2026-11-03",
+  "countries": [
+    {
+      "code": "ad",
+      "name": "安道尔",
+      "english": "Andorra",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "AD",
+        "AND",
+        "安道尔",
+        "Andorra"
+      ]
+    },
+    {
+      "code": "ae",
+      "name": "阿拉伯联合酋长国",
+      "english": "United Arab Emirates",
+      "continent": "asia",
+      "region": "west_asia",
+      "aliases": [
+        "AE",
+        "ARE",
+        "阿拉伯联合酋长国",
+        "United Arab Emirates"
+      ]
+    },
+    {
+      "code": "af",
+      "name": "阿富汗",
+      "english": "Afghanistan",
+      "continent": "asia",
+      "region": "south_asia",
+      "aliases": [
+        "AF",
+        "AFG",
+        "阿富汗",
+        "Afghanistan"
+      ]
+    },
+    {
+      "code": "ag",
+      "name": "安提瓜和巴布达",
+      "english": "Antigua & Barbuda",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "AG",
+        "ATG",
+        "安提瓜和巴布达",
+        "Antigua & Barbuda"
+      ]
+    },
+    {
+      "code": "ai",
+      "name": "安圭拉",
+      "english": "Anguilla",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "AI",
+        "AIA",
+        "安圭拉",
+        "Anguilla"
+      ]
+    },
+    {
+      "code": "al",
+      "name": "阿尔巴尼亚",
+      "english": "Albania",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "AL",
+        "ALB",
+        "阿尔巴尼亚",
+        "Albania"
+      ]
+    },
+    {
+      "code": "am",
+      "name": "亚美尼亚",
+      "english": "Armenia",
+      "continent": "asia",
+      "region": "west_asia",
+      "aliases": [
+        "AM",
+        "ARM",
+        "亚美尼亚",
+        "Armenia"
+      ]
+    },
+    {
+      "code": "ao",
+      "name": "安哥拉",
+      "english": "Angola",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "AO",
+        "AGO",
+        "安哥拉",
+        "Angola"
+      ]
+    },
+    {
+      "code": "aq",
+      "name": "南极洲",
+      "english": "Antarctica",
+      "continent": "antarctica",
+      "region": "",
+      "aliases": [
+        "AQ",
+        "ATA",
+        "南极洲",
+        "Antarctica"
+      ]
+    },
+    {
+      "code": "ar",
+      "name": "阿根廷",
+      "english": "Argentina",
+      "continent": "south_america",
+      "region": "",
+      "aliases": [
+        "AR",
+        "ARG",
+        "阿根廷",
+        "Argentina"
+      ]
+    },
+    {
+      "code": "as",
+      "name": "美属萨摩亚",
+      "english": "American Samoa",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "AS",
+        "ASM",
+        "美属萨摩亚",
+        "American Samoa"
+      ]
+    },
+    {
+      "code": "at",
+      "name": "奥地利",
+      "english": "Austria",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "AT",
+        "AUT",
+        "奥地利",
+        "Austria"
+      ]
+    },
+    {
+      "code": "au",
+      "name": "澳大利亚",
+      "english": "Australia",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "AU",
+        "AUS",
+        "澳大利亚",
+        "Australia"
+      ]
+    },
+    {
+      "code": "aw",
+      "name": "阿鲁巴",
+      "english": "Aruba",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "AW",
+        "ABW",
+        "阿鲁巴",
+        "Aruba"
+      ]
+    },
+    {
+      "code": "ax",
+      "name": "奥兰群岛",
+      "english": "Åland Islands",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "AX",
+        "ALA",
+        "奥兰群岛",
+        "Åland Islands"
+      ]
+    },
+    {
+      "code": "az",
+      "name": "阿塞拜疆",
+      "english": "Azerbaijan",
+      "continent": "asia",
+      "region": "west_asia",
+      "aliases": [
+        "AZ",
+        "AZE",
+        "阿塞拜疆",
+        "Azerbaijan"
+      ]
+    },
+    {
+      "code": "ba",
+      "name": "波斯尼亚和黑塞哥维那",
+      "english": "Bosnia & Herzegovina",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "BA",
+        "BIH",
+        "波斯尼亚和黑塞哥维那",
+        "Bosnia & Herzegovina"
+      ]
+    },
+    {
+      "code": "bb",
+      "name": "巴巴多斯",
+      "english": "Barbados",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "BB",
+        "BRB",
+        "巴巴多斯",
+        "Barbados"
+      ]
+    },
+    {
+      "code": "bd",
+      "name": "孟加拉国",
+      "english": "Bangladesh",
+      "continent": "asia",
+      "region": "south_asia",
+      "aliases": [
+        "BD",
+        "BGD",
+        "孟加拉国",
+        "Bangladesh"
+      ]
+    },
+    {
+      "code": "be",
+      "name": "比利时",
+      "english": "Belgium",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "BE",
+        "BEL",
+        "比利时",
+        "Belgium"
+      ]
+    },
+    {
+      "code": "bf",
+      "name": "布基纳法索",
+      "english": "Burkina Faso",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "BF",
+        "BFA",
+        "布基纳法索",
+        "Burkina Faso"
+      ]
+    },
+    {
+      "code": "bg",
+      "name": "保加利亚",
+      "english": "Bulgaria",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "BG",
+        "BGR",
+        "保加利亚",
+        "Bulgaria"
+      ]
+    },
+    {
+      "code": "bh",
+      "name": "巴林",
+      "english": "Bahrain",
+      "continent": "asia",
+      "region": "west_asia",
+      "aliases": [
+        "BH",
+        "BHR",
+        "巴林",
+        "Bahrain"
+      ]
+    },
+    {
+      "code": "bi",
+      "name": "布隆迪",
+      "english": "Burundi",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "BI",
+        "BDI",
+        "布隆迪",
+        "Burundi"
+      ]
+    },
+    {
+      "code": "bj",
+      "name": "贝宁",
+      "english": "Benin",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "BJ",
+        "BEN",
+        "贝宁",
+        "Benin"
+      ]
+    },
+    {
+      "code": "bl",
+      "name": "圣巴泰勒米",
+      "english": "St. Barthélemy",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "BL",
+        "BLM",
+        "圣巴泰勒米",
+        "St. Barthélemy"
+      ]
+    },
+    {
+      "code": "bm",
+      "name": "百慕大",
+      "english": "Bermuda",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "BM",
+        "BMU",
+        "百慕大",
+        "Bermuda"
+      ]
+    },
+    {
+      "code": "bn",
+      "name": "文莱",
+      "english": "Brunei",
+      "continent": "asia",
+      "region": "southeast_asia",
+      "aliases": [
+        "BN",
+        "BRN",
+        "文莱",
+        "Brunei"
+      ]
+    },
+    {
+      "code": "bo",
+      "name": "玻利维亚",
+      "english": "Bolivia",
+      "continent": "south_america",
+      "region": "",
+      "aliases": [
+        "BO",
+        "BOL",
+        "玻利维亚",
+        "Bolivia"
+      ]
+    },
+    {
+      "code": "bq",
+      "name": "荷属加勒比区",
+      "english": "Caribbean Netherlands",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "BQ",
+        "BES",
+        "荷属加勒比区",
+        "Caribbean Netherlands"
+      ]
+    },
+    {
+      "code": "br",
+      "name": "巴西",
+      "english": "Brazil",
+      "continent": "south_america",
+      "region": "",
+      "aliases": [
+        "BR",
+        "BRA",
+        "巴西",
+        "Brazil"
+      ]
+    },
+    {
+      "code": "bs",
+      "name": "巴哈马",
+      "english": "Bahamas",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "BS",
+        "BHS",
+        "巴哈马",
+        "Bahamas"
+      ]
+    },
+    {
+      "code": "bt",
+      "name": "不丹",
+      "english": "Bhutan",
+      "continent": "asia",
+      "region": "south_asia",
+      "aliases": [
+        "BT",
+        "BTN",
+        "不丹",
+        "Bhutan"
+      ]
+    },
+    {
+      "code": "bv",
+      "name": "布韦岛",
+      "english": "Bouvet Island",
+      "continent": "south_america",
+      "region": "",
+      "aliases": [
+        "BV",
+        "BVT",
+        "布韦岛",
+        "Bouvet Island"
+      ]
+    },
+    {
+      "code": "bw",
+      "name": "博茨瓦纳",
+      "english": "Botswana",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "BW",
+        "BWA",
+        "博茨瓦纳",
+        "Botswana"
+      ]
+    },
+    {
+      "code": "by",
+      "name": "白俄罗斯",
+      "english": "Belarus",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "BY",
+        "BLR",
+        "白俄罗斯",
+        "Belarus"
+      ]
+    },
+    {
+      "code": "bz",
+      "name": "伯利兹",
+      "english": "Belize",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "BZ",
+        "BLZ",
+        "伯利兹",
+        "Belize"
+      ]
+    },
+    {
+      "code": "ca",
+      "name": "加拿大",
+      "english": "Canada",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "CA",
+        "CAN",
+        "加拿大",
+        "Canada"
+      ]
+    },
+    {
+      "code": "cc",
+      "name": "科科斯（基林）群岛",
+      "english": "Cocos (Keeling) Islands",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "CC",
+        "CCK",
+        "科科斯（基林）群岛",
+        "Cocos (Keeling) Islands"
+      ]
+    },
+    {
+      "code": "cd",
+      "name": "刚果（金）",
+      "english": "Congo - Kinshasa",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "CD",
+        "COD",
+        "刚果（金）",
+        "Congo - Kinshasa"
+      ]
+    },
+    {
+      "code": "cf",
+      "name": "中非共和国",
+      "english": "Central African Republic",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "CF",
+        "CAF",
+        "中非共和国",
+        "Central African Republic"
+      ]
+    },
+    {
+      "code": "cg",
+      "name": "刚果（布）",
+      "english": "Congo - Brazzaville",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "CG",
+        "COG",
+        "刚果（布）",
+        "Congo - Brazzaville"
+      ]
+    },
+    {
+      "code": "ch",
+      "name": "瑞士",
+      "english": "Switzerland",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "CH",
+        "CHE",
+        "瑞士",
+        "Switzerland"
+      ]
+    },
+    {
+      "code": "ci",
+      "name": "科特迪瓦",
+      "english": "Côte d’Ivoire",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "CI",
+        "CIV",
+        "科特迪瓦",
+        "Côte d’Ivoire"
+      ]
+    },
+    {
+      "code": "ck",
+      "name": "库克群岛",
+      "english": "Cook Islands",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "CK",
+        "COK",
+        "库克群岛",
+        "Cook Islands"
+      ]
+    },
+    {
+      "code": "cl",
+      "name": "智利",
+      "english": "Chile",
+      "continent": "south_america",
+      "region": "",
+      "aliases": [
+        "CL",
+        "CHL",
+        "智利",
+        "Chile"
+      ]
+    },
+    {
+      "code": "cm",
+      "name": "喀麦隆",
+      "english": "Cameroon",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "CM",
+        "CMR",
+        "喀麦隆",
+        "Cameroon"
+      ]
+    },
+    {
+      "code": "cn",
+      "name": "中国",
+      "english": "China",
+      "continent": "asia",
+      "region": "east_asia",
+      "aliases": [
+        "CN",
+        "CHN",
+        "中国",
+        "China"
+      ]
+    },
+    {
+      "code": "co",
+      "name": "哥伦比亚",
+      "english": "Colombia",
+      "continent": "south_america",
+      "region": "",
+      "aliases": [
+        "CO",
+        "COL",
+        "哥伦比亚",
+        "Colombia"
+      ]
+    },
+    {
+      "code": "cr",
+      "name": "哥斯达黎加",
+      "english": "Costa Rica",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "CR",
+        "CRI",
+        "哥斯达黎加",
+        "Costa Rica"
+      ]
+    },
+    {
+      "code": "cu",
+      "name": "古巴",
+      "english": "Cuba",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "CU",
+        "CUB",
+        "古巴",
+        "Cuba"
+      ]
+    },
+    {
+      "code": "cv",
+      "name": "佛得角",
+      "english": "Cape Verde",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "CV",
+        "CPV",
+        "佛得角",
+        "Cape Verde"
+      ]
+    },
+    {
+      "code": "cw",
+      "name": "库拉索",
+      "english": "Curaçao",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "CW",
+        "CUW",
+        "库拉索",
+        "Curaçao"
+      ]
+    },
+    {
+      "code": "cx",
+      "name": "圣诞岛",
+      "english": "Christmas Island",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "CX",
+        "CXR",
+        "圣诞岛",
+        "Christmas Island"
+      ]
+    },
+    {
+      "code": "cy",
+      "name": "塞浦路斯",
+      "english": "Cyprus",
+      "continent": "asia",
+      "region": "west_asia",
+      "aliases": [
+        "CY",
+        "CYP",
+        "塞浦路斯",
+        "Cyprus"
+      ]
+    },
+    {
+      "code": "cz",
+      "name": "捷克",
+      "english": "Czechia",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "CZ",
+        "CZE",
+        "捷克",
+        "Czechia"
+      ]
+    },
+    {
+      "code": "de",
+      "name": "德国",
+      "english": "Germany",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "DE",
+        "DEU",
+        "德国",
+        "Germany"
+      ]
+    },
+    {
+      "code": "dj",
+      "name": "吉布提",
+      "english": "Djibouti",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "DJ",
+        "DJI",
+        "吉布提",
+        "Djibouti"
+      ]
+    },
+    {
+      "code": "dk",
+      "name": "丹麦",
+      "english": "Denmark",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "DK",
+        "DNK",
+        "丹麦",
+        "Denmark"
+      ]
+    },
+    {
+      "code": "dm",
+      "name": "多米尼克",
+      "english": "Dominica",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "DM",
+        "DMA",
+        "多米尼克",
+        "Dominica"
+      ]
+    },
+    {
+      "code": "do",
+      "name": "多米尼加共和国",
+      "english": "Dominican Republic",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "DO",
+        "DOM",
+        "多米尼加共和国",
+        "Dominican Republic"
+      ]
+    },
+    {
+      "code": "dz",
+      "name": "阿尔及利亚",
+      "english": "Algeria",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "DZ",
+        "DZA",
+        "阿尔及利亚",
+        "Algeria"
+      ]
+    },
+    {
+      "code": "ec",
+      "name": "厄瓜多尔",
+      "english": "Ecuador",
+      "continent": "south_america",
+      "region": "",
+      "aliases": [
+        "EC",
+        "ECU",
+        "厄瓜多尔",
+        "Ecuador"
+      ]
+    },
+    {
+      "code": "ee",
+      "name": "爱沙尼亚",
+      "english": "Estonia",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "EE",
+        "EST",
+        "爱沙尼亚",
+        "Estonia"
+      ]
+    },
+    {
+      "code": "eg",
+      "name": "埃及",
+      "english": "Egypt",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "EG",
+        "EGY",
+        "埃及",
+        "Egypt"
+      ]
+    },
+    {
+      "code": "eh",
+      "name": "西撒哈拉",
+      "english": "Western Sahara",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "EH",
+        "ESH",
+        "西撒哈拉",
+        "Western Sahara"
+      ]
+    },
+    {
+      "code": "er",
+      "name": "厄立特里亚",
+      "english": "Eritrea",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "ER",
+        "ERI",
+        "厄立特里亚",
+        "Eritrea"
+      ]
+    },
+    {
+      "code": "es",
+      "name": "西班牙",
+      "english": "Spain",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "ES",
+        "ESP",
+        "西班牙",
+        "Spain"
+      ]
+    },
+    {
+      "code": "et",
+      "name": "埃塞俄比亚",
+      "english": "Ethiopia",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "ET",
+        "ETH",
+        "埃塞俄比亚",
+        "Ethiopia"
+      ]
+    },
+    {
+      "code": "fi",
+      "name": "芬兰",
+      "english": "Finland",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "FI",
+        "FIN",
+        "芬兰",
+        "Finland"
+      ]
+    },
+    {
+      "code": "fj",
+      "name": "斐济",
+      "english": "Fiji",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "FJ",
+        "FJI",
+        "斐济",
+        "Fiji"
+      ]
+    },
+    {
+      "code": "fk",
+      "name": "福克兰群岛",
+      "english": "Falkland Islands",
+      "continent": "south_america",
+      "region": "",
+      "aliases": [
+        "FK",
+        "FLK",
+        "福克兰群岛",
+        "Falkland Islands"
+      ]
+    },
+    {
+      "code": "fm",
+      "name": "密克罗尼西亚",
+      "english": "Micronesia",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "FM",
+        "FSM",
+        "密克罗尼西亚",
+        "Micronesia"
+      ]
+    },
+    {
+      "code": "fo",
+      "name": "法罗群岛",
+      "english": "Faroe Islands",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "FO",
+        "FRO",
+        "法罗群岛",
+        "Faroe Islands"
+      ]
+    },
+    {
+      "code": "fr",
+      "name": "法国",
+      "english": "France",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "FR",
+        "FRA",
+        "法国",
+        "France"
+      ]
+    },
+    {
+      "code": "ga",
+      "name": "加蓬",
+      "english": "Gabon",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "GA",
+        "GAB",
+        "加蓬",
+        "Gabon"
+      ]
+    },
+    {
+      "code": "gb",
+      "name": "英国",
+      "english": "United Kingdom",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "GB",
+        "GBR",
+        "英国",
+        "United Kingdom"
+      ]
+    },
+    {
+      "code": "gd",
+      "name": "格林纳达",
+      "english": "Grenada",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "GD",
+        "GRD",
+        "格林纳达",
+        "Grenada"
+      ]
+    },
+    {
+      "code": "ge",
+      "name": "格鲁吉亚",
+      "english": "Georgia",
+      "continent": "asia",
+      "region": "west_asia",
+      "aliases": [
+        "GE",
+        "GEO",
+        "格鲁吉亚",
+        "Georgia"
+      ]
+    },
+    {
+      "code": "gf",
+      "name": "法属圭亚那",
+      "english": "French Guiana",
+      "continent": "south_america",
+      "region": "",
+      "aliases": [
+        "GF",
+        "GUF",
+        "法属圭亚那",
+        "French Guiana"
+      ]
+    },
+    {
+      "code": "gg",
+      "name": "根西岛",
+      "english": "Guernsey",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "GG",
+        "GGY",
+        "根西岛",
+        "Guernsey"
+      ]
+    },
+    {
+      "code": "gh",
+      "name": "加纳",
+      "english": "Ghana",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "GH",
+        "GHA",
+        "加纳",
+        "Ghana"
+      ]
+    },
+    {
+      "code": "gi",
+      "name": "直布罗陀",
+      "english": "Gibraltar",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "GI",
+        "GIB",
+        "直布罗陀",
+        "Gibraltar"
+      ]
+    },
+    {
+      "code": "gl",
+      "name": "格陵兰",
+      "english": "Greenland",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "GL",
+        "GRL",
+        "格陵兰",
+        "Greenland"
+      ]
+    },
+    {
+      "code": "gm",
+      "name": "冈比亚",
+      "english": "Gambia",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "GM",
+        "GMB",
+        "冈比亚",
+        "Gambia"
+      ]
+    },
+    {
+      "code": "gn",
+      "name": "几内亚",
+      "english": "Guinea",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "GN",
+        "GIN",
+        "几内亚",
+        "Guinea"
+      ]
+    },
+    {
+      "code": "gp",
+      "name": "瓜德罗普",
+      "english": "Guadeloupe",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "GP",
+        "GLP",
+        "瓜德罗普",
+        "Guadeloupe"
+      ]
+    },
+    {
+      "code": "gq",
+      "name": "赤道几内亚",
+      "english": "Equatorial Guinea",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "GQ",
+        "GNQ",
+        "赤道几内亚",
+        "Equatorial Guinea"
+      ]
+    },
+    {
+      "code": "gr",
+      "name": "希腊",
+      "english": "Greece",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "GR",
+        "GRC",
+        "希腊",
+        "Greece"
+      ]
+    },
+    {
+      "code": "gs",
+      "name": "南乔治亚和南桑威奇群岛",
+      "english": "South Georgia & South Sandwich Islands",
+      "continent": "south_america",
+      "region": "",
+      "aliases": [
+        "GS",
+        "SGS",
+        "南乔治亚和南桑威奇群岛",
+        "South Georgia & South Sandwich Islands"
+      ]
+    },
+    {
+      "code": "gt",
+      "name": "危地马拉",
+      "english": "Guatemala",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "GT",
+        "GTM",
+        "危地马拉",
+        "Guatemala"
+      ]
+    },
+    {
+      "code": "gu",
+      "name": "关岛",
+      "english": "Guam",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "GU",
+        "GUM",
+        "关岛",
+        "Guam"
+      ]
+    },
+    {
+      "code": "gw",
+      "name": "几内亚比绍",
+      "english": "Guinea-Bissau",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "GW",
+        "GNB",
+        "几内亚比绍",
+        "Guinea-Bissau"
+      ]
+    },
+    {
+      "code": "gy",
+      "name": "圭亚那",
+      "english": "Guyana",
+      "continent": "south_america",
+      "region": "",
+      "aliases": [
+        "GY",
+        "GUY",
+        "圭亚那",
+        "Guyana"
+      ]
+    },
+    {
+      "code": "hk",
+      "name": "中国香港",
+      "english": "Hong Kong SAR China",
+      "continent": "asia",
+      "region": "east_asia",
+      "aliases": [
+        "HK",
+        "HKG",
+        "中国香港特别行政区",
+        "Hong Kong SAR China"
+      ]
+    },
+    {
+      "code": "hm",
+      "name": "赫德岛和麦克唐纳群岛",
+      "english": "Heard Island & McDonald Islands",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "HM",
+        "HMD",
+        "赫德岛和麦克唐纳群岛",
+        "Heard Island & McDonald Islands"
+      ]
+    },
+    {
+      "code": "hn",
+      "name": "洪都拉斯",
+      "english": "Honduras",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "HN",
+        "HND",
+        "洪都拉斯",
+        "Honduras"
+      ]
+    },
+    {
+      "code": "hr",
+      "name": "克罗地亚",
+      "english": "Croatia",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "HR",
+        "HRV",
+        "克罗地亚",
+        "Croatia"
+      ]
+    },
+    {
+      "code": "ht",
+      "name": "海地",
+      "english": "Haiti",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "HT",
+        "HTI",
+        "海地",
+        "Haiti"
+      ]
+    },
+    {
+      "code": "hu",
+      "name": "匈牙利",
+      "english": "Hungary",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "HU",
+        "HUN",
+        "匈牙利",
+        "Hungary"
+      ]
+    },
+    {
+      "code": "id",
+      "name": "印度尼西亚",
+      "english": "Indonesia",
+      "continent": "asia",
+      "region": "southeast_asia",
+      "aliases": [
+        "ID",
+        "IDN",
+        "印度尼西亚",
+        "Indonesia"
+      ]
+    },
+    {
+      "code": "ie",
+      "name": "爱尔兰",
+      "english": "Ireland",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "IE",
+        "IRL",
+        "爱尔兰",
+        "Ireland"
+      ]
+    },
+    {
+      "code": "il",
+      "name": "以色列",
+      "english": "Israel",
+      "continent": "asia",
+      "region": "west_asia",
+      "aliases": [
+        "IL",
+        "ISR",
+        "以色列",
+        "Israel"
+      ]
+    },
+    {
+      "code": "im",
+      "name": "马恩岛",
+      "english": "Isle of Man",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "IM",
+        "IMN",
+        "马恩岛",
+        "Isle of Man"
+      ]
+    },
+    {
+      "code": "in",
+      "name": "印度",
+      "english": "India",
+      "continent": "asia",
+      "region": "south_asia",
+      "aliases": [
+        "IN",
+        "IND",
+        "印度",
+        "India"
+      ]
+    },
+    {
+      "code": "io",
+      "name": "英属印度洋领地",
+      "english": "British Indian Ocean Territory",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "IO",
+        "IOT",
+        "英属印度洋领地",
+        "British Indian Ocean Territory"
+      ]
+    },
+    {
+      "code": "iq",
+      "name": "伊拉克",
+      "english": "Iraq",
+      "continent": "asia",
+      "region": "west_asia",
+      "aliases": [
+        "IQ",
+        "IRQ",
+        "伊拉克",
+        "Iraq"
+      ]
+    },
+    {
+      "code": "ir",
+      "name": "伊朗",
+      "english": "Iran",
+      "continent": "asia",
+      "region": "south_asia",
+      "aliases": [
+        "IR",
+        "IRN",
+        "伊朗",
+        "Iran"
+      ]
+    },
+    {
+      "code": "is",
+      "name": "冰岛",
+      "english": "Iceland",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "IS",
+        "ISL",
+        "冰岛",
+        "Iceland"
+      ]
+    },
+    {
+      "code": "it",
+      "name": "意大利",
+      "english": "Italy",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "IT",
+        "ITA",
+        "意大利",
+        "Italy"
+      ]
+    },
+    {
+      "code": "je",
+      "name": "泽西岛",
+      "english": "Jersey",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "JE",
+        "JEY",
+        "泽西岛",
+        "Jersey"
+      ]
+    },
+    {
+      "code": "jm",
+      "name": "牙买加",
+      "english": "Jamaica",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "JM",
+        "JAM",
+        "牙买加",
+        "Jamaica"
+      ]
+    },
+    {
+      "code": "jo",
+      "name": "约旦",
+      "english": "Jordan",
+      "continent": "asia",
+      "region": "west_asia",
+      "aliases": [
+        "JO",
+        "JOR",
+        "约旦",
+        "Jordan"
+      ]
+    },
+    {
+      "code": "jp",
+      "name": "日本",
+      "english": "Japan",
+      "continent": "asia",
+      "region": "east_asia",
+      "aliases": [
+        "JP",
+        "JPN",
+        "日本",
+        "Japan"
+      ]
+    },
+    {
+      "code": "ke",
+      "name": "肯尼亚",
+      "english": "Kenya",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "KE",
+        "KEN",
+        "肯尼亚",
+        "Kenya"
+      ]
+    },
+    {
+      "code": "kg",
+      "name": "吉尔吉斯斯坦",
+      "english": "Kyrgyzstan",
+      "continent": "asia",
+      "region": "central_asia",
+      "aliases": [
+        "KG",
+        "KGZ",
+        "吉尔吉斯斯坦",
+        "Kyrgyzstan"
+      ]
+    },
+    {
+      "code": "kh",
+      "name": "柬埔寨",
+      "english": "Cambodia",
+      "continent": "asia",
+      "region": "southeast_asia",
+      "aliases": [
+        "KH",
+        "KHM",
+        "柬埔寨",
+        "Cambodia"
+      ]
+    },
+    {
+      "code": "ki",
+      "name": "基里巴斯",
+      "english": "Kiribati",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "KI",
+        "KIR",
+        "基里巴斯",
+        "Kiribati"
+      ]
+    },
+    {
+      "code": "km",
+      "name": "科摩罗",
+      "english": "Comoros",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "KM",
+        "COM",
+        "科摩罗",
+        "Comoros"
+      ]
+    },
+    {
+      "code": "kn",
+      "name": "圣基茨和尼维斯",
+      "english": "St. Kitts & Nevis",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "KN",
+        "KNA",
+        "圣基茨和尼维斯",
+        "St. Kitts & Nevis"
+      ]
+    },
+    {
+      "code": "kp",
+      "name": "朝鲜",
+      "english": "North Korea",
+      "continent": "asia",
+      "region": "east_asia",
+      "aliases": [
+        "KP",
+        "PRK",
+        "朝鲜",
+        "North Korea"
+      ]
+    },
+    {
+      "code": "kr",
+      "name": "韩国",
+      "english": "South Korea",
+      "continent": "asia",
+      "region": "east_asia",
+      "aliases": [
+        "KR",
+        "KOR",
+        "韩国",
+        "South Korea"
+      ]
+    },
+    {
+      "code": "kw",
+      "name": "科威特",
+      "english": "Kuwait",
+      "continent": "asia",
+      "region": "west_asia",
+      "aliases": [
+        "KW",
+        "KWT",
+        "科威特",
+        "Kuwait"
+      ]
+    },
+    {
+      "code": "ky",
+      "name": "开曼群岛",
+      "english": "Cayman Islands",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "KY",
+        "CYM",
+        "开曼群岛",
+        "Cayman Islands"
+      ]
+    },
+    {
+      "code": "kz",
+      "name": "哈萨克斯坦",
+      "english": "Kazakhstan",
+      "continent": "asia",
+      "region": "central_asia",
+      "aliases": [
+        "KZ",
+        "KAZ",
+        "哈萨克斯坦",
+        "Kazakhstan"
+      ]
+    },
+    {
+      "code": "la",
+      "name": "老挝",
+      "english": "Laos",
+      "continent": "asia",
+      "region": "southeast_asia",
+      "aliases": [
+        "LA",
+        "LAO",
+        "老挝",
+        "Laos"
+      ]
+    },
+    {
+      "code": "lb",
+      "name": "黎巴嫩",
+      "english": "Lebanon",
+      "continent": "asia",
+      "region": "west_asia",
+      "aliases": [
+        "LB",
+        "LBN",
+        "黎巴嫩",
+        "Lebanon"
+      ]
+    },
+    {
+      "code": "lc",
+      "name": "圣卢西亚",
+      "english": "St. Lucia",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "LC",
+        "LCA",
+        "圣卢西亚",
+        "St. Lucia"
+      ]
+    },
+    {
+      "code": "li",
+      "name": "列支敦士登",
+      "english": "Liechtenstein",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "LI",
+        "LIE",
+        "列支敦士登",
+        "Liechtenstein"
+      ]
+    },
+    {
+      "code": "lk",
+      "name": "斯里兰卡",
+      "english": "Sri Lanka",
+      "continent": "asia",
+      "region": "south_asia",
+      "aliases": [
+        "LK",
+        "LKA",
+        "斯里兰卡",
+        "Sri Lanka"
+      ]
+    },
+    {
+      "code": "lr",
+      "name": "利比里亚",
+      "english": "Liberia",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "LR",
+        "LBR",
+        "利比里亚",
+        "Liberia"
+      ]
+    },
+    {
+      "code": "ls",
+      "name": "莱索托",
+      "english": "Lesotho",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "LS",
+        "LSO",
+        "莱索托",
+        "Lesotho"
+      ]
+    },
+    {
+      "code": "lt",
+      "name": "立陶宛",
+      "english": "Lithuania",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "LT",
+        "LTU",
+        "立陶宛",
+        "Lithuania"
+      ]
+    },
+    {
+      "code": "lu",
+      "name": "卢森堡",
+      "english": "Luxembourg",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "LU",
+        "LUX",
+        "卢森堡",
+        "Luxembourg"
+      ]
+    },
+    {
+      "code": "lv",
+      "name": "拉脱维亚",
+      "english": "Latvia",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "LV",
+        "LVA",
+        "拉脱维亚",
+        "Latvia"
+      ]
+    },
+    {
+      "code": "ly",
+      "name": "利比亚",
+      "english": "Libya",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "LY",
+        "LBY",
+        "利比亚",
+        "Libya"
+      ]
+    },
+    {
+      "code": "ma",
+      "name": "摩洛哥",
+      "english": "Morocco",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "MA",
+        "MAR",
+        "摩洛哥",
+        "Morocco"
+      ]
+    },
+    {
+      "code": "mc",
+      "name": "摩纳哥",
+      "english": "Monaco",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "MC",
+        "MCO",
+        "摩纳哥",
+        "Monaco"
+      ]
+    },
+    {
+      "code": "md",
+      "name": "摩尔多瓦",
+      "english": "Moldova",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "MD",
+        "MDA",
+        "摩尔多瓦",
+        "Moldova"
+      ]
+    },
+    {
+      "code": "me",
+      "name": "黑山",
+      "english": "Montenegro",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "ME",
+        "MNE",
+        "黑山",
+        "Montenegro"
+      ]
+    },
+    {
+      "code": "mf",
+      "name": "法属圣马丁",
+      "english": "St. Martin",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "MF",
+        "MAF",
+        "法属圣马丁",
+        "St. Martin"
+      ]
+    },
+    {
+      "code": "mg",
+      "name": "马达加斯加",
+      "english": "Madagascar",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "MG",
+        "MDG",
+        "马达加斯加",
+        "Madagascar"
+      ]
+    },
+    {
+      "code": "mh",
+      "name": "马绍尔群岛",
+      "english": "Marshall Islands",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "MH",
+        "MHL",
+        "马绍尔群岛",
+        "Marshall Islands"
+      ]
+    },
+    {
+      "code": "mk",
+      "name": "北马其顿",
+      "english": "North Macedonia",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "MK",
+        "MKD",
+        "北马其顿",
+        "North Macedonia"
+      ]
+    },
+    {
+      "code": "ml",
+      "name": "马里",
+      "english": "Mali",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "ML",
+        "MLI",
+        "马里",
+        "Mali"
+      ]
+    },
+    {
+      "code": "mm",
+      "name": "缅甸",
+      "english": "Myanmar (Burma)",
+      "continent": "asia",
+      "region": "southeast_asia",
+      "aliases": [
+        "MM",
+        "MMR",
+        "缅甸",
+        "Myanmar (Burma)"
+      ]
+    },
+    {
+      "code": "mn",
+      "name": "蒙古",
+      "english": "Mongolia",
+      "continent": "asia",
+      "region": "east_asia",
+      "aliases": [
+        "MN",
+        "MNG",
+        "蒙古",
+        "Mongolia"
+      ]
+    },
+    {
+      "code": "mo",
+      "name": "中国澳门",
+      "english": "Macao SAR China",
+      "continent": "asia",
+      "region": "east_asia",
+      "aliases": [
+        "MO",
+        "MAC",
+        "中国澳门特别行政区",
+        "Macao SAR China"
+      ]
+    },
+    {
+      "code": "mp",
+      "name": "北马里亚纳群岛",
+      "english": "Northern Mariana Islands",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "MP",
+        "MNP",
+        "北马里亚纳群岛",
+        "Northern Mariana Islands"
+      ]
+    },
+    {
+      "code": "mq",
+      "name": "马提尼克",
+      "english": "Martinique",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "MQ",
+        "MTQ",
+        "马提尼克",
+        "Martinique"
+      ]
+    },
+    {
+      "code": "mr",
+      "name": "毛里塔尼亚",
+      "english": "Mauritania",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "MR",
+        "MRT",
+        "毛里塔尼亚",
+        "Mauritania"
+      ]
+    },
+    {
+      "code": "ms",
+      "name": "蒙特塞拉特",
+      "english": "Montserrat",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "MS",
+        "MSR",
+        "蒙特塞拉特",
+        "Montserrat"
+      ]
+    },
+    {
+      "code": "mt",
+      "name": "马耳他",
+      "english": "Malta",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "MT",
+        "MLT",
+        "马耳他",
+        "Malta"
+      ]
+    },
+    {
+      "code": "mu",
+      "name": "毛里求斯",
+      "english": "Mauritius",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "MU",
+        "MUS",
+        "毛里求斯",
+        "Mauritius"
+      ]
+    },
+    {
+      "code": "mv",
+      "name": "马尔代夫",
+      "english": "Maldives",
+      "continent": "asia",
+      "region": "south_asia",
+      "aliases": [
+        "MV",
+        "MDV",
+        "马尔代夫",
+        "Maldives"
+      ]
+    },
+    {
+      "code": "mw",
+      "name": "马拉维",
+      "english": "Malawi",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "MW",
+        "MWI",
+        "马拉维",
+        "Malawi"
+      ]
+    },
+    {
+      "code": "mx",
+      "name": "墨西哥",
+      "english": "Mexico",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "MX",
+        "MEX",
+        "墨西哥",
+        "Mexico"
+      ]
+    },
+    {
+      "code": "my",
+      "name": "马来西亚",
+      "english": "Malaysia",
+      "continent": "asia",
+      "region": "southeast_asia",
+      "aliases": [
+        "MY",
+        "MYS",
+        "马来西亚",
+        "Malaysia"
+      ]
+    },
+    {
+      "code": "mz",
+      "name": "莫桑比克",
+      "english": "Mozambique",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "MZ",
+        "MOZ",
+        "莫桑比克",
+        "Mozambique"
+      ]
+    },
+    {
+      "code": "na",
+      "name": "纳米比亚",
+      "english": "Namibia",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "NA",
+        "NAM",
+        "纳米比亚",
+        "Namibia"
+      ]
+    },
+    {
+      "code": "nc",
+      "name": "新喀里多尼亚",
+      "english": "New Caledonia",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "NC",
+        "NCL",
+        "新喀里多尼亚",
+        "New Caledonia"
+      ]
+    },
+    {
+      "code": "ne",
+      "name": "尼日尔",
+      "english": "Niger",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "NE",
+        "NER",
+        "尼日尔",
+        "Niger"
+      ]
+    },
+    {
+      "code": "nf",
+      "name": "诺福克岛",
+      "english": "Norfolk Island",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "NF",
+        "NFK",
+        "诺福克岛",
+        "Norfolk Island"
+      ]
+    },
+    {
+      "code": "ng",
+      "name": "尼日利亚",
+      "english": "Nigeria",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "NG",
+        "NGA",
+        "尼日利亚",
+        "Nigeria"
+      ]
+    },
+    {
+      "code": "ni",
+      "name": "尼加拉瓜",
+      "english": "Nicaragua",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "NI",
+        "NIC",
+        "尼加拉瓜",
+        "Nicaragua"
+      ]
+    },
+    {
+      "code": "nl",
+      "name": "荷兰",
+      "english": "Netherlands",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "NL",
+        "NLD",
+        "荷兰",
+        "Netherlands"
+      ]
+    },
+    {
+      "code": "no",
+      "name": "挪威",
+      "english": "Norway",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "NO",
+        "NOR",
+        "挪威",
+        "Norway"
+      ]
+    },
+    {
+      "code": "np",
+      "name": "尼泊尔",
+      "english": "Nepal",
+      "continent": "asia",
+      "region": "south_asia",
+      "aliases": [
+        "NP",
+        "NPL",
+        "尼泊尔",
+        "Nepal"
+      ]
+    },
+    {
+      "code": "nr",
+      "name": "瑙鲁",
+      "english": "Nauru",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "NR",
+        "NRU",
+        "瑙鲁",
+        "Nauru"
+      ]
+    },
+    {
+      "code": "nu",
+      "name": "纽埃",
+      "english": "Niue",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "NU",
+        "NIU",
+        "纽埃",
+        "Niue"
+      ]
+    },
+    {
+      "code": "nz",
+      "name": "新西兰",
+      "english": "New Zealand",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "NZ",
+        "NZL",
+        "新西兰",
+        "New Zealand"
+      ]
+    },
+    {
+      "code": "om",
+      "name": "阿曼",
+      "english": "Oman",
+      "continent": "asia",
+      "region": "west_asia",
+      "aliases": [
+        "OM",
+        "OMN",
+        "阿曼",
+        "Oman"
+      ]
+    },
+    {
+      "code": "pa",
+      "name": "巴拿马",
+      "english": "Panama",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "PA",
+        "PAN",
+        "巴拿马",
+        "Panama"
+      ]
+    },
+    {
+      "code": "pe",
+      "name": "秘鲁",
+      "english": "Peru",
+      "continent": "south_america",
+      "region": "",
+      "aliases": [
+        "PE",
+        "PER",
+        "秘鲁",
+        "Peru"
+      ]
+    },
+    {
+      "code": "pf",
+      "name": "法属波利尼西亚",
+      "english": "French Polynesia",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "PF",
+        "PYF",
+        "法属波利尼西亚",
+        "French Polynesia"
+      ]
+    },
+    {
+      "code": "pg",
+      "name": "巴布亚新几内亚",
+      "english": "Papua New Guinea",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "PG",
+        "PNG",
+        "巴布亚新几内亚",
+        "Papua New Guinea"
+      ]
+    },
+    {
+      "code": "ph",
+      "name": "菲律宾",
+      "english": "Philippines",
+      "continent": "asia",
+      "region": "southeast_asia",
+      "aliases": [
+        "PH",
+        "PHL",
+        "菲律宾",
+        "Philippines"
+      ]
+    },
+    {
+      "code": "pk",
+      "name": "巴基斯坦",
+      "english": "Pakistan",
+      "continent": "asia",
+      "region": "south_asia",
+      "aliases": [
+        "PK",
+        "PAK",
+        "巴基斯坦",
+        "Pakistan"
+      ]
+    },
+    {
+      "code": "pl",
+      "name": "波兰",
+      "english": "Poland",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "PL",
+        "POL",
+        "波兰",
+        "Poland"
+      ]
+    },
+    {
+      "code": "pm",
+      "name": "圣皮埃尔和密克隆群岛",
+      "english": "St. Pierre & Miquelon",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "PM",
+        "SPM",
+        "圣皮埃尔和密克隆群岛",
+        "St. Pierre & Miquelon"
+      ]
+    },
+    {
+      "code": "pn",
+      "name": "皮特凯恩群岛",
+      "english": "Pitcairn Islands",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "PN",
+        "PCN",
+        "皮特凯恩群岛",
+        "Pitcairn Islands"
+      ]
+    },
+    {
+      "code": "pr",
+      "name": "波多黎各",
+      "english": "Puerto Rico",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "PR",
+        "PRI",
+        "波多黎各",
+        "Puerto Rico"
+      ]
+    },
+    {
+      "code": "ps",
+      "name": "巴勒斯坦领土",
+      "english": "Palestinian Territories",
+      "continent": "asia",
+      "region": "west_asia",
+      "aliases": [
+        "PS",
+        "PSE",
+        "巴勒斯坦领土",
+        "Palestinian Territories"
+      ]
+    },
+    {
+      "code": "pt",
+      "name": "葡萄牙",
+      "english": "Portugal",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "PT",
+        "PRT",
+        "葡萄牙",
+        "Portugal"
+      ]
+    },
+    {
+      "code": "pw",
+      "name": "帕劳",
+      "english": "Palau",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "PW",
+        "PLW",
+        "帕劳",
+        "Palau"
+      ]
+    },
+    {
+      "code": "py",
+      "name": "巴拉圭",
+      "english": "Paraguay",
+      "continent": "south_america",
+      "region": "",
+      "aliases": [
+        "PY",
+        "PRY",
+        "巴拉圭",
+        "Paraguay"
+      ]
+    },
+    {
+      "code": "qa",
+      "name": "卡塔尔",
+      "english": "Qatar",
+      "continent": "asia",
+      "region": "west_asia",
+      "aliases": [
+        "QA",
+        "QAT",
+        "卡塔尔",
+        "Qatar"
+      ]
+    },
+    {
+      "code": "re",
+      "name": "留尼汪",
+      "english": "Réunion",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "RE",
+        "REU",
+        "留尼汪",
+        "Réunion"
+      ]
+    },
+    {
+      "code": "ro",
+      "name": "罗马尼亚",
+      "english": "Romania",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "RO",
+        "ROU",
+        "罗马尼亚",
+        "Romania"
+      ]
+    },
+    {
+      "code": "rs",
+      "name": "塞尔维亚",
+      "english": "Serbia",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "RS",
+        "SRB",
+        "塞尔维亚",
+        "Serbia"
+      ]
+    },
+    {
+      "code": "ru",
+      "name": "俄罗斯",
+      "english": "Russia",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "RU",
+        "RUS",
+        "俄罗斯",
+        "Russia"
+      ]
+    },
+    {
+      "code": "rw",
+      "name": "卢旺达",
+      "english": "Rwanda",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "RW",
+        "RWA",
+        "卢旺达",
+        "Rwanda"
+      ]
+    },
+    {
+      "code": "sa",
+      "name": "沙特阿拉伯",
+      "english": "Saudi Arabia",
+      "continent": "asia",
+      "region": "west_asia",
+      "aliases": [
+        "SA",
+        "SAU",
+        "沙特阿拉伯",
+        "Saudi Arabia"
+      ]
+    },
+    {
+      "code": "sb",
+      "name": "所罗门群岛",
+      "english": "Solomon Islands",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "SB",
+        "SLB",
+        "所罗门群岛",
+        "Solomon Islands"
+      ]
+    },
+    {
+      "code": "sc",
+      "name": "塞舌尔",
+      "english": "Seychelles",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "SC",
+        "SYC",
+        "塞舌尔",
+        "Seychelles"
+      ]
+    },
+    {
+      "code": "sd",
+      "name": "苏丹",
+      "english": "Sudan",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "SD",
+        "SDN",
+        "苏丹",
+        "Sudan"
+      ]
+    },
+    {
+      "code": "se",
+      "name": "瑞典",
+      "english": "Sweden",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "SE",
+        "SWE",
+        "瑞典",
+        "Sweden"
+      ]
+    },
+    {
+      "code": "sg",
+      "name": "新加坡",
+      "english": "Singapore",
+      "continent": "asia",
+      "region": "southeast_asia",
+      "aliases": [
+        "SG",
+        "SGP",
+        "新加坡",
+        "Singapore"
+      ]
+    },
+    {
+      "code": "sh",
+      "name": "圣赫勒拿",
+      "english": "St. Helena, Ascension & Tristan da Cunha",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "SH",
+        "SHN",
+        "圣赫勒拿",
+        "St. Helena, Ascension & Tristan da Cunha"
+      ]
+    },
+    {
+      "code": "si",
+      "name": "斯洛文尼亚",
+      "english": "Slovenia",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "SI",
+        "SVN",
+        "斯洛文尼亚",
+        "Slovenia"
+      ]
+    },
+    {
+      "code": "sj",
+      "name": "斯瓦尔巴和扬马延",
+      "english": "Svalbard & Jan Mayen",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "SJ",
+        "SJM",
+        "斯瓦尔巴和扬马延",
+        "Svalbard & Jan Mayen"
+      ]
+    },
+    {
+      "code": "sk",
+      "name": "斯洛伐克",
+      "english": "Slovakia",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "SK",
+        "SVK",
+        "斯洛伐克",
+        "Slovakia"
+      ]
+    },
+    {
+      "code": "sl",
+      "name": "塞拉利昂",
+      "english": "Sierra Leone",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "SL",
+        "SLE",
+        "塞拉利昂",
+        "Sierra Leone"
+      ]
+    },
+    {
+      "code": "sm",
+      "name": "圣马力诺",
+      "english": "San Marino",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "SM",
+        "SMR",
+        "圣马力诺",
+        "San Marino"
+      ]
+    },
+    {
+      "code": "sn",
+      "name": "塞内加尔",
+      "english": "Senegal",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "SN",
+        "SEN",
+        "塞内加尔",
+        "Senegal"
+      ]
+    },
+    {
+      "code": "so",
+      "name": "索马里",
+      "english": "Somalia",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "SO",
+        "SOM",
+        "索马里",
+        "Somalia"
+      ]
+    },
+    {
+      "code": "sr",
+      "name": "苏里南",
+      "english": "Suriname",
+      "continent": "south_america",
+      "region": "",
+      "aliases": [
+        "SR",
+        "SUR",
+        "苏里南",
+        "Suriname"
+      ]
+    },
+    {
+      "code": "ss",
+      "name": "南苏丹",
+      "english": "South Sudan",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "SS",
+        "SSD",
+        "南苏丹",
+        "South Sudan"
+      ]
+    },
+    {
+      "code": "st",
+      "name": "圣多美和普林西比",
+      "english": "São Tomé & Príncipe",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "ST",
+        "STP",
+        "圣多美和普林西比",
+        "São Tomé & Príncipe"
+      ]
+    },
+    {
+      "code": "sv",
+      "name": "萨尔瓦多",
+      "english": "El Salvador",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "SV",
+        "SLV",
+        "萨尔瓦多",
+        "El Salvador"
+      ]
+    },
+    {
+      "code": "sx",
+      "name": "荷属圣马丁",
+      "english": "Sint Maarten",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "SX",
+        "SXM",
+        "荷属圣马丁",
+        "Sint Maarten"
+      ]
+    },
+    {
+      "code": "sy",
+      "name": "叙利亚",
+      "english": "Syria",
+      "continent": "asia",
+      "region": "west_asia",
+      "aliases": [
+        "SY",
+        "SYR",
+        "叙利亚",
+        "Syria"
+      ]
+    },
+    {
+      "code": "sz",
+      "name": "斯威士兰",
+      "english": "Eswatini",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "SZ",
+        "SWZ",
+        "斯威士兰",
+        "Eswatini"
+      ]
+    },
+    {
+      "code": "tc",
+      "name": "特克斯和凯科斯群岛",
+      "english": "Turks & Caicos Islands",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "TC",
+        "TCA",
+        "特克斯和凯科斯群岛",
+        "Turks & Caicos Islands"
+      ]
+    },
+    {
+      "code": "td",
+      "name": "乍得",
+      "english": "Chad",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "TD",
+        "TCD",
+        "乍得",
+        "Chad"
+      ]
+    },
+    {
+      "code": "tf",
+      "name": "法属南部领地",
+      "english": "French Southern and Antarctic Lands",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "TF",
+        "ATF",
+        "法属南部领地",
+        "French Southern and Antarctic Lands"
+      ]
+    },
+    {
+      "code": "tg",
+      "name": "多哥",
+      "english": "Togo",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "TG",
+        "TGO",
+        "多哥",
+        "Togo"
+      ]
+    },
+    {
+      "code": "th",
+      "name": "泰国",
+      "english": "Thailand",
+      "continent": "asia",
+      "region": "southeast_asia",
+      "aliases": [
+        "TH",
+        "THA",
+        "泰国",
+        "Thailand"
+      ]
+    },
+    {
+      "code": "tj",
+      "name": "塔吉克斯坦",
+      "english": "Tajikistan",
+      "continent": "asia",
+      "region": "central_asia",
+      "aliases": [
+        "TJ",
+        "TJK",
+        "塔吉克斯坦",
+        "Tajikistan"
+      ]
+    },
+    {
+      "code": "tk",
+      "name": "托克劳",
+      "english": "Tokelau",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "TK",
+        "TKL",
+        "托克劳",
+        "Tokelau"
+      ]
+    },
+    {
+      "code": "tl",
+      "name": "东帝汶",
+      "english": "Timor-Leste",
+      "continent": "asia",
+      "region": "southeast_asia",
+      "aliases": [
+        "TL",
+        "TLS",
+        "东帝汶",
+        "Timor-Leste"
+      ]
+    },
+    {
+      "code": "tm",
+      "name": "土库曼斯坦",
+      "english": "Turkmenistan",
+      "continent": "asia",
+      "region": "central_asia",
+      "aliases": [
+        "TM",
+        "TKM",
+        "土库曼斯坦",
+        "Turkmenistan"
+      ]
+    },
+    {
+      "code": "tn",
+      "name": "突尼斯",
+      "english": "Tunisia",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "TN",
+        "TUN",
+        "突尼斯",
+        "Tunisia"
+      ]
+    },
+    {
+      "code": "to",
+      "name": "汤加",
+      "english": "Tonga",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "TO",
+        "TON",
+        "汤加",
+        "Tonga"
+      ]
+    },
+    {
+      "code": "tr",
+      "name": "土耳其",
+      "english": "Türkiye",
+      "continent": "asia",
+      "region": "west_asia",
+      "aliases": [
+        "TR",
+        "TUR",
+        "土耳其",
+        "Türkiye"
+      ]
+    },
+    {
+      "code": "tt",
+      "name": "特立尼达和多巴哥",
+      "english": "Trinidad & Tobago",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "TT",
+        "TTO",
+        "特立尼达和多巴哥",
+        "Trinidad & Tobago"
+      ]
+    },
+    {
+      "code": "tv",
+      "name": "图瓦卢",
+      "english": "Tuvalu",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "TV",
+        "TUV",
+        "图瓦卢",
+        "Tuvalu"
+      ]
+    },
+    {
+      "code": "tw",
+      "name": "中国台湾",
+      "english": "Taiwan",
+      "continent": "asia",
+      "region": "east_asia",
+      "aliases": [
+        "TW",
+        "TWN",
+        "台湾",
+        "Taiwan"
+      ]
+    },
+    {
+      "code": "tz",
+      "name": "坦桑尼亚",
+      "english": "Tanzania",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "TZ",
+        "TZA",
+        "坦桑尼亚",
+        "Tanzania"
+      ]
+    },
+    {
+      "code": "ua",
+      "name": "乌克兰",
+      "english": "Ukraine",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "UA",
+        "UKR",
+        "乌克兰",
+        "Ukraine"
+      ]
+    },
+    {
+      "code": "ug",
+      "name": "乌干达",
+      "english": "Uganda",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "UG",
+        "UGA",
+        "乌干达",
+        "Uganda"
+      ]
+    },
+    {
+      "code": "um",
+      "name": "美国本土外小岛屿",
+      "english": "U.S. Outlying Islands",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "UM",
+        "UMI",
+        "美国本土外小岛屿",
+        "U.S. Outlying Islands"
+      ]
+    },
+    {
+      "code": "us",
+      "name": "美国",
+      "english": "United States",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "US",
+        "USA",
+        "美国",
+        "United States"
+      ]
+    },
+    {
+      "code": "uy",
+      "name": "乌拉圭",
+      "english": "Uruguay",
+      "continent": "south_america",
+      "region": "",
+      "aliases": [
+        "UY",
+        "URY",
+        "乌拉圭",
+        "Uruguay"
+      ]
+    },
+    {
+      "code": "uz",
+      "name": "乌兹别克斯坦",
+      "english": "Uzbekistan",
+      "continent": "asia",
+      "region": "central_asia",
+      "aliases": [
+        "UZ",
+        "UZB",
+        "乌兹别克斯坦",
+        "Uzbekistan"
+      ]
+    },
+    {
+      "code": "va",
+      "name": "梵蒂冈",
+      "english": "Vatican City",
+      "continent": "europe",
+      "region": "",
+      "aliases": [
+        "VA",
+        "VAT",
+        "梵蒂冈",
+        "Vatican City"
+      ]
+    },
+    {
+      "code": "vc",
+      "name": "圣文森特和格林纳丁斯",
+      "english": "St. Vincent & Grenadines",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "VC",
+        "VCT",
+        "圣文森特和格林纳丁斯",
+        "St. Vincent & Grenadines"
+      ]
+    },
+    {
+      "code": "ve",
+      "name": "委内瑞拉",
+      "english": "Venezuela",
+      "continent": "south_america",
+      "region": "",
+      "aliases": [
+        "VE",
+        "VEN",
+        "委内瑞拉",
+        "Venezuela"
+      ]
+    },
+    {
+      "code": "vg",
+      "name": "英属维尔京群岛",
+      "english": "British Virgin Islands",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "VG",
+        "VGB",
+        "英属维尔京群岛",
+        "British Virgin Islands"
+      ]
+    },
+    {
+      "code": "vi",
+      "name": "美属维尔京群岛",
+      "english": "U.S. Virgin Islands",
+      "continent": "north_america",
+      "region": "",
+      "aliases": [
+        "VI",
+        "VIR",
+        "美属维尔京群岛",
+        "U.S. Virgin Islands"
+      ]
+    },
+    {
+      "code": "vn",
+      "name": "越南",
+      "english": "Vietnam",
+      "continent": "asia",
+      "region": "southeast_asia",
+      "aliases": [
+        "VN",
+        "VNM",
+        "越南",
+        "Vietnam"
+      ]
+    },
+    {
+      "code": "vu",
+      "name": "瓦努阿图",
+      "english": "Vanuatu",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "VU",
+        "VUT",
+        "瓦努阿图",
+        "Vanuatu"
+      ]
+    },
+    {
+      "code": "wf",
+      "name": "瓦利斯和富图纳",
+      "english": "Wallis & Futuna",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "WF",
+        "WLF",
+        "瓦利斯和富图纳",
+        "Wallis & Futuna"
+      ]
+    },
+    {
+      "code": "ws",
+      "name": "萨摩亚",
+      "english": "Samoa",
+      "continent": "oceania",
+      "region": "",
+      "aliases": [
+        "WS",
+        "WSM",
+        "萨摩亚",
+        "Samoa"
+      ]
+    },
+    {
+      "code": "ye",
+      "name": "也门",
+      "english": "Yemen",
+      "continent": "asia",
+      "region": "west_asia",
+      "aliases": [
+        "YE",
+        "YEM",
+        "也门",
+        "Yemen"
+      ]
+    },
+    {
+      "code": "yt",
+      "name": "马约特",
+      "english": "Mayotte",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "YT",
+        "MYT",
+        "马约特",
+        "Mayotte"
+      ]
+    },
+    {
+      "code": "za",
+      "name": "南非",
+      "english": "South Africa",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "ZA",
+        "ZAF",
+        "南非",
+        "South Africa"
+      ]
+    },
+    {
+      "code": "zm",
+      "name": "赞比亚",
+      "english": "Zambia",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "ZM",
+        "ZMB",
+        "赞比亚",
+        "Zambia"
+      ]
+    },
+    {
+      "code": "zw",
+      "name": "津巴布韦",
+      "english": "Zimbabwe",
+      "continent": "africa",
+      "region": "",
+      "aliases": [
+        "ZW",
+        "ZWE",
+        "津巴布韦",
+        "Zimbabwe"
+      ]
+    }
+  ],
+  "continents": [
+    {
+      "id": "asia",
+      "name": "亚洲"
+    },
+    {
+      "id": "north_america",
+      "name": "北美洲"
+    },
+    {
+      "id": "south_america",
+      "name": "南美洲"
+    },
+    {
+      "id": "europe",
+      "name": "欧洲"
+    },
+    {
+      "id": "africa",
+      "name": "非洲"
+    },
+    {
+      "id": "oceania",
+      "name": "大洋洲"
+    },
+    {
+      "id": "antarctica",
+      "name": "南极洲"
+    }
+  ],
+  "asia_regions": [
+    {
+      "id": "east_asia",
+      "name": "东亚"
+    },
+    {
+      "id": "southeast_asia",
+      "name": "东南亚"
+    },
+    {
+      "id": "south_asia",
+      "name": "南亚"
+    },
+    {
+      "id": "central_asia",
+      "name": "中亚"
+    },
+    {
+      "id": "west_asia",
+      "name": "西亚"
+    }
+  ],
+  "popular": [
+    "cn",
+    "us",
+    "tw",
+    "hk",
+    "kr",
+    "jp",
+    "gb",
+    "de",
+    "th",
+    "vn",
+    "ph",
+    "in"
+  ],
+  "categories": {
+    "apple": [
+      {
+        "id": "6000",
+        "name": "商务",
+        "english": "Business",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6000",
+          "BUSINESS",
+          "Business",
+          "business",
+          "商务"
+        ]
+      },
+      {
+        "id": "6001",
+        "name": "天气",
+        "english": "Weather",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6001",
+          "WEATHER",
+          "Weather",
+          "weather",
+          "天气"
+        ]
+      },
+      {
+        "id": "6002",
+        "name": "工具",
+        "english": "Utilities",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6002",
+          "UTILITIES",
+          "Utilities",
+          "utilities",
+          "工具"
+        ]
+      },
+      {
+        "id": "6003",
+        "name": "旅游",
+        "english": "Travel",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6003",
+          "TRAVEL",
+          "Travel",
+          "travel",
+          "旅游"
+        ]
+      },
+      {
+        "id": "6004",
+        "name": "体育",
+        "english": "Sports",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6004",
+          "SPORTS",
+          "Sports",
+          "sports",
+          "体育"
+        ]
+      },
+      {
+        "id": "6005",
+        "name": "社交",
+        "english": "Social Networking",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6005",
+          "SOCIAL NETWORKING",
+          "Social Networking",
+          "social networking",
+          "social_networking",
+          "社交"
+        ]
+      },
+      {
+        "id": "6006",
+        "name": "参考资料",
+        "english": "Reference",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6006",
+          "REFERENCE",
+          "Reference",
+          "reference",
+          "参考资料"
+        ]
+      },
+      {
+        "id": "6007",
+        "name": "效率",
+        "english": "Productivity",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6007",
+          "PRODUCTIVITY",
+          "Productivity",
+          "productivity",
+          "效率"
+        ]
+      },
+      {
+        "id": "6008",
+        "name": "摄影与录像",
+        "english": "Photo & Video",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6008",
+          "PHOTO & VIDEO",
+          "Photo & Video",
+          "photo & video",
+          "photo_and_video",
+          "摄影与录像"
+        ]
+      },
+      {
+        "id": "6009",
+        "name": "新闻",
+        "english": "News",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6009",
+          "NEWS",
+          "News",
+          "news",
+          "新闻"
+        ]
+      },
+      {
+        "id": "6010",
+        "name": "导航",
+        "english": "Navigation",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6010",
+          "NAVIGATION",
+          "Navigation",
+          "navigation",
+          "导航"
+        ]
+      },
+      {
+        "id": "6011",
+        "name": "音乐",
+        "english": "Music",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6011",
+          "MUSIC",
+          "Music",
+          "music",
+          "音乐"
+        ]
+      },
+      {
+        "id": "6012",
+        "name": "生活",
+        "english": "Lifestyle",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6012",
+          "LIFESTYLE",
+          "Lifestyle",
+          "lifestyle",
+          "生活"
+        ]
+      },
+      {
+        "id": "6013",
+        "name": "健康健美",
+        "english": "Health & Fitness",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6013",
+          "HEALTH & FITNESS",
+          "Health & Fitness",
+          "health & fitness",
+          "health_and_fitness",
+          "健康健美"
+        ]
+      },
+      {
+        "id": "6014",
+        "name": "游戏",
+        "english": "Games",
+        "group": "games",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6014",
+          "GAMES",
+          "Games",
+          "games",
+          "游戏"
+        ]
+      },
+      {
+        "id": "7001",
+        "name": "动作",
+        "english": "Action",
+        "group": "games",
+        "parent_id": "6014",
+        "legacy": false,
+        "aliases": [
+          "7001",
+          "ACTION",
+          "Action",
+          "GAMES_ACTION",
+          "GAME_ACTION",
+          "action",
+          "game_action",
+          "games_action",
+          "动作"
+        ]
+      },
+      {
+        "id": "7002",
+        "name": "冒险",
+        "english": "Adventure",
+        "group": "games",
+        "parent_id": "6014",
+        "legacy": false,
+        "aliases": [
+          "7002",
+          "ADVENTURE",
+          "Adventure",
+          "GAMES_ADVENTURE",
+          "GAME_ADVENTURE",
+          "adventure",
+          "game_adventure",
+          "games_adventure",
+          "冒险"
+        ]
+      },
+      {
+        "id": "7003",
+        "name": "休闲",
+        "english": "Casual",
+        "group": "games",
+        "parent_id": "6014",
+        "legacy": false,
+        "aliases": [
+          "7003",
+          "ARCADE",
+          "Arcade",
+          "CASUAL",
+          "Casual",
+          "GAMES_ARCADE",
+          "GAMES_CASUAL",
+          "GAME_ARCADE",
+          "GAME_CASUAL",
+          "arcade",
+          "casual",
+          "game_arcade",
+          "game_casual",
+          "games_arcade",
+          "games_casual",
+          "休闲"
+        ]
+      },
+      {
+        "id": "7004",
+        "name": "桌面和棋类",
+        "english": "Board",
+        "group": "games",
+        "parent_id": "6014",
+        "legacy": false,
+        "aliases": [
+          "7004",
+          "BOARD",
+          "Board",
+          "GAMES_BOARD",
+          "GAME_BOARD",
+          "board",
+          "game_board",
+          "games_board",
+          "桌面和棋类"
+        ]
+      },
+      {
+        "id": "7005",
+        "name": "卡牌",
+        "english": "Card",
+        "group": "games",
+        "parent_id": "6014",
+        "legacy": false,
+        "aliases": [
+          "7005",
+          "CARD",
+          "Card",
+          "GAMES_CARD",
+          "GAME_CARD",
+          "card",
+          "game_card",
+          "games_card",
+          "卡牌"
+        ]
+      },
+      {
+        "id": "7006",
+        "name": "娱乐场",
+        "english": "Casino",
+        "group": "games",
+        "parent_id": "6014",
+        "legacy": false,
+        "aliases": [
+          "7006",
+          "CASINO",
+          "Casino",
+          "GAMES_CASINO",
+          "GAME_CASINO",
+          "casino",
+          "game_casino",
+          "games_casino",
+          "娱乐场"
+        ]
+      },
+      {
+        "id": "7007",
+        "name": "骰子",
+        "english": "Dice",
+        "group": "games",
+        "parent_id": "6014",
+        "legacy": false,
+        "aliases": [
+          "7007",
+          "DICE",
+          "Dice",
+          "GAMES_DICE",
+          "GAME_DICE",
+          "dice",
+          "game_dice",
+          "games_dice",
+          "骰子"
+        ]
+      },
+      {
+        "id": "7008",
+        "name": "教育",
+        "english": "Educational",
+        "group": "games",
+        "parent_id": "6014",
+        "legacy": false,
+        "aliases": [
+          "7008",
+          "EDUCATIONAL",
+          "Educational",
+          "GAMES_EDUCATIONAL",
+          "GAME_EDUCATIONAL",
+          "educational",
+          "game_educational",
+          "games_educational"
+        ]
+      },
+      {
+        "id": "7009",
+        "name": "家庭",
+        "english": "Family",
+        "group": "games",
+        "parent_id": "6014",
+        "legacy": false,
+        "aliases": [
+          "7009",
+          "FAMILY",
+          "Family",
+          "GAMES_FAMILY",
+          "GAME_FAMILY",
+          "family",
+          "game_family",
+          "games_family",
+          "家庭"
+        ]
+      },
+      {
+        "id": "7011",
+        "name": "音乐",
+        "english": "Music",
+        "group": "games",
+        "parent_id": "6014",
+        "legacy": false,
+        "aliases": [
+          "7011",
+          "GAMES_MUSIC",
+          "GAME_MUSIC",
+          "game_music",
+          "games_music"
+        ]
+      },
+      {
+        "id": "7012",
+        "name": "益智解谜",
+        "english": "Puzzle",
+        "group": "games",
+        "parent_id": "6014",
+        "legacy": false,
+        "aliases": [
+          "7012",
+          "GAMES_PUZZLE",
+          "GAME_PUZZLE",
+          "PUZZLE",
+          "Puzzle",
+          "game_puzzle",
+          "games_puzzle",
+          "puzzle",
+          "益智解谜"
+        ]
+      },
+      {
+        "id": "7013",
+        "name": "竞速",
+        "english": "Racing",
+        "group": "games",
+        "parent_id": "6014",
+        "legacy": false,
+        "aliases": [
+          "7013",
+          "GAMES_RACING",
+          "GAME_RACING",
+          "RACING",
+          "Racing",
+          "game_racing",
+          "games_racing",
+          "racing",
+          "竞速"
+        ]
+      },
+      {
+        "id": "7014",
+        "name": "角色扮演",
+        "english": "Roleplaying",
+        "group": "games",
+        "parent_id": "6014",
+        "legacy": false,
+        "aliases": [
+          "7014",
+          "GAMES_ROLEPLAYING",
+          "GAME_ROLE PLAYING",
+          "GAME_ROLEPLAYING",
+          "GAME_ROLE_PLAYING",
+          "ROLE PLAYING",
+          "ROLEPLAYING",
+          "Role Playing",
+          "Roleplaying",
+          "game_role playing",
+          "game_role_playing",
+          "game_roleplaying",
+          "games_roleplaying",
+          "role playing",
+          "role_playing",
+          "roleplaying",
+          "角色扮演"
+        ]
+      },
+      {
+        "id": "7015",
+        "name": "模拟",
+        "english": "Simulation",
+        "group": "games",
+        "parent_id": "6014",
+        "legacy": false,
+        "aliases": [
+          "7015",
+          "GAMES_SIMULATION",
+          "GAME_SIMULATION",
+          "SIMULATION",
+          "Simulation",
+          "game_simulation",
+          "games_simulation",
+          "simulation",
+          "模拟"
+        ]
+      },
+      {
+        "id": "7016",
+        "name": "体育",
+        "english": "Sports",
+        "group": "games",
+        "parent_id": "6014",
+        "legacy": false,
+        "aliases": [
+          "7016",
+          "GAMES_SPORTS",
+          "GAME_SPORTS",
+          "game_sports",
+          "games_sports"
+        ]
+      },
+      {
+        "id": "7017",
+        "name": "策略",
+        "english": "Strategy",
+        "group": "games",
+        "parent_id": "6014",
+        "legacy": false,
+        "aliases": [
+          "7017",
+          "GAMES_STRATEGY",
+          "GAME_STRATEGY",
+          "STRATEGY",
+          "Strategy",
+          "game_strategy",
+          "games_strategy",
+          "strategy",
+          "策略"
+        ]
+      },
+      {
+        "id": "7018",
+        "name": "知识问答",
+        "english": "Trivia",
+        "group": "games",
+        "parent_id": "6014",
+        "legacy": false,
+        "aliases": [
+          "7018",
+          "GAMES_TRIVIA",
+          "GAME_TRIVIA",
+          "TRIVIA",
+          "Trivia",
+          "game_trivia",
+          "games_trivia",
+          "trivia",
+          "知识问答"
+        ]
+      },
+      {
+        "id": "7019",
+        "name": "文字",
+        "english": "Word",
+        "group": "games",
+        "parent_id": "6014",
+        "legacy": false,
+        "aliases": [
+          "7019",
+          "GAMES_WORD",
+          "GAME_WORD",
+          "WORD",
+          "Word",
+          "game_word",
+          "games_word",
+          "word",
+          "文字"
+        ]
+      },
+      {
+        "id": "6015",
+        "name": "财务",
+        "english": "Finance",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6015",
+          "FINANCE",
+          "Finance",
+          "finance",
+          "财务"
+        ]
+      },
+      {
+        "id": "6016",
+        "name": "娱乐",
+        "english": "Entertainment",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6016",
+          "ENTERTAINMENT",
+          "Entertainment",
+          "entertainment",
+          "娱乐"
+        ]
+      },
+      {
+        "id": "6017",
+        "name": "教育",
+        "english": "Education",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6017",
+          "EDUCATION",
+          "Education",
+          "education",
+          "教育"
+        ]
+      },
+      {
+        "id": "6018",
+        "name": "图书",
+        "english": "Books",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6018",
+          "BOOK",
+          "BOOKS",
+          "Books",
+          "book",
+          "books",
+          "图书"
+        ]
+      },
+      {
+        "id": "6020",
+        "name": "医疗",
+        "english": "Medical",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6020",
+          "MEDICAL",
+          "Medical",
+          "medical",
+          "医疗"
+        ]
+      },
+      {
+        "id": "6021",
+        "name": "报刊杂志",
+        "english": "Magazines & Newspapers",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6021",
+          "MAGAZINES & NEWSPAPERS",
+          "Magazines & Newspapers",
+          "magazines & newspapers",
+          "magazines_and_newspapers",
+          "报刊杂志"
+        ]
+      },
+      {
+        "id": "6022",
+        "name": "商品指南（历史分类）",
+        "english": "Catalogs",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": true,
+        "aliases": [
+          "6022",
+          "CATALOGS",
+          "Catalogs",
+          "catalogs",
+          "商品指南（历史分类）"
+        ]
+      },
+      {
+        "id": "6023",
+        "name": "美食佳饮",
+        "english": "Food & Drink",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6023",
+          "FOOD & DRINK",
+          "Food & Drink",
+          "food & drink",
+          "food_and_drink",
+          "美食佳饮"
+        ]
+      },
+      {
+        "id": "6024",
+        "name": "购物",
+        "english": "Shopping",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6024",
+          "SHOPPING",
+          "Shopping",
+          "shopping",
+          "购物"
+        ]
+      },
+      {
+        "id": "6025",
+        "name": "贴纸（iMessage）",
+        "english": "Stickers",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6025",
+          "STICKERS",
+          "Stickers",
+          "stickers",
+          "贴纸（IMESSAGE）",
+          "贴纸（iMessage）",
+          "贴纸（imessage）"
+        ]
+      },
+      {
+        "id": "6026",
+        "name": "开发者工具",
+        "english": "Developer Tools",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6026",
+          "DEVELOPER TOOLS",
+          "Developer Tools",
+          "developer tools",
+          "developer_tools",
+          "开发者工具"
+        ]
+      },
+      {
+        "id": "6027",
+        "name": "图形与设计",
+        "english": "Graphics & Design",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "6027",
+          "GRAPHICS & DESIGN",
+          "Graphics & Design",
+          "graphics & design",
+          "graphics_and_design",
+          "图形与设计"
+        ]
+      }
+    ],
+    "google": [
+      {
+        "id": "ART_AND_DESIGN",
+        "name": "艺术与设计",
+        "english": "Art & Design",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "ART & DESIGN",
+          "ART_AND_DESIGN",
+          "Art & Design",
+          "art & design",
+          "art_and_design",
+          "艺术与设计"
+        ]
+      },
+      {
+        "id": "AUTO_AND_VEHICLES",
+        "name": "汽车与交通工具",
+        "english": "Auto & Vehicles",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "AUTO & VEHICLES",
+          "AUTO_AND_VEHICLES",
+          "Auto & Vehicles",
+          "auto & vehicles",
+          "auto_and_vehicles",
+          "汽车与交通工具"
+        ]
+      },
+      {
+        "id": "BEAUTY",
+        "name": "美容时尚",
+        "english": "Beauty",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "BEAUTY",
+          "Beauty",
+          "beauty",
+          "美容时尚"
+        ]
+      },
+      {
+        "id": "BOOKS_AND_REFERENCE",
+        "name": "图书与工具书",
+        "english": "Books & Reference",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "BOOKS & REFERENCE",
+          "BOOKS_AND_REFERENCE",
+          "Books & Reference",
+          "books & reference",
+          "books_and_reference",
+          "图书与工具书"
+        ]
+      },
+      {
+        "id": "BUSINESS",
+        "name": "商务",
+        "english": "Business",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "BUSINESS",
+          "Business",
+          "business",
+          "商务"
+        ]
+      },
+      {
+        "id": "COMICS",
+        "name": "动漫",
+        "english": "Comics",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "COMICS",
+          "Comics",
+          "comics",
+          "动漫"
+        ]
+      },
+      {
+        "id": "COMMUNICATION",
+        "name": "通讯",
+        "english": "Communication",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "COMMUNICATION",
+          "Communication",
+          "communication",
+          "通讯"
+        ]
+      },
+      {
+        "id": "DATING",
+        "name": "交友",
+        "english": "Dating",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "DATING",
+          "Dating",
+          "dating",
+          "交友"
+        ]
+      },
+      {
+        "id": "EDUCATION",
+        "name": "教育",
+        "english": "Education",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "EDUCATION",
+          "Education",
+          "education",
+          "教育"
+        ]
+      },
+      {
+        "id": "ENTERTAINMENT",
+        "name": "娱乐",
+        "english": "Entertainment",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "ENTERTAINMENT",
+          "Entertainment",
+          "entertainment",
+          "娱乐"
+        ]
+      },
+      {
+        "id": "EVENTS",
+        "name": "活动",
+        "english": "Events",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "EVENTS",
+          "Events",
+          "events",
+          "活动"
+        ]
+      },
+      {
+        "id": "FINANCE",
+        "name": "财经",
+        "english": "Finance",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "FINANCE",
+          "Finance",
+          "finance",
+          "财经"
+        ]
+      },
+      {
+        "id": "FOOD_AND_DRINK",
+        "name": "食品与饮料",
+        "english": "Food & Drink",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "FOOD & DRINK",
+          "FOOD_AND_DRINK",
+          "Food & Drink",
+          "food & drink",
+          "food_and_drink",
+          "食品与饮料"
+        ]
+      },
+      {
+        "id": "HEALTH_AND_FITNESS",
+        "name": "健康与健身",
+        "english": "Health & Fitness",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "HEALTH & FITNESS",
+          "HEALTH_AND_FITNESS",
+          "Health & Fitness",
+          "health & fitness",
+          "health_and_fitness",
+          "健康与健身"
+        ]
+      },
+      {
+        "id": "HOUSE_AND_HOME",
+        "name": "家居",
+        "english": "House & Home",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "HOUSE & HOME",
+          "HOUSE_AND_HOME",
+          "House & Home",
+          "house & home",
+          "house_and_home",
+          "家居"
+        ]
+      },
+      {
+        "id": "LIBRARIES_AND_DEMO",
+        "name": "软件库与演示",
+        "english": "Libraries & Demo",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "LIBRARIES & DEMO",
+          "LIBRARIES_AND_DEMO",
+          "Libraries & Demo",
+          "libraries & demo",
+          "libraries_and_demo",
+          "软件库与演示"
+        ]
+      },
+      {
+        "id": "LIFESTYLE",
+        "name": "生活时尚",
+        "english": "Lifestyle",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "LIFESTYLE",
+          "Lifestyle",
+          "lifestyle",
+          "生活时尚"
+        ]
+      },
+      {
+        "id": "MAPS_AND_NAVIGATION",
+        "name": "地图和导航",
+        "english": "Maps & Navigation",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "MAPS & NAVIGATION",
+          "MAPS_AND_NAVIGATION",
+          "Maps & Navigation",
+          "maps & navigation",
+          "maps_and_navigation",
+          "地图和导航"
+        ]
+      },
+      {
+        "id": "MEDICAL",
+        "name": "医疗",
+        "english": "Medical",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "MEDICAL",
+          "Medical",
+          "medical",
+          "医疗"
+        ]
+      },
+      {
+        "id": "MUSIC_AND_AUDIO",
+        "name": "音乐和音频",
+        "english": "Music & Audio",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "MUSIC & AUDIO",
+          "MUSIC_AND_AUDIO",
+          "Music & Audio",
+          "music & audio",
+          "music_and_audio",
+          "音乐和音频"
+        ]
+      },
+      {
+        "id": "NEWS_AND_MAGAZINES",
+        "name": "新闻与杂志",
+        "english": "News & Magazines",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "NEWS & MAGAZINES",
+          "NEWS_AND_MAGAZINES",
+          "News & Magazines",
+          "news & magazines",
+          "news_and_magazines",
+          "新闻与杂志"
+        ]
+      },
+      {
+        "id": "PARENTING",
+        "name": "育儿",
+        "english": "Parenting",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "PARENTING",
+          "Parenting",
+          "parenting",
+          "育儿"
+        ]
+      },
+      {
+        "id": "PERSONALIZATION",
+        "name": "个性化",
+        "english": "Personalization",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "PERSONALIZATION",
+          "Personalization",
+          "personalization",
+          "个性化"
+        ]
+      },
+      {
+        "id": "PHOTOGRAPHY",
+        "name": "摄影",
+        "english": "Photography",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "PHOTOGRAPHY",
+          "Photography",
+          "photography",
+          "摄影"
+        ]
+      },
+      {
+        "id": "PRODUCTIVITY",
+        "name": "工作效率",
+        "english": "Productivity",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "PRODUCTIVITY",
+          "Productivity",
+          "productivity",
+          "工作效率"
+        ]
+      },
+      {
+        "id": "SHOPPING",
+        "name": "购物",
+        "english": "Shopping",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "SHOPPING",
+          "Shopping",
+          "shopping",
+          "购物"
+        ]
+      },
+      {
+        "id": "SOCIAL",
+        "name": "社交",
+        "english": "Social",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "SOCIAL",
+          "Social",
+          "social",
+          "社交"
+        ]
+      },
+      {
+        "id": "SPORTS",
+        "name": "体育",
+        "english": "Sports",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "SPORTS",
+          "Sports",
+          "sports",
+          "体育"
+        ]
+      },
+      {
+        "id": "TOOLS",
+        "name": "工具",
+        "english": "Tools",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "TOOLS",
+          "Tools",
+          "tools",
+          "工具"
+        ]
+      },
+      {
+        "id": "TRAVEL_AND_LOCAL",
+        "name": "旅游与本地出行",
+        "english": "Travel & Local",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "TRAVEL & LOCAL",
+          "TRAVEL_AND_LOCAL",
+          "Travel & Local",
+          "travel & local",
+          "travel_and_local",
+          "旅游与本地出行"
+        ]
+      },
+      {
+        "id": "VIDEO_PLAYERS",
+        "name": "视频播放器与编辑器",
+        "english": "Video Players & Editors",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "VIDEO PLAYERS & EDITORS",
+          "VIDEO_PLAYERS",
+          "Video Players & Editors",
+          "video players & editors",
+          "video players_and_editors",
+          "video_players",
+          "video_players_and_editors",
+          "视频播放器与编辑器"
+        ]
+      },
+      {
+        "id": "WATCH_FACE",
+        "name": "表盘（Wear OS）",
+        "english": "Watch Faces",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "WATCH FACES",
+          "WATCH_FACE",
+          "Watch Faces",
+          "watch faces",
+          "watch_face",
+          "watch_faces",
+          "表盘（WEAR OS）",
+          "表盘（Wear OS）",
+          "表盘（wear os）",
+          "表盘（wear_os）"
+        ]
+      },
+      {
+        "id": "WEATHER",
+        "name": "天气",
+        "english": "Weather",
+        "group": "apps",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "WEATHER",
+          "Weather",
+          "weather",
+          "天气"
+        ]
+      },
+      {
+        "id": "GAME",
+        "name": "游戏",
+        "english": "Games",
+        "group": "games",
+        "parent_id": null,
+        "legacy": false,
+        "aliases": [
+          "GAME",
+          "game",
+          "Games",
+          "games",
+          "游戏"
+        ]
+      },
+      {
+        "id": "GAME_ACTION",
+        "name": "动作",
+        "english": "Action",
+        "group": "games",
+        "parent_id": "GAME",
+        "legacy": false,
+        "aliases": [
+          "GAME_ACTION",
+          "game_action",
+          "游戏 / 动作",
+          "游戏_/_动作"
+        ]
+      },
+      {
+        "id": "GAME_ADVENTURE",
+        "name": "冒险",
+        "english": "Adventure",
+        "group": "games",
+        "parent_id": "GAME",
+        "legacy": false,
+        "aliases": [
+          "GAME_ADVENTURE",
+          "game_adventure",
+          "游戏 / 冒险",
+          "游戏_/_冒险"
+        ]
+      },
+      {
+        "id": "GAME_ARCADE",
+        "name": "街机",
+        "english": "Arcade",
+        "group": "games",
+        "parent_id": "GAME",
+        "legacy": false,
+        "aliases": [
+          "GAME_ARCADE",
+          "game_arcade",
+          "游戏 / 街机",
+          "游戏_/_街机"
+        ]
+      },
+      {
+        "id": "GAME_BOARD",
+        "name": "桌面和棋类",
+        "english": "Board",
+        "group": "games",
+        "parent_id": "GAME",
+        "legacy": false,
+        "aliases": [
+          "GAME_BOARD",
+          "game_board",
+          "游戏 / 桌面和棋类",
+          "游戏_/_桌面和棋类"
+        ]
+      },
+      {
+        "id": "GAME_CARD",
+        "name": "卡牌",
+        "english": "Card",
+        "group": "games",
+        "parent_id": "GAME",
+        "legacy": false,
+        "aliases": [
+          "GAME_CARD",
+          "game_card",
+          "游戏 / 卡牌",
+          "游戏_/_卡牌"
+        ]
+      },
+      {
+        "id": "GAME_CASINO",
+        "name": "娱乐场",
+        "english": "Casino",
+        "group": "games",
+        "parent_id": "GAME",
+        "legacy": false,
+        "aliases": [
+          "GAME_CASINO",
+          "game_casino",
+          "游戏 / 娱乐场",
+          "游戏_/_娱乐场"
+        ]
+      },
+      {
+        "id": "GAME_CASUAL",
+        "name": "休闲",
+        "english": "Casual",
+        "group": "games",
+        "parent_id": "GAME",
+        "legacy": false,
+        "aliases": [
+          "GAME_CASUAL",
+          "game_casual",
+          "游戏 / 休闲",
+          "游戏_/_休闲"
+        ]
+      },
+      {
+        "id": "GAME_EDUCATIONAL",
+        "name": "教育",
+        "english": "Educational",
+        "group": "games",
+        "parent_id": "GAME",
+        "legacy": false,
+        "aliases": [
+          "GAME_EDUCATIONAL",
+          "game_educational",
+          "游戏 / 教育",
+          "游戏_/_教育"
+        ]
+      },
+      {
+        "id": "GAME_MUSIC",
+        "name": "音乐",
+        "english": "Music",
+        "group": "games",
+        "parent_id": "GAME",
+        "legacy": false,
+        "aliases": [
+          "GAME_MUSIC",
+          "game_music",
+          "游戏 / 音乐",
+          "游戏_/_音乐"
+        ]
+      },
+      {
+        "id": "GAME_PUZZLE",
+        "name": "益智解谜",
+        "english": "Puzzle",
+        "group": "games",
+        "parent_id": "GAME",
+        "legacy": false,
+        "aliases": [
+          "GAME_PUZZLE",
+          "game_puzzle",
+          "游戏 / 益智解谜",
+          "游戏_/_益智解谜"
+        ]
+      },
+      {
+        "id": "GAME_RACING",
+        "name": "竞速",
+        "english": "Racing",
+        "group": "games",
+        "parent_id": "GAME",
+        "legacy": false,
+        "aliases": [
+          "GAME_RACING",
+          "game_racing",
+          "游戏 / 竞速",
+          "游戏_/_竞速"
+        ]
+      },
+      {
+        "id": "GAME_ROLE_PLAYING",
+        "name": "角色扮演",
+        "english": "Role Playing",
+        "group": "games",
+        "parent_id": "GAME",
+        "legacy": false,
+        "aliases": [
+          "GAME_ROLE_PLAYING",
+          "game_role_playing",
+          "游戏 / 角色扮演",
+          "游戏_/_角色扮演"
+        ]
+      },
+      {
+        "id": "GAME_SIMULATION",
+        "name": "模拟",
+        "english": "Simulation",
+        "group": "games",
+        "parent_id": "GAME",
+        "legacy": false,
+        "aliases": [
+          "GAME_SIMULATION",
+          "game_simulation",
+          "游戏 / 模拟",
+          "游戏_/_模拟"
+        ]
+      },
+      {
+        "id": "GAME_SPORTS",
+        "name": "体育",
+        "english": "Sports",
+        "group": "games",
+        "parent_id": "GAME",
+        "legacy": false,
+        "aliases": [
+          "GAME_SPORTS",
+          "game_sports",
+          "游戏 / 体育",
+          "游戏_/_体育"
+        ]
+      },
+      {
+        "id": "GAME_STRATEGY",
+        "name": "策略",
+        "english": "Strategy",
+        "group": "games",
+        "parent_id": "GAME",
+        "legacy": false,
+        "aliases": [
+          "GAME_STRATEGY",
+          "game_strategy",
+          "游戏 / 策略",
+          "游戏_/_策略"
+        ]
+      },
+      {
+        "id": "GAME_TRIVIA",
+        "name": "知识问答",
+        "english": "Trivia",
+        "group": "games",
+        "parent_id": "GAME",
+        "legacy": false,
+        "aliases": [
+          "GAME_TRIVIA",
+          "game_trivia",
+          "游戏 / 知识问答",
+          "游戏_/_知识问答"
+        ]
+      },
+      {
+        "id": "GAME_WORD",
+        "name": "文字",
+        "english": "Word",
+        "group": "games",
+        "parent_id": "GAME",
+        "legacy": false,
+        "aliases": [
+          "GAME_WORD",
+          "game_word",
+          "游戏 / 文字",
+          "游戏_/_文字"
+        ]
+      }
+    ]
+  },
+  "sources": {
+    "countries": {
+      "url": "https://registry.npmjs.org/cldr-core/-/cldr-core-49.0.0.tgz",
+      "sha256": "085b1c7d83f00692505c79d575c21eea89534466eb3e70b455688851a45c87bc"
+    },
+    "names": {
+      "url": "https://registry.npmjs.org/cldr-localenames-full/-/cldr-localenames-full-49.0.0.tgz",
+      "sha256": "d00bafb534848f142b3645d6046be81a1094fb00e809cd2c519f5e031198ba11"
+    },
+    "flags": {
+      "url": "https://registry.npmjs.org/flag-icons/-/flag-icons-7.6.0.tgz",
+      "sha256": "99d6feb80562dcaa83700ef184094d7c7b6587cc216b3fab1546cb1643e611a9"
+    },
+    "apple": {
+      "url": "https://itunes.apple.com/WebObjects/MZStoreServices.woa/ws/genres?id=36",
+      "sha256": "7e744a34ba751e49f7b5b5732a4b9845c576d4eb5bd2bceb3470d5ffbe7fbf99"
+    },
+    "google": {
+      "url": "https://support.google.com/googleplay/android-developer/answer/9859673?hl=zh-Hans",
+      "watch_face": "https://play.google.com/store/apps/category/WATCH_FACE"
+    }
+  }
+}

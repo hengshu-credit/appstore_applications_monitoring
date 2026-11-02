@@ -18,6 +18,7 @@ import pymysql
 
 from .db import connect
 from .ingest import valid_id
+from . import catalog
 from . import keywords, intelligence as intel, analytics, alerts, exports
 
 
@@ -26,6 +27,7 @@ def create_app(cfg):
     session_key = secrets.token_bytes(32)
     pool_cache = {}
     pool_lock = threading.Lock()
+    category_cache = {}
     def signed_session(stamp):
         return hmac.new(session_key, stamp.encode(), hashlib.sha256).hexdigest()
 
@@ -132,14 +134,32 @@ def create_app(cfg):
                 pool_cache.update(items=rows, total=sum(r["count"] for r in rows), observed_at=time.time())
         return pool_cache
 
+    @api.get('/catalog')
+    def store_catalog():
+        return catalog.public_catalog()
+
+    @api.get('/categories/counts')
+    def category_counts(store: str, db=DB):
+        with pool_lock:
+            cached = category_cache.get(store)
+            if not cached or time.time() - cached['observed_at'] > 300:
+                cached = catalog.category_counts(db, store) | {'observed_at': time.time()}
+                category_cache[store] = cached
+            return cached
+
     @api.get("/apps")
     def apps(q: str = Query("", max_length=255), store: str = "", country: str = "us", language: str = "en", category: str = "",
              developer: str = "", state: str = "", after_store: str = "", after_id: str = "", limit: int = Query(50, ge=1, le=200), db=DB):
         clauses, args = [], [country, language]
-        for key, value in (("a.store", store), ("a.category", category), ("l.state", state)):
+        for key, value in (("a.store", store), ("l.state", state)):
             if value:
                 clauses.append(f"{key}=%s")
                 args.append(value)
+        if category:
+            aliases = catalog.category_aliases(store, category)
+            placeholders = ','.join('%s' for _ in aliases)
+            clauses.append(f"(a.category IS NULL OR a.category NOT IN ({placeholders}))" if category=='__unknown__' else f"a.category IN ({placeholders})")
+            args.extend(aliases)
         if q and store in ("google", "apple") and valid_id(store, q):
             clauses.append("a.app_id=%s")
             args.append(q)
@@ -161,6 +181,8 @@ def create_app(cfg):
         rows = rows[:limit]
         for row in rows:
             row["payload"] = json.loads(row["payload"]) if row["payload"] else None
+            row['category_id'] = catalog.category_id(row['store'], row['category'])
+            row['category_name'] = catalog.BY_ID.get(row['store'], {}).get(row['category_id'], {}).get('name')
         return {"items": rows, "next": {"after_store": rows[-1]["store"], "after_id": rows[-1]["app_id"]} if more else None,
                 "country": country, "language": language}
 
@@ -170,6 +192,8 @@ def create_app(cfg):
         base = db.execute("SELECT * FROM apps WHERE store=%s AND app_id=%s", (store, app_id)).fetchone()
         if not base:
             raise HTTPException(404, "应用尚未进入应用池")
+        base['category_id'] = catalog.category_id(store, base['category'])
+        base['category_name'] = catalog.BY_ID[store].get(base['category_id'], {}).get('name')
         key = (store, app_id, country, language)
         listing = db.execute("SELECT * FROM listings WHERE store=%s AND app_id=%s AND country=%s AND language=%s", key).fetchone()
         snapshots = db.execute("SELECT * FROM snapshots WHERE store=%s AND app_id=%s AND country=%s AND language=%s ORDER BY id DESC LIMIT 100", key).fetchall()

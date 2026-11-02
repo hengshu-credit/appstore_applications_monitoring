@@ -39,3 +39,22 @@ Data provided by [AppGoblin](https://appgoblin.info).
   provenance and explainable ASO actions. No AGPL source is copied into the console.
 - FastAPI, Starlette, Uvicorn and HTTPX are installed as dependencies under their
   respective upstream licenses; dependency packages retain their license files.
+- Country names and geographic containment in `src/appmon/store_catalog.json`
+  are derived from Unicode CLDR 49 (`cldr-core` and `cldr-localenames-full`),
+  Unicode-3.0 license. The pinned package URLs and SHA256 values are included in
+  the catalog; license copies are in `licenses/unicode-cldr.txt` and
+  `frontend/public/licenses/unicode-cldr.txt`. Chinese display names for HK/MO/TW
+  are adapted to the requested country/region selector wording.
+- `frontend/public/flags/`: selected unmodified 4:3 SVG assets from
+  `flag-icons` 7.6.0 (MIT), copyright Panayiotis Lipiridis. Full license in
+  `frontend/public/licenses/flag-icons.txt`.
+- `frontend/public/fonts/`: Alimama FangYuanTi VF, copyright Taobao (China)
+  Software Co., Ltd. Embedded under the accompanying font license, not under
+  this project's code license. Files are mirrored unchanged from the Tianshu
+  frontend, including its documented browser-compatibility metadata repair;
+  source, instructions, license and selected SemiBold axes are retained there.
+- Apple genre identifiers/names come from Apple's public genres service;
+  Google category names follow the Google Play Console category documentation
+  and the public Watch Face category. Historical aliases support earlier
+  AppGoblin snapshots without creating new categories. Source URLs and scope
+  are documented in `docs/store-catalog.md`.
