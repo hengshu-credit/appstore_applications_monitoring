@@ -43,8 +43,10 @@ def category_aliases(store, value):
 
 def public_catalog():
     from .charts import capabilities
+    from .locales import PREFERENCES
     return CATALOG | {'countries': [c | {'apple_supported': c['code'] in APPLE_COUNTRIES} for c in CATALOG['countries']],
                       'charts':{store:capabilities(store) for store in ('apple','google')},
+                      'locales':PREFERENCES,
                       'country_scope': '国家/地区是公开商店请求地区；可用性以实际采集结果为准。Apple 仅开放当前支持的地区。'}
 
 

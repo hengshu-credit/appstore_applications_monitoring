@@ -143,6 +143,8 @@ def save_observation(db, cfg, target, result=None, error=None, now=None):
                                 item["rating"], item.get("content", ""), item.get("title"), item.get("version"),
                                 item.get("published_at"), now, now, dump(item)))
                 elif valid_id(target["store"], item.get("app_id", "")):
+                    from .app_icons import remember
+                    remember(db,target['store'],item['app_id'],target['country'],target['language'],item.get('icon'),item.get('name'))
                     add_apps(db, [(target["store"], item["app_id"], item.get("name"), target["category"] or None)],
                              f"{target['kind']}:{target['id']}", now)
             db.execute('''UPDATE observation_targets SET previous_success_id=latest_success_id,
@@ -200,9 +202,11 @@ def work_watchlist(cfg, db, limit=10, client=None):
         local_cfg = cfg | {"refresh_hours": job["refresh_hours"]}
         from .task_logs import execution
         with execution(db,client,'watchlist',job['watch_id'],f"{job['store']} / {job['app_id']} / {job['country']}") as task_log:
+            failure = None
             try:
                 result = client.fetch(job)
             except FetchError as exc:
+                failure = exc
                 accepted = save_result(db, local_cfg, job, error=exc)
                 outcome = "error"
                 detail = str(exc) + "；已安排退避重试"
@@ -210,7 +214,7 @@ def work_watchlist(cfg, db, limit=10, client=None):
                 accepted = save_result(db, local_cfg, job, result=result)
                 outcome = result.outcome
                 detail = "地区状态与版本观察已处理"
-            task_log.finish(outcome,accepted,detail)
+            task_log.finish(outcome,accepted,detail,error=failure)
         count[("error" if outcome=="error" else "ok") if accepted else "stale"] += 1
         count["processed"] += 1
     return count
@@ -227,9 +231,11 @@ def work_observations(cfg, db, limit=10, client=None):
             break
         from .task_logs import execution
         with execution(db,client,'targets',target['id'],f"{target['kind']} / {target['store']} / {target['country']} / {target['app_id']}") as task_log:
+            failure = None
             try:
                 result = client.fetch_observation(target)
             except (FetchError, ValueError, KeyError, TypeError, IndexError) as exc:
+                failure = exc
                 error = exc if isinstance(exc, FetchError) else FetchError(f"Parser error: {type(exc).__name__}")
                 accepted = save_observation(db, cfg, target, error=error)
                 outcome = "error"
@@ -238,7 +244,7 @@ def work_observations(cfg, db, limit=10, client=None):
                 accepted = save_observation(db, cfg, target, result=result)
                 outcome = "ok"
                 detail = f"返回记录 {len(result.items)} 条"
-            task_log.finish(outcome,accepted,detail)
+            task_log.finish(outcome,accepted,detail,error=failure)
         count["processed"] += 1
         count[outcome if accepted else "stale"] += 1
     return count

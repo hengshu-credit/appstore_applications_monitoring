@@ -6,6 +6,7 @@ from .intelligence import market, hours, text, watch, add_observation_target
 from .keywords import validate_target, add_targets
 from .catalog import BY_ID
 from .task_logs import emit
+from .log_details import diagnostics
 
 SOURCES = [
     {'id':'details','name':'应用详情与版本','source':'Apple lookup / Google Play详情','method':'public','cadence':'重点池默认24小时，可配置',
@@ -109,7 +110,7 @@ def work_plans(db, limit=20):
                 return {'processed':processed,'error':0,'id':row['id'],'status':status}
             except Exception as exc:
                 db.execute("UPDATE collection_plans SET status='error',error=%s,updated_at=%s WHERE id=%s",(type(exc).__name__,time.time(),row['id']))
-                emit(db,'plans',row['id'],'error','配置失败：'+type(exc).__name__+'；可从断点重试','error')
+                emit(db,'plans',row['id'],'error','配置失败：'+type(exc).__name__+'；可从断点重试','error',details=diagnostics(exc,stage='plan_configuration'))
                 return {'processed':processed,'error':1,'id':row['id']}
     except RuntimeError as exc:
         if str(exc)=='Another process is already importing this dataset':return {'processed':0,'error':0}

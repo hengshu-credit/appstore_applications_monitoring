@@ -6,11 +6,14 @@ import "./selectors.css";
 import "./research.css";
 import { createResearchPages } from "./research.js";
 import { createSelectors } from "./selectors.js";
-import { icon } from "./icons.js";
+import { effectiveLanguage } from "./market-scope.js";
+import { createAppIconManager } from "./app-icons.js";
+import { icon, storeLogo } from "./icons.js";
 import { createTaskLogViewer } from "./task-logs.js";
 import { initMarketControls } from "./market-controls.js";
 import "./workspace.css";
 import "./monitoring.css";
+import "./experience.css";
 import { monitoringChart, bindMonitoringCharts } from "./monitoring-charts.js";
 import { createAppInsights } from "./app-insights.js";
 import { createAvailabilityPage } from "./availability.js";
@@ -38,22 +41,29 @@ const safeURL = (v) => {
     return "";
   }
 };
-const market = () => ({
-  store: $("#global-store").value,
+let localePreferences;
+const market = (store = $("#global-store").value) => ({
+  store,
   country: $("#global-country").value.trim().toLowerCase(),
-  language: $("#global-language").value.trim().toLowerCase(),
+  language: effectiveLanguage(
+    localePreferences,
+    store,
+    $("#global-country").value,
+    $("#global-language").value || "auto",
+  ),
 });
 try {
   const saved = JSON.parse(sessionStorage.getItem("appmon-market") || "null");
   if (
     saved &&
-    ["google", "apple"].includes(saved.store) &&
+    ["google", "apple", "all"].includes(saved.store) &&
     /^[a-z]{2}$/.test(saved.country) &&
     /^[a-z-]{2,16}$/.test(saved.language)
   ) {
     $("#global-store").value = saved.store;
     $("#global-country").value = saved.country;
-    $("#global-language").value = saved.language;
+    $("#global-language").value =
+      saved.language_mode === "manual" ? saved.language : "auto";
   }
 } catch {}
 const marketControls = initMarketControls();
@@ -62,10 +72,27 @@ function saveMarket() {
   marketControls.sync();
   selectors.syncCountry();
   try {
-    sessionStorage.setItem("appmon-market", JSON.stringify(market()));
+    sessionStorage.setItem(
+      "appmon-market",
+      JSON.stringify({
+        ...market(),
+        language: $("#global-language").value,
+        language_mode:
+          $("#global-language").value === "auto" ? "auto" : "manual",
+      }),
+    );
   } catch {}
 }
-const selectors = createSelectors({ api, getMarket: market, onError: toast });
+const selectors = createSelectors({
+  api,
+  getMarket: market,
+  onError: toast,
+  onCatalog: (value) => {
+    localePreferences = value.locales;
+    marketControls.setPreferences(localePreferences);
+  },
+});
+createAppIconManager({ api, getMarket: market });
 const qs = (obj) =>
   new URLSearchParams(
     Object.entries(obj).filter(([, v]) => v !== "" && v != null),
@@ -117,6 +144,28 @@ function toast(message) {
   toast.timer = setTimeout(() => ($("#toast").style.display = "none"), 4500);
 }
 async function api(path, body, method) {
+  if (body === undefined && (!method || method === "GET")) {
+    const [pathname, search] = path.split("?"),
+      params = new URLSearchParams(search);
+    const scoped = [
+      "/overview",
+      "/pool",
+      "/daily",
+      "/watchlist",
+      "/targets",
+      "/keywords",
+      "/alerts",
+      "/ads",
+      "/exports",
+      "/research/comparisons",
+      "/research/collection/tasks",
+      "/research/collection/activity",
+    ];
+    if (scoped.includes(pathname)) {
+      params.set("store", market().store);
+      path = pathname + "?" + params;
+    }
+  }
   const response = await fetch("/api" + path, {
     method: method || (body === undefined ? "GET" : "POST"),
     headers: {
@@ -186,8 +235,9 @@ function move(value) {
     : `<span class="${value > 0 ? "up" : value < 0 ? "down" : ""}">${value > 0 ? "↑ " + value : value < 0 ? "↓ " + Math.abs(value) : "持平"}</span>`;
 }
 function appLink(store, id, name, imageURL, country, language) {
-  const img = safeURL(imageURL);
-  return `<div class="appcell">${img ? `<img class="appicon" src="${img}" alt="" loading="lazy">` : `<span class="appicon">${icon("apps")}</span>`}<div><button class="link appname" data-app="${esc(id)}" data-store="${esc(store)}" data-country="${esc(country || market().country)}" data-language="${esc(language || market().language)}">${esc(name || id)}</button><div class="appid">${esc(id)}</div></div></div>`;
+  const m = market(store),
+    lang = language || m.language;
+  return `<div class="appcell"><span class="appicon-wrap" data-icon-store="${esc(store)}" data-icon-app="${esc(id)}" data-icon-country="${esc(country || m.country)}" data-icon-language="${esc(lang)}" data-icon-source="${esc(imageURL || "")}" data-icon-name="${esc(name || id)}"><img class="appicon" alt="" hidden><span class="appicon appicon-placeholder">${storeLogo(store)}</span><button type="button" class="appicon-refresh link" data-icon-refresh aria-label="补采图标">${icon("refresh")}</button></span><div><button class="link appname" data-app="${esc(id)}" data-store="${esc(store)}" data-country="${esc(country || m.country)}" data-language="${esc(lang)}">${esc(name || id)}</button><div class="appid">${market().store === "all" ? `<span class="store-scope-badge">${storeLogo(store)} ${store === "apple" ? "App Store" : "Google Play"}</span> · ` : ""}${esc(id)}</div></div></div>`;
 }
 function field(label, name, value = "", type = "text", extra = "") {
   return `<label>${label}<input name="${name}" value="${esc(value)}" type="${type}" ${extra}></label>`;
@@ -251,13 +301,13 @@ async function overview(rev) {
   const data = await api("/overview");
   const c = data.counts;
   mount(
-    `<p class="lead">从应用变化到搜索表现，查看你的重点市场与采集进度。</p><div class="cards">${metric("已知应用池", null, "<span id=pool-caption>正在读取精确行数…</span>").replace('class="value"', 'class="value" id="pool-count"')}${metric("重点应用", c.watchlist, "按商店 / 国家 / 语言独立监控")}${metric("跟踪关键词", c.keyword_targets, "保存有序搜索快照")}${metric("未读告警", c.unread_alerts, "基于观察证据触发")}</div><div class="callout">后台最近心跳：${esc(stamp(data.worker?.next_at))}。页面刷新读取已存数据；“安排刷新”由后台任务执行。</div><div class="grid2">${panel(
+    `<p class="lead">查看所选商店的全部已观察市场与采集进度。</p><div class="cards">${metric("已知应用池", null, "<span id=pool-caption>正在读取精确行数…</span>").replace('class="value"', 'class="value" id="pool-count"')}${metric("重点应用", c.watchlist, "按商店 / 国家 / 语言独立监控")}${metric("跟踪关键词", c.keyword_targets, "保存有序搜索快照")}${metric("未读告警", c.unread_alerts, "基于观察证据触发")}</div><div class="callout">后台最近心跳：${esc(stamp(data.worker?.next_at))}。页面刷新读取已存数据；“安排刷新”由后台任务执行。</div><div class="grid2">${panel(
       "地区覆盖",
       table(
-        ["商店", "国家", "状态", "已观察应用", "最后成功"],
+        ["商店", "国家 / 语言", "状态", "已观察应用", "最后成功"],
         data.freshness.map((r) => [
           esc(r.store),
-          esc(r.country.toUpperCase()),
+          esc(r.country.toUpperCase()) + " / " + esc(r.language || "—"),
           badge(r.state),
           num(r.count),
           stamp(r.last_success),
@@ -373,6 +423,13 @@ async function applications(rev, filters = {}) {
     )
   )
     return;
+  if (market().store === "all") {
+    document
+      .querySelectorAll("[data-pool-select],#pool-select-all")
+      .forEach((n) => (n.disabled = true));
+    $("#pool-selection-count").textContent =
+      "选择单个商店后可批量创建同市场监控或竞品集合。";
+  }
   appInsights.discovery();
   $("[name=state]", $("#app-search")).value = filters.state || "";
   $("[name=pricing]", $("#app-search")).value = filters.pricing || "";
@@ -635,6 +692,7 @@ function collectionLink(kind) {
 let chartFilters = { store: "", collection: "top-free", category: "" };
 async function chartPage(rev) {
   const m = market();
+  if (m.store === "all") return multiCharts(rev);
   if (chartFilters.store !== m.store)
     chartFilters = { store: m.store, collection: "top-free", category: "" };
   const definitions = selectors.chartDefinitions(m.store);
@@ -710,6 +768,71 @@ async function chartPage(rev) {
       if (rev === revision) $("#refresh-current-chart").disabled = false;
     }
   });
+}
+async function multiCharts(rev) {
+  const stores = ["google", "apple"];
+  const results = await Promise.all(
+    stores.map(async (store) => {
+      const m = market(store),
+        id = chartFilters.collection || "top-free";
+      try {
+        return {
+          m,
+          data: await api("/charts/view?" + qs({ ...m, collection: id })),
+        };
+      } catch (error) {
+        return { m, error: error.message };
+      }
+    }),
+  );
+  if (
+    !mount(
+      `<p class="lead">同时查看两家商店的总榜；排名、来源和请求语言分别展示。</p><form id="multi-chart-form" class="toolbar">${select(
+        "榜单",
+        "collection",
+        selectors.chartDefinitions("google").map((d) => [d.id, d.name]),
+        chartFilters.collection,
+      )}<button>查看榜单</button><span class="sub">分类榜请切换到对应商店。</span></form><div class="multi-store-grid">${results
+        .map(({ m, data, error }) =>
+          panel(
+            `<span class="store-caption">${storeLogo(m.store)} ${m.store === "apple" ? "App Store" : "Google Play"}</span>`,
+            error
+              ? `<p class="errorbox">${esc(error)}</p>`
+              : `<p class="sub">${esc(m.country.toUpperCase())} / ${esc(m.language)} · ${esc(data.definition.name)} · ${data.definition.mode === "derived" ? "本站派生" : "商店直接榜单"}</p><p class="sub">${esc(data.definition.note)} · ${stamp(data.latest_success?.observed_at)}</p>${data.reason ? `<p class="callout">${esc(data.reason)}</p>` : ""}${table(
+                  ["排名", "应用", "变化"],
+                  data.items.map((r) => [
+                    r.position,
+                    appLink(
+                      m.store,
+                      r.app_id,
+                      r.name,
+                      r.icon,
+                      m.country,
+                      m.language,
+                    ),
+                    move(r.change),
+                  ]),
+                )}<button class="secondary" data-chart-store="${m.store}">管理此商店榜单</button>`,
+          ),
+        )
+        .join("")}</div>`,
+      rev,
+    )
+  )
+    return;
+  bindForm("#multi-chart-form", async (v) => {
+    chartFilters = { store: "all", collection: v.collection, category: "" };
+    await multiCharts(++revision);
+  });
+  document.querySelectorAll("[data-chart-store]").forEach(
+    (b) =>
+      (b.onclick = () => {
+        $("#global-store").value = b.dataset.chartStore;
+        $("#global-store").dispatchEvent(
+          new Event("change", { bubbles: true }),
+        );
+      }),
+  );
 }
 async function watchlist(rev) {
   const rows = await api("/watchlist");
@@ -1141,10 +1264,38 @@ async function exportPage(rev) {
     )
   )
     return;
+  const exportMarket = market().store;
+  if (exportMarket !== "all") {
+    const supported = [
+      "apps",
+      "events",
+      "snapshots",
+      "listings",
+      "reviews",
+      "ad_observations",
+      "aso_drafts",
+      "review_workflow",
+      "comparison_sets",
+      "event_annotations",
+    ];
+    $('#export-form [name="filters"]').value = JSON.stringify({
+      store: exportMarket,
+    });
+    $('#export-form [name="kind"]')
+      .querySelectorAll("option")
+      .forEach((o) => {
+        if (!supported.includes(o.value)) {
+          o.disabled = true;
+          o.textContent += "（请切换全部商店）";
+        }
+      });
+  }
   bindForm("#export-form", async (data) => {
+    const filters = JSON.parse(data.filters);
+    if (exportMarket !== "all") filters.store = exportMarket;
     await api("/exports", {
       kind: data.kind,
-      filters: JSON.parse(data.filters),
+      filters,
     });
     toast("导出已排队");
     await exportPage(revision);
@@ -1278,7 +1429,11 @@ document.addEventListener("click", async (event) => {
     if (el.dataset.app) {
       $("#global-store").value = el.dataset.store;
       $("#global-country").value = el.dataset.country;
-      $("#global-language").value = el.dataset.language;
+      if (
+        $("#global-language").value !== "auto" ||
+        market(el.dataset.store).language !== el.dataset.language
+      )
+        $("#global-language").value = el.dataset.language;
       saveMarket();
       const nextHash =
         "app/" +
@@ -1353,7 +1508,11 @@ document.addEventListener(
   "error",
   (event) => {
     const image = event.target;
-    if (image?.tagName === "IMG" && image.classList.contains("appicon")) {
+    if (
+      image?.tagName === "IMG" &&
+      image.classList.contains("appicon") &&
+      !image.closest(".appicon-wrap")
+    ) {
       const fallback = document.createElement("span");
       fallback.className = "appicon";
       fallback.innerHTML = icon("apps");

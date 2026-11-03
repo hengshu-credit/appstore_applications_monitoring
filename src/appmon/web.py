@@ -21,7 +21,7 @@ from .ingest import valid_id
 from . import catalog
 from . import aso, review_desk, insights, collection
 from . import collection_tasks, pipelines
-from . import task_logs
+from . import task_logs, locales, scoped_views, app_icons
 from . import charts, app_collection
 from . import app_discovery, app_metrics, availability
 from .stores import FetchError
@@ -111,6 +111,25 @@ def create_app(cfg):
     DB = Depends(database)
     api = APIRouter(prefix="/api")
 
+    @api.post('/icons/resolve')
+    def resolve_icons(value:dict=Body(...),db=DB):
+        values=value.get('items');force=value.get('force',False)
+        if not isinstance(values,list) or not 1<=len(values)<=50 or type(force) is not bool:raise ValueError('每次最多请求50个应用图标')
+        rows=[]
+        for item in values:
+            try:
+                if not isinstance(item,dict):raise ValueError('应用标识无效')
+                rows.append(app_icons.request_icon(db,cfg,item,force))
+            except ValueError as exc:rows.append({'error':str(exc),'pending':False})
+        return {'items':rows}
+
+    @api.get('/icons/{identifier}')
+    def icon_file(identifier:int,db=DB):
+        row=db.execute('SELECT * FROM app_icons WHERE id=%s',(identifier,)).fetchone()
+        path=app_icons.cached_path(cfg,row) if row else None
+        if path is None:raise HTTPException(404,'图标正在采集或尚不可用')
+        return FileResponse(path,media_type=row['mime'])
+
     @api.post("/session")
     def browser_session(request: Request):
         stamp = str(int(time.time()))
@@ -124,26 +143,20 @@ def create_app(cfg):
         return app.openapi()
 
     @api.get("/overview")
-    def overview(db=DB):
-        now = time.time()
-        counts = {table: db.execute(f"SELECT count(*) n FROM {table}").fetchone()["n"] for table in
-                  ("watchlist", "keyword_targets", "observation_targets", "reviews")}
-        counts["unread_alerts"] = db.execute("SELECT count(*) n FROM alerts WHERE acknowledged=0").fetchone()["n"]
-        return {"counts": counts, "at": now,
-                "freshness": db.execute("SELECT store,country,state,count(*) count,max(last_success) last_success FROM listings GROUP BY store,country,state").fetchall(),
-                "recent_events": db.execute("SELECT e.*,a.name FROM events e LEFT JOIN apps a USING(store,app_id) ORDER BY e.id DESC LIMIT 20").fetchall(),
-                "worker": db.execute("SELECT next_at FROM schedules WHERE name='console-heartbeat'").fetchone(),
-                "failures": {table: db.execute(f"SELECT id,last_error,failures FROM {table} WHERE failures>0 ORDER BY id DESC LIMIT 20").fetchall() for table in ("keyword_targets", "observation_targets")}}
+    def overview(store:str="all",db=DB):
+        return scoped_views.overview(db,store)
 
     @api.get("/pool")
-    def pool(db=DB):
+    def pool(store:str="all",db=DB):
         # Exact counts, cached with an explicit observation time; never use
         # information_schema's approximate table_rows as a product metric.
         with pool_lock:
             if not pool_cache or time.time() - pool_cache["observed_at"] > 300:
                 rows = db.execute("SELECT store,count(*) count FROM apps GROUP BY store").fetchall()
                 pool_cache.update(items=rows, total=sum(r["count"] for r in rows), observed_at=time.time())
-        return pool_cache
+        selected=locales.stores(store)
+        rows=[r for r in pool_cache["items"] if r["store"] in selected]
+        return pool_cache|dict(items=rows,total=sum(r["count"] for r in rows))
 
     @api.get('/catalog')
     def store_catalog():
@@ -161,57 +174,12 @@ def create_app(cfg):
     @api.get("/apps")
     def apps(q: str = Query("", max_length=255), store: str = "", country: str = "us", language: str = "en", category: str = "",
              developer: str = "", state: str = "", after_store: str = "", after_id: str = "", limit: int = Query(50, ge=1, le=200),
+             after_google:str="",after_apple:str="",google_done:bool=False,apple_done:bool=False,
              min_rating: float | None = Query(None, ge=0, le=5), min_ratings: int | None = Query(None,ge=0),
-             pricing: str = '', updated_since: str = '', released_since: str = '', db=DB):
-        clauses, args = [], [country, language]
-        for key, value in (("a.store", store), ("l.state", state)):
-            if value:
-                clauses.append(f"{key}=%s")
-                args.append(value)
-        if category:
-            aliases = catalog.category_aliases(store, category)
-            placeholders = ','.join('%s' for _ in aliases)
-            clauses.append(f"(a.category IS NULL OR a.category NOT IN ({placeholders}))" if category=='__unknown__' else f"a.category IN ({placeholders})")
-            args.extend(aliases)
-        if q and store in ("google", "apple") and valid_id(store, q):
-            clauses.append("a.app_id=%s")
-            args.append(q)
-        elif q:
-            clauses.append("(a.app_id=%s OR a.name LIKE %s)")
-            args.extend([q, '%' + q.replace('!', '!!').replace('%', '!%').replace('_', '!_') + '%'])
-            clauses[-1] = "(a.app_id=%s OR a.name COLLATE utf8mb4_0900_ai_ci LIKE %s ESCAPE '!')"
-        if developer:
-            clauses.append("JSON_UNQUOTE(JSON_EXTRACT(l.payload,'$.developer'))=%s")
-            args.append(developer)
-        for field, minimum in (('rating',min_rating),('ratings',min_ratings)):
-            if minimum is not None:
-                clauses.append(f"JSON_TYPE(JSON_EXTRACT(l.payload,'$.{field}')) IN ('INTEGER','DOUBLE') AND CAST(JSON_UNQUOTE(JSON_EXTRACT(l.payload,'$.{field}')) AS DECIMAL(20,6))>=%s")
-                args.append(minimum)
-        if pricing:
-            if pricing not in ('free','paid'):raise ValueError('售价筛选无效')
-            clauses.append("JSON_TYPE(JSON_EXTRACT(l.payload,'$.price')) IN ('INTEGER','DOUBLE') AND CAST(JSON_UNQUOTE(JSON_EXTRACT(l.payload,'$.price')) AS DECIMAL(20,6))"+('=0' if pricing=='free' else '>0'))
-        for field, minimum in (('updated',updated_since),('released',released_since)):
-            if minimum:
-                day=date.fromisoformat(minimum)
-                epoch=datetime.combine(day,datetime.min.time(),tzinfo=timezone.utc).timestamp()
-                path=f"JSON_EXTRACT(l.payload,'$.{field}')"
-                clauses.append(f"((JSON_TYPE({path}) IN ('INTEGER','DOUBLE') AND CAST(JSON_UNQUOTE({path}) AS DECIMAL(20,6))>=%s) OR (JSON_UNQUOTE({path}) REGEXP '^[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}' AND LEFT(JSON_UNQUOTE({path}),10)>=%s))")
-                args.extend((epoch,minimum))
-        if after_store or after_id:
-            clauses.append("(a.store,a.app_id)>(%s,%s)")
-            args.extend([after_store, after_id])
-        where = " WHERE " + " AND ".join(clauses) if clauses else ""
-        rows = db.execute('''SELECT /*+ MAX_EXECUTION_TIME(15000) */ a.*,l.state,l.last_success,l.checked_at,l.payload
-            FROM apps a LEFT JOIN listings l ON a.store=l.store AND a.app_id=l.app_id AND l.country=%s AND l.language=%s'''
-                          + where + " ORDER BY a.store,a.app_id LIMIT %s", (*args, limit + 1)).fetchall()
-        more = len(rows) > limit
-        rows = rows[:limit]
-        for row in rows:
-            row["payload"] = json.loads(row["payload"]) if row["payload"] else None
-            row['category_id'] = catalog.category_id(row['store'], row['category'])
-            row['category_name'] = catalog.BY_ID.get(row['store'], {}).get(row['category_id'], {}).get('name')
-        return {"items": rows, "next": {"after_store": rows[-1]["store"], "after_id": rows[-1]["app_id"]} if more else None,
-                "country": country, "language": language}
+             pricing: str = "", updated_since: str = "", released_since: str = "", db=DB):
+        return scoped_views.apps(db,store=store,country=country,language=language,q=q,category=category,developer=developer,state=state,limit=limit,
+            after_store=after_store,after_id=after_id,after_google=after_google,after_apple=after_apple,google_done=google_done,apple_done=apple_done,
+            min_rating=min_rating,min_ratings=min_ratings,pricing=pricing,updated_since=updated_since,released_since=released_since)
 
     @api.post('/discovery/search')
     def search_store(value:dict=Body(...),db=DB):
@@ -266,19 +234,20 @@ def create_app(cfg):
         return charts.view(db,m['store'],m['country'],m['language'],collection,category)
 
     @api.get("/watchlist")
-    def watchlist(db=DB):
-        return db.execute('''SELECT w.*,a.name,j.due,j.failures,j.last_error,l.state,l.last_success FROM watchlist w
-            JOIN apps a USING(store,app_id) LEFT JOIN jobs j USING(store,app_id,country,language)
-            LEFT JOIN listings l USING(store,app_id,country,language) ORDER BY w.id DESC LIMIT 2000''').fetchall()
+    def watchlist(store:str="all",country:str="",language:str="",db=DB):
+        scope,args=locales.where(store,country,language,'w')
+        return db.execute('''SELECT w.*,a.name,j.due,j.failures,j.last_error,l.state,l.last_success FROM watchlist w JOIN apps a USING(store,app_id) LEFT JOIN jobs j USING(store,app_id,country,language) LEFT JOIN listings l USING(store,app_id,country,language) WHERE '''+scope+' ORDER BY w.id DESC LIMIT 2000',args).fetchall()
 
     @api.post("/watchlist")
     def add_watch(value: dict = Body(...), db=DB):
         return intel.watch(db, value)
 
     @api.get("/targets")
-    def targets(kind: str = "", db=DB):
-        rows = db.execute("SELECT * FROM observation_targets" + (" WHERE kind=%s" if kind else "") + " ORDER BY id DESC LIMIT 2000", (kind,) if kind else None).fetchall()
-        return [{k: v for k, v in r.items() if k != "token"} for r in rows]
+    def targets(kind:str="",store:str="all",country:str="",language:str="",db=DB):
+        scope,args=locales.where(store,country,language)
+        if kind:scope+=' AND kind=%s';args.append(kind)
+        rows=db.execute('SELECT * FROM observation_targets WHERE '+scope+' ORDER BY id DESC LIMIT 2000',args).fetchall()
+        return [{k:v for k,v in row.items() if k!='token'} for row in rows]
 
     @api.post("/targets")
     def add_target(value: dict = Body(...), db=DB):
@@ -289,8 +258,10 @@ def create_app(cfg):
         return intel.observation_report(db, target_id, run_id)
 
     @api.get("/keywords")
-    def keyword_list(db=DB):
-        return [{k: v for k, v in row.items() if k != "token"} for row in db.execute("SELECT * FROM keyword_targets ORDER BY id DESC LIMIT 2000").fetchall()]
+    def keyword_list(store:str="all",country:str="",language:str="",db=DB):
+        scope,args=locales.where(store,country,language)
+        rows=db.execute('SELECT * FROM keyword_targets WHERE '+scope+' ORDER BY id DESC LIMIT 2000',args).fetchall()
+        return [{k:v for k,v in row.items() if k!='token'} for row in rows]
 
     @api.post("/keywords")
     def add_keywords(values: list[dict] = Body(...), db=DB):
@@ -343,18 +314,14 @@ def create_app(cfg):
         return {"items": rows, "summary": analytics.review_summary(db, filters), "next_offset": offset + 100 if len(rows) == 100 else None}
 
     @api.get("/market")
-    def market_summary(country: str = "us", language: str = "en", db=DB):
-        sql = " FROM listings WHERE payload IS NOT NULL AND country=%s AND language=%s"
-        args = (country, language)
-        return {"categories": db.execute("SELECT store,JSON_UNQUOTE(JSON_EXTRACT(payload,'$.category')) label,count(*) count" + sql + " GROUP BY store,label ORDER BY count DESC LIMIT 100", args).fetchall(),
-                "developers": db.execute("SELECT store,JSON_UNQUOTE(JSON_EXTRACT(payload,'$.developer')) label,count(*) count" + sql + " GROUP BY store,label ORDER BY count DESC LIMIT 100", args).fetchall(),
-                "activity": db.execute("SELECT kind,FLOOR(observed_at/86400)*86400 day,count(*) count FROM events WHERE country=%s AND language=%s AND observed_at>=%s GROUP BY kind,day ORDER BY day", (*args, time.time() - 30*86400)).fetchall(),
-                "scope": "仅统计本系统已观察的地区应用；首次发现不等于新上架，不代表全球市场份额"}
+    def market_summary(store:str="all",country:str="us",language:str="en",db=DB):
+        return scoped_views.market_summary(db,store,country,language)
 
     @api.get("/alerts")
-    def alert_list(unread: bool = False, db=DB):
-        return {"rules": db.execute("SELECT * FROM alert_rules ORDER BY id").fetchall(),
-                "items": db.execute("SELECT * FROM alerts" + (" WHERE acknowledged=0" if unread else "") + " ORDER BY id DESC LIMIT 500").fetchall()}
+    def alert_list(unread:bool=False,store:str="all",db=DB):
+        selected=locales.stores(store);marks=','.join('%s' for _ in selected)
+        return {'rules':db.execute('SELECT * FROM alert_rules ORDER BY id').fetchall(),
+                'items':db.execute("SELECT * FROM alerts WHERE JSON_UNQUOTE(JSON_EXTRACT(payload,'$.store')) IN ("+marks+')'+(' AND acknowledged=0' if unread else '')+' ORDER BY id DESC LIMIT 500',selected).fetchall()}
 
     @api.post("/alerts/rules")
     def alert_rule(value: dict = Body(...), db=DB):
@@ -366,12 +333,14 @@ def create_app(cfg):
         return {"id": identifier}
 
     @api.get("/daily")
-    def daily(db=DB):
-        return alerts.daily_report(db)
+    def daily(store:str="all",db=DB):
+        return scoped_views.daily(db,store)
 
     @api.get("/exports")
-    def export_list(db=DB):
-        return db.execute("SELECT id,kind,filters,status,created_at,finished_at,rows_written,error FROM exports ORDER BY created_at DESC LIMIT 100").fetchall()
+    def export_list(store:str='all',db=DB):
+        selected=locales.stores(store)
+        where=" WHERE JSON_UNQUOTE(JSON_EXTRACT(filters,'$.store'))=%s" if len(selected)==1 else ''
+        return db.execute("SELECT id,kind,filters,status,created_at,finished_at,rows_written,error FROM exports"+where+" ORDER BY created_at DESC LIMIT 100",selected if where else None).fetchall()
 
     @api.post("/exports")
     def export_create(value: dict = Body(...), db=DB):
@@ -387,9 +356,10 @@ def create_app(cfg):
         return FileResponse(cfg["data_dir"] / "exports" / f"{identifier}.jsonl", filename=f"{identifier}.jsonl", media_type="application/x-ndjson")
 
     @api.get("/ads")
-    def ads(db=DB):
-        return {"observations": db.execute("SELECT * FROM ad_observations ORDER BY observed_at DESC LIMIT 500").fetchall(),
-                "reports": db.execute("SELECT * FROM ad_reports ORDER BY report_date DESC,id DESC LIMIT 500").fetchall()}
+    def ads(store:str="all",db=DB):
+        scope,args=locales.where(store)
+        return {'observations':db.execute('SELECT * FROM ad_observations WHERE '+scope+' ORDER BY observed_at DESC LIMIT 500',args).fetchall(),
+                'reports':db.execute('SELECT * FROM ad_reports ORDER BY report_date DESC,id DESC LIMIT 500').fetchall() if 'apple' in locales.stores(store) else []}
 
     @api.post("/ads/{kind}/import")
     def ad_import(kind: str, value: dict = Body(...), db=DB):
@@ -410,7 +380,7 @@ def create_app(cfg):
     @api.get('/research/events')
     def event_center(store: str, country: str='us', language: str='en', app_id: str='', kind: str='', field: str='',
                      group_name: str='', days: int=Query(30,ge=1,le=365), db=DB):
-        return insights.event_feed(db,dict(store=store,country=country,language=language,app_id=app_id,kind=kind,field=field,group_name=group_name,days=days))
+        return scoped_views.events(db,dict(store=store,country=country,language=language,app_id=app_id,kind=kind,field=field,group_name=group_name,days=days))
 
     @api.post('/research/annotations')
     def annotate(value:dict=Body(...),db=DB):return insights.add_annotation(db,value)
@@ -419,7 +389,7 @@ def create_app(cfg):
     def market_matrix(store:str,app_id:str,db=DB):return insights.app_markets(db,store,app_id)
 
     @api.get('/research/developers')
-    def developer_list(store:str,q:str='',db=DB):return insights.developers(db,store,q)
+    def developer_list(store:str,q:str='',db=DB):return [row for selected in locales.stores(store) for row in insights.developers(db,selected,q)]
 
     @api.get('/research/developer-apps')
     def developer_detail(store:str,name:str,developer_id:str='',db=DB):return insights.developer_apps(db,store,name,developer_id)
@@ -443,7 +413,7 @@ def create_app(cfg):
     @api.get('/research/reviews')
     def review_inbox(store:str,country:str='us',language:str='en',app_id:str='',status:str='',q:str='',version:str='',label:str='',reply_status:str='',
                      rating:int|None=Query(None,ge=1,le=5),since:float|None=Query(None,ge=0),offset:int=Query(0,ge=0,le=100000),db=DB):
-        return review_desk.desk(db,dict(store=store,country=country,language=language,app_id=app_id,status=status,q=q,version=version,label=label,reply_status=reply_status,rating=rating,since=since,offset=offset))
+        return scoped_views.reviews(db,dict(store=store,country=country,language=language,app_id=app_id,status=status,q=q,version=version,label=label,reply_status=reply_status,rating=rating,since=since,offset=offset))
 
     @api.post('/research/reviews/workflow')
     def review_save(value:dict=Body(...),db=DB):return review_desk.save_case(db,value)
@@ -452,8 +422,9 @@ def create_app(cfg):
     def review_versions(value:dict=Body(...),db=DB):return review_desk.review_history(db,value)
 
     @api.get('/research/comparisons')
-    def sets(db=DB):
-        rows=db.execute('SELECT * FROM comparison_sets ORDER BY updated_at DESC LIMIT 100').fetchall()
+    def sets(store:str="all",db=DB):
+        scope,args=locales.where(store)
+        rows=db.execute('SELECT * FROM comparison_sets WHERE '+scope+' ORDER BY updated_at DESC LIMIT 100',args).fetchall()
         for row in rows:row['members']=json.loads(row['members'])
         return rows
 
@@ -472,8 +443,9 @@ def create_app(cfg):
         return collection_tasks.list_tasks(db,kind=kind,store=store,country=country,language=language,state=state,q=q,page=page,limit=limit)
 
     @api.get('/research/collection/activity')
-    def collection_activity(db=DB):
-        return {'plans':db.execute('SELECT id,name,status,completed,total,error,created_at FROM collection_plans ORDER BY id DESC LIMIT 100').fetchall(),
+    def collection_activity(store:str='all',db=DB):
+        selected=locales.stores(store);marks=','.join('%s' for _ in selected)
+        return {'plans':db.execute("SELECT id,name,status,completed,total,error,created_at FROM collection_plans WHERE COALESCE(JSON_UNQUOTE(JSON_EXTRACT(specification,'$.store')),JSON_UNQUOTE(JSON_EXTRACT(specification,'$.app_request.store'))) IN ("+marks+') ORDER BY id DESC LIMIT 100',selected).fetchall(),
                 'heartbeat':db.execute("SELECT next_at FROM schedules WHERE name='console-heartbeat'").fetchone()}
 
     @api.get('/research/collection/logs/{resource}/{identifier}')

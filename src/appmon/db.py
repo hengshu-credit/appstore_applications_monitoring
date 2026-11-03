@@ -126,6 +126,15 @@ def connect(cfg, *, initialize=True, allow_migration=False):
         if initialize:
             for table, columns in TABLES.items():
                 db.execute(f'CREATE TABLE IF NOT EXISTS `{table}` ({columns}){ENGINE}')
+            if not db.execute("SHOW COLUMNS FROM collection_logs LIKE 'details'").fetchone():
+                # Multiple services may initialize concurrently on deployment.
+                name='appmon:log-details-migration'
+                if db.execute('SELECT GET_LOCK(%s,30) acquired',(name,)).fetchone()['acquired']!=1:
+                    raise RuntimeError('Log schema migration lock unavailable')
+                try:
+                    if not db.execute("SHOW COLUMNS FROM collection_logs LIKE 'details'").fetchone():
+                        db.execute('ALTER TABLE collection_logs ADD COLUMN details LONGTEXT NULL')
+                finally:db.execute('SELECT RELEASE_LOCK(%s)',(name,))
             for table,name,columns in [('apps','apps_store_category','store,category(64)'),
                                        ('requests','requests_app','store,app_id,country,language,id')]:
                 if not db.execute(f"SHOW INDEX FROM {table} WHERE Key_name=%s",(name,)).fetchone():
@@ -145,6 +154,8 @@ def connect(cfg, *, initialize=True, allow_migration=False):
 # Kept in the same registry so initialization, test isolation and exports agree.
 from .intelligence_schema import TABLES as INTELLIGENCE_TABLES
 TABLES.update(INTELLIGENCE_TABLES)
+from .asset_schema import TABLES as ASSET_TABLES
+TABLES.update(ASSET_TABLES)
 
 
 def add_apps(db, rows, source, now=None):

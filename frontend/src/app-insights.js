@@ -16,6 +16,13 @@ export function createAppInsights(ctx) {
   function discovery() {
     const host = document.querySelector("#store-discovery");
     if (!host) return;
+    if (market().store === "all") {
+      host.innerHTML = panel(
+        "搜索商店并入库",
+        '<p class="sub">当前同时展示两家商店的应用库。搜索官方商店或入库时，请先在顶部选择对应商店，以明确应用 ID 的来源。</p>',
+      );
+      return;
+    }
     host.innerHTML = panel(
       "搜索商店并入库",
       `<p class="sub">在当前商店与地区查找应用。支持名称、App ID／包名、官方商店链接。</p><form id="store-search-form" class="toolbar"><label class="wide">搜索内容<input name="query" required maxlength="1000" placeholder="应用名称 / App ID / 官方商店链接"></label><button>搜索商店</button></form><div id="store-search-results" aria-live="polite"></div>`,

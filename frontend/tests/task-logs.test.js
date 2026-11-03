@@ -49,7 +49,18 @@ test("log viewer increments cursor, escapes messages, paginates history and stop
         server_time: 110,
       };
     return {
-      items: [row(2, "<img src=x onerror=bad()>"), row(3, "request sent")],
+      items: [
+        {
+          ...row(2, "<img src=x onerror=bad()>"),
+          level: "error",
+          details: {
+            error_type: "ReadTimeout",
+            timeout_seconds: 30,
+            stack: "<script>bad()</script>",
+          },
+        },
+        row(3, "request sent"),
+      ],
       next_cursor: 3,
       oldest_cursor: 2,
       has_older: true,
@@ -62,10 +73,16 @@ test("log viewer increments cursor, escapes messages, paginates history and stop
     await viewer.open("keywords", 7, "Loan");
     assert.equal(win.document.querySelectorAll(".log-line").length, 2);
     assert.equal(win.document.querySelector(".log-message img"), null);
+    const details = win.document.querySelector(".log-entry-details");
+    assert.ok(details);
+    assert.equal(details.querySelector("script"), null);
+    assert.match(details.textContent, /ReadTimeout/);
+    details.open = true;
     const poll = [...timers.values()].at(-1);
     await poll();
     assert.match(paths.at(-1), /after_id=3/);
     assert.equal(win.document.querySelectorAll(".log-line").length, 3);
+    assert.equal(details.open, true);
     win.document.querySelector("#log-older").click();
     await Promise.resolve();
     await Promise.resolve();

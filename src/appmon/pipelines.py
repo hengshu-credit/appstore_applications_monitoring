@@ -37,6 +37,7 @@ def save(db, cfg, name, value):
                 not isinstance(c,str) or not re.fullmatch('[a-zA-Z]{2}',c) for c in countries):
             raise ValueError('请选择1–30个两字母国家代码')
         language = value.get('language',old['language'])
+        if language=='auto':raise ValueError('基础流程跨多个国家，请指定固定语言；单市场任务支持自动推荐')
         validate_target({'store':'google','country':'us','language':language,'keyword':'check'})
         result.update(countries=list(dict.fromkeys(c.lower() for c in countries)),language=language.lower().replace('_','-'))
     if name=='discovery':

@@ -2,6 +2,8 @@
 import re
 import time
 import uuid
+import json
+from .log_details import clean, sanitize, diagnostics
 from contextlib import contextmanager
 
 
@@ -12,11 +14,11 @@ def safe_message(value):
     return message[:4000]
 
 
-def emit(db, resource, identifier, event, message, level='info', execution_id=None):
+def emit(db, resource, identifier, event, message, level='info', execution_id=None, details=None):
     # No transaction wrapper here: callers may emit atomically with a state change.
-    db.execute('''INSERT INTO collection_logs(resource,target_key,execution_id,created_at,level,event,message)
-        VALUES(%s,%s,%s,%s,%s,%s,%s)''',
-               (resource,str(identifier),execution_id,time.time(),level,event,safe_message(message)))
+    db.execute('''INSERT INTO collection_logs(resource,target_key,execution_id,created_at,level,event,message,details)
+        VALUES(%s,%s,%s,%s,%s,%s,%s,%s)''',
+               (resource,str(identifier),execution_id,time.time(),level,event,clean(message,4000),json.dumps(sanitize(details),ensure_ascii=False) if details else None))
 
 
 class Execution:
@@ -24,15 +26,16 @@ class Execution:
         self.db,self.resource,self.identifier = db,resource,identifier
         self.id,self.started = uuid.uuid4().hex,time.monotonic()
 
-    def write(self,event,message,level='info'):
-        emit(self.db,self.resource,self.identifier,event,message,level,self.id)
+    def write(self,event,message,level='info',details=None):
+        emit(self.db,self.resource,self.identifier,event,message,level,self.id,details)
 
-    def finish(self,outcome,accepted=True,detail=''):
+    def finish(self,outcome,accepted=True,detail='',error=None):
         elapsed = time.monotonic()-self.started
         state = 'stale' if not accepted else outcome
         labels = {'ok':'采集成功，数据已保存','missing':'本次地区查询未发现应用','error':'采集失败，保留上次有效数据','stale':'租约已失效，本次结果未写入'}
         self.write(state,f'{labels.get(state,state)}；耗时 {elapsed:.2f} 秒'+(f'；{detail}' if detail else ''),
-                   'error' if state=='error' else 'warning' if state in ('stale','missing') else 'info')
+                   'error' if state=='error' else 'warning' if state in ('stale','missing') else 'info',
+                   diagnostics(error,duration_seconds=round(elapsed,2)) if error else None)
 
 
 @contextmanager
@@ -44,7 +47,7 @@ def execution(db, client, resource, identifier, label):
     try:
         yield log
     except Exception as exc:
-        log.write('aborted','执行异常中断：'+type(exc).__name__+'；已完成的数据保留，请查看任务状态','error')
+        log.write('aborted','执行异常中断：'+type(exc).__name__+'；已完成的数据保留，请查看任务状态','error',diagnostics(exc))
         raise
     finally:
         if client is not None: client.progress = old
@@ -63,7 +66,7 @@ def target_state(db,resource,identifier):
         row=db.execute('''SELECT w.enabled,j.lease_until,j.due,j.failures,j.last_error FROM watchlist w
             LEFT JOIN jobs j USING(store,app_id,country,language) WHERE w.id=%s''',(int(identifier),)).fetchone()
     else:
-        table={'keywords':'keyword_targets','targets':'observation_targets'}.get(resource)
+        table={'keywords':'keyword_targets','targets':'observation_targets','icons':'app_icons'}.get(resource)
         if table is None: raise ValueError('未知日志类型')
         row=db.execute(f'SELECT enabled,lease_until,due,failures,last_error FROM {table} WHERE id=%s',(int(identifier),)).fetchone()
     if not row: raise ValueError('任务不存在')
@@ -83,6 +86,7 @@ def read_logs(db,resource,identifier,after_id=0,before_id=0,limit=200):
     order='ASC' if after_id else 'DESC'
     rows=list(db.execute(f'SELECT * FROM collection_logs WHERE {where} ORDER BY id {order} LIMIT %s',(*args,limit+1)).fetchall())
     more=len(rows)>limit;rows=rows[:limit]
+    for row in rows:row['details']=json.loads(row['details']) if row.get('details') else None
     if not after_id:rows.reverse()
     oldest=rows[0]['id'] if rows else before_id or 0
     older=bool(oldest and db.execute('SELECT 1 FROM collection_logs WHERE resource=%s AND target_key=%s AND id<%s LIMIT 1',

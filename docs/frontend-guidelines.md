@@ -11,5 +11,6 @@
 7. 前端仅访问 HTTP API；不在浏览器直连数据库、执行采集、保存 API 密钥或计算未定义的数据估算。
 8. 新列表必须说明分页/返回上限，指标必须保留来源、市场、观察时间和覆盖范围。不同国家、语言、来源不可混为同口径排名。
 9. 验证顺序：启动前后端，检查实际页面与窄屏；运行前端交互/主题测试和生产构建；运行后端实际 MySQL 测试；提交推送后核对最终 SHA 的全部远程 CI。
+10. 顶部商店范围贯穿列表查询，双商店榜单保持独立；请求语言默认按国家和商店匹配，显式语言选项不自动改写。应用图标复用统一的按需缓存组件，采集错误详情通过日志面板查看。行为边界见 [控制台体验说明](console-experience.md)。
 
 参考代码：天枢 `rule-engine-web/src/theme/themeConfig.js`、`themeRuntime.js`、`styles/theme-tokens.scss`、`components/theme/ThemeSettingsDrawer.vue`、`styles/index.scss`。天枢自身仍有圆角，本项目按用户明确要求统一直角。

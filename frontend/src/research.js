@@ -94,7 +94,7 @@ export function createResearchPages(ctx) {
     ratings: "评分数",
   };
   const marketCaption = (m) =>
-    `${m.store === "apple" ? "App Store" : "Google Play"} · ${selectors.countryName(m.country)} / ${m.language}`;
+    `${m.store === "all" ? "全部商店" : m.store === "apple" ? "App Store" : "Google Play"} · ${selectors.countryName(m.country)} / ${m.language === "auto" ? "自动语言" : m.language}`;
   function dialog(title, html) {
     const old = $("#research-dialog");
     old?.remove();
@@ -236,6 +236,10 @@ export function createResearchPages(ctx) {
       }
     });
     bindButton("#add-annotation", () => {
+      if (market().store === "all") {
+        toast("请先在顶部选择注记所属的应用商店");
+        return;
+      }
       dialog(
         "添加复盘注记",
         `<form id="annotation-form" class="form-grid">${field("应用ID", "app_id", filters.app_id || "", "text", "required")}${field("事件日期（UTC）", "day", dateInput(Date.now() / 1000), "date", "required")}${field("标题", "title", "", "text", 'required maxlength="255"')}${field("证据链接（可空）", "evidence_url", "", "url")}<label class="full">复盘说明<textarea name="note" maxlength="4000"></textarea></label><button type="submit">保存注记</button></form>`,
@@ -254,6 +258,16 @@ export function createResearchPages(ctx) {
   }
 
   async function aso(rev, appId = "") {
+    if (market().store === "all") {
+      mount(
+        panel(
+          "选择应用商店",
+          '<p class="sub">ASO 文案和字段各有不同，请在顶部选择 Google Play 或 App Store 后编辑。</p>',
+        ),
+        rev,
+      );
+      return;
+    }
     if (
       !mount(
         `<p class="lead">编辑本地元数据草稿，对照实际关键词排名与文本覆盖；保存版本后再到自己的商店后台发布。</p>${panel("选择应用市场", `<form id="aso-load" class="toolbar">${field("应用 ID", "app_id", appId, "text", "required")}<button type="submit">加载已采文案</button></form><p class="sub">${esc(marketCaption(market()))}。Apple后台关键词和未采集副标题需由用户提供。</p>`)}<div id="aso-workspace">${empty("选择应用开始文案核查", "公开详情会作为基准快照；不会读取竞品私有后台。")}</div>`,
@@ -269,7 +283,7 @@ export function createResearchPages(ctx) {
     let activeDraft = null;
     const fields = data.checks.counters;
     $("#aso-workspace").innerHTML =
-      `<div class="callout">公开文案最近成功：${esc(stamp(data.last_success))} · 基准快照 ${data.snapshot?.id || "暂无"} · 未提供字段：${data.unavailable_fields.map((k) => esc(fieldNames[k] || k)).join("、") || "无"}</div><div class="research-grid"><section class="panel"><h2>文案编辑</h2><form id="aso-editor">${field("草稿名称", "draft_name", "文案优化草稿", "text", 'required maxlength="120"')}${fields.map((f) => `<label class="spacer">${esc(f.label)}<textarea data-aso-field="${f.field}" name="${f.field}" rows="${f.field === "description" ? 7 : 2}">${esc(data.metadata[f.field])}</textarea><span class="field-counter" data-counter="${f.field}"></span></label>`).join("")}<label class="spacer">本次修改说明<textarea name="note" rows="2" maxlength="4000"></textarea></label><div class="toolbar spacer"><button type="submit">保存本地草稿</button><button type="button" class="secondary" id="aso-check">核查文案</button><button type="button" class="secondary" id="aso-new">另存新草稿</button></div></form></section><section class="panel"><h2>商店文案预览</h2><div class="listing-preview">${link(data.creative?.icon) ? `<img class="preview-icon" src="${link(data.creative.icon)}" alt="应用图标">` : '<div class="preview-icon">◈</div>'}<div><h3 id="preview-title"></h3><p id="preview-summary" class="sub"></p><span class="badge neutral">本地草稿 · 未发布</span></div></div><h3 class="spacer">核查词库</h3><label>每行一个关键词<textarea id="aso-words">${esc(data.keywords.map((w) => w.keyword).join("\n"))}</textarea></label><p class="sub">文本命中不代表被商店索引；排名来自当前已跟踪词库。</p><div id="aso-findings"></div><div id="aso-coverage"></div></section></div>${panel(
+      `<div class="callout">公开文案最近成功：${esc(stamp(data.last_success))} · 基准快照 ${data.snapshot?.id || "暂无"} · 未提供字段：${data.unavailable_fields.map((k) => esc(fieldNames[k] || k)).join("、") || "无"}</div><div class="research-grid"><section class="panel"><h2>文案编辑</h2><form id="aso-editor">${field("草稿名称", "draft_name", "文案优化草稿", "text", 'required maxlength="120"')}${fields.map((f) => `<label class="spacer">${esc(f.label)}<textarea data-aso-field="${f.field}" name="${f.field}" rows="${f.field === "description" ? 7 : 2}">${esc(data.metadata[f.field])}</textarea><span class="field-counter" data-counter="${f.field}"></span></label>`).join("")}<label class="spacer">本次修改说明<textarea name="note" rows="2" maxlength="4000"></textarea></label><div class="toolbar spacer"><button type="submit">保存本地草稿</button><button type="button" class="secondary" id="aso-check">核查文案</button><button type="button" class="secondary" id="aso-new">另存新草稿</button></div></form></section><section class="panel"><h2>商店文案预览</h2><div class="listing-preview">${appLink(m.store, m.app_id, data.metadata.name || m.app_id, data.creative?.icon, m.country, m.language)}<div><h3 id="preview-title"></h3><p id="preview-summary" class="sub"></p><span class="badge neutral">本地草稿 · 未发布</span></div></div><h3 class="spacer">核查词库</h3><label>每行一个关键词<textarea id="aso-words">${esc(data.keywords.map((w) => w.keyword).join("\n"))}</textarea></label><p class="sub">文本命中不代表被商店索引；排名来自当前已跟踪词库。</p><div id="aso-findings"></div><div id="aso-coverage"></div></section></div>${panel(
         "草稿版本库",
         '<div id="aso-draft-list"></div>',
       )}<div id="aso-versions"></div>`;
@@ -424,7 +438,7 @@ export function createResearchPages(ctx) {
     const mean = data.summary.mean_review_rating;
     if (
       !mount(
-        `<p class="lead">从评论中识别问题、分派处理并保存复盘记录。内部处理状态与商店公开回复分别展示。</p><div class="cards">${metric("匹配评论", data.summary.total, "当前筛选的已采集样本")}${metric("评论平均星级", mean == null ? null : Number(mean).toFixed(2), "不是商店累计评分")}${metric("当前页", data.items.length, "每页最多50条")}${metric("当前页待处理", data.items.filter((r) => r.workflow_status !== "closed").length, "包含评论变化后待复核的记录")}</div>${panel(
+        `<p class="lead">从评论中识别问题、分派处理并保存复盘记录。内部处理状态与商店公开回复分别展示。</p><div class="cards">${metric("匹配评论", data.summary.total, "当前筛选的已采集样本")}${metric("评论平均星级", mean == null ? null : Number(mean).toFixed(2), "不是商店累计评分")}${metric("当前页", data.items.length, market().store === "all" ? "每店每页最多50条" : "每页最多50条")}${metric("当前页待处理", data.items.filter((r) => r.workflow_status !== "closed").length, "包含评论变化后待复核的记录")}</div>${panel(
           "评论筛选",
           `<form id="review-desk-filter" class="toolbar">${field("应用ID", "app_id", filters.app_id || "")}${select(
             "处理状态",
@@ -549,6 +563,9 @@ export function createResearchPages(ctx) {
       )
     )
       return;
+    if (market().store === "all")
+      $("#set-form").innerHTML =
+        '<p class="sub">已展示两家商店的竞品集合。新建同市场集合前，请在顶部选择单个商店。</p>';
     bindForm("#set-form", async (v) => {
       const ids = [v.primary, ...v.competitors.split(/\s+/).filter(Boolean)];
       await api("/research/comparisons", {

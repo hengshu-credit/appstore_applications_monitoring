@@ -52,6 +52,8 @@ def save_result(db, cfg, job, result=None, error=None, now=None):
             payload = previous["payload"] if previous else None
             digest = previous["digest"] if previous else None
             if outcome == "ok":
+                from .app_icons import remember
+                remember(db,job['store'],job['app_id'],job['country'],job['language'],result.payload.get('icon'),result.payload.get('name'))
                 new_payload = dump(result.payload)
                 new_digest = hashlib.sha256(new_payload.encode()).hexdigest()
                 state, misses, last_success = "available", 0, now
@@ -116,9 +118,11 @@ def work(cfg, db, limit, client=None, managed=False):
             break
         from .task_logs import execution
         with execution(db,client,'pipelines','pool',f"{job['store']} / {job['app_id']} / {job['country']}") as task_log:
+            failure = None
             try:
                 result = client.fetch(job)
             except FetchError as e:
+                failure = e
                 accepted = save_result(db, cfg, job, error=e)
                 outcome = "error"
                 detail = str(e) + "；已安排退避重试"
@@ -126,7 +130,7 @@ def work(cfg, db, limit, client=None, managed=False):
                 accepted = save_result(db, cfg, job, result=result)
                 outcome = result.outcome
                 detail = "地区状态与版本观察已处理"
-            task_log.finish(outcome,accepted,detail)
+            task_log.finish(outcome,accepted,detail,error=failure)
         counts["processed"] += 1
         counts[outcome if accepted else "stale"] += 1
         log.info("%s %s %s %s", job["store"], job["app_id"], job["country"], outcome)
@@ -157,6 +161,7 @@ def discover(cfg, db, client=None, max_sources=None, managed=False):
             continue
         from .task_logs import execution
         with execution(db,client,'pipelines','discovery',name) as task_log:
+            failure = None
             try:
                 rows = client.discover(*source)
                 if any(not valid_id(row[0], row[1]) for row in rows):
@@ -178,7 +183,7 @@ def discover(cfg, db, client=None, max_sources=None, managed=False):
                                (name, time.time(), message))
                 reserve(db, "discover:" + name, 3600)
                 results.append({"source": name, "error": message})
-                task_log.finish("error",detail=message+"；1小时后重试")
+                task_log.finish("error",detail=message+"；1小时后重试",error=e)
         log.info("Discovery %s: %s", name, results[-1])
     return results
 

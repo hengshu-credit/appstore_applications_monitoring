@@ -1,4 +1,5 @@
 import { icon, storeLogo } from "./icons.js";
+import { autoCaption, languageChoices } from "./market-scope.js";
 export const languages = [
   ["en", "英语"],
   ["zh-cn", "简体中文"],
@@ -53,29 +54,47 @@ const esc = (v) =>
 export function initMarketControls(win = window) {
   const doc = win.document;
   const controllers = [];
+  let preferences;
   for (const kind of ["store", "language"]) {
     const input = doc.querySelector(`#global-${kind}`),
       trigger = doc.querySelector(`#${kind}-trigger`);
     if (!input || !trigger) continue;
     const menu = doc.querySelector(`#${kind}-menu`);
-    const choices =
+    const choicesFor = () =>
       kind === "store"
         ? [
             ["google", "Google Play"],
             ["apple", "App Store"],
+            ["all", "全部商店"],
           ]
-        : languages;
+        : languageChoices(
+            preferences,
+            doc.querySelector("#global-store").value,
+            doc.querySelector("#global-country").value,
+            languages,
+          );
     function label(code, name) {
       return kind === "store"
-        ? `${storeLogo(code)}<span>${name}</span>`
+        ? `${code === "all" ? `<span class="store-logo-stack">${storeLogo("google")}${storeLogo("apple")}</span>` : storeLogo(code)}<span>${name}</span>`
         : `<span>${esc(name)}</span><small>${esc(code)}</small>`;
     }
     function sync() {
+      const choices = choicesFor();
       const selected = choices.find((v) => v[0] === input.value) || [
         input.value,
         "自定义语言",
       ];
-      trigger.querySelector(".market-value").innerHTML = label(...selected);
+      trigger.querySelector(".market-value").innerHTML =
+        input.value === "auto"
+          ? esc(
+              autoCaption(
+                preferences,
+                doc.querySelector("#global-store").value,
+                doc.querySelector("#global-country").value,
+              ),
+            )
+          : label(...selected);
+      trigger.title = trigger.textContent.trim();
     }
     function close(focus = false) {
       menu.hidden = true;
@@ -83,12 +102,16 @@ export function initMarketControls(win = window) {
       if (focus) trigger.focus();
     }
     function render(query = "") {
+      const choices = choicesFor();
       let rows = choices.filter(([code, name]) =>
         (code + " " + name).toLowerCase().includes(query.toLowerCase()),
       );
       if (
         kind === "language" &&
         /^[a-z]{2,3}(?:-[a-z]{2}|-[a-z]{4})?(?:-[a-z]{2})?$/.test(query) &&
+        (!!preferences?.languages?.[query.split("-")[0]] ||
+          languages.some(([c]) => c === query.split("-")[0])) &&
+        !["kz", "us", "und", "zxx"].includes(query) &&
         !choices.some((v) => v[0] === query)
       )
         rows = [...rows, [query, "使用此语言代码"]];
@@ -173,5 +196,11 @@ export function initMarketControls(win = window) {
       'class="ui-icon"',
       'class="ui-icon chevron"',
     );
-  return { sync: () => controllers.forEach((c) => c.sync()) };
+  return {
+    sync: () => controllers.forEach((c) => c.sync()),
+    setPreferences(value) {
+      preferences = value;
+      controllers.forEach((c) => c.sync());
+    },
+  };
 }

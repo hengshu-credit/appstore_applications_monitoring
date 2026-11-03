@@ -13,6 +13,7 @@ from .keyword_stores import APPLE_MARKETS, PARSER_VERSION, SOURCES, KeywordClien
 from .monitor import raw_save
 from .stores import FetchError
 from .catalog import APPLE_COUNTRIES
+from .locales import language_for
 
 log = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ log = logging.getLogger(__name__)
 def validate_target(value):
     store = value.get("store")
     country = str(value.get("country", "")).lower()
-    language = str(value.get("language", "")).lower().replace("_", "-")
+    language = language_for(store,country,value.get("language", "auto"))
     keyword = value.get("keyword")
     if not isinstance(keyword, str):
         raise ValueError("keyword must be text")
@@ -31,8 +32,6 @@ def validate_target(value):
         raise ValueError("store must be google/apple and country must be a two-letter code")
     if store == "apple" and country not in APPLE_COUNTRIES:
         raise ValueError("该地区未列入 Apple 官方 App Store 市场；请选择其他地区，不会自动切换至美国")
-    if not re.fullmatch(r"[a-z]{2,3}(?:-[a-z]{2}|-[a-z]{4})?(?:-[a-z]{2})?", language):
-        raise ValueError("language must be a language tag, e.g. th, vi, fil, en-ph")
     depth = value.get("depth", 50)
     hours = value.get("refresh_hours", 24)
     if type(depth) is not int or not 1 <= depth <= 200:
@@ -134,9 +133,11 @@ def work_keywords(cfg, db, limit=200, client=None, target_id=None, refresh=False
             break
         from .task_logs import execution
         with execution(db,client,'keywords',target['id'],f"{target['store']} / {target['country']} / {target['language']}") as task_log:
+            failure = None
             try:
                 result = client.search(target)
             except FetchError as exc:
+                failure = exc
                 accepted = save_search(db, cfg, target, error=exc)
                 outcome = "error"
                 detail = str(exc) + f"；失败次数 {target['failures']+1}，已安排退避重试"
@@ -144,7 +145,7 @@ def work_keywords(cfg, db, limit=200, client=None, target_id=None, refresh=False
                 accepted = save_search(db, cfg, target, result=result)
                 outcome = "ok"
                 detail = f"返回应用 {len(result.apps)} 条"
-            task_log.finish(outcome,accepted,detail)
+            task_log.finish(outcome,accepted,detail,error=failure)
         counts["processed"] += 1
         counts[outcome if accepted else "stale"] += 1
         log.info("Keyword %s %s/%s/%s: %s", target["id"], target["store"],

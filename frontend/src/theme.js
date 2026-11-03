@@ -203,10 +203,12 @@ export function initTheme(win = window) {
   const drawer = doc.createElement("dialog");
   drawer.id = "theme-settings";
   drawer.setAttribute("aria-labelledby", "theme-title");
-  drawer.innerHTML = `<form method="dialog" class="drawer-head"><h2 id="theme-title">主题设置</h2><button class="secondary small" aria-label="取消主题设置">取消</button></form><p class="sub">修改即时预览，保存后保留在当前浏览器。矩形控件统一使用直角。</p>
-    <form id="theme-form"><div class="form-grid"><label>显示模式<select name="colorScheme"><option value="LIGHT">浅色</option><option value="DARK">深色</option><option value="SYSTEM">跟随系统</option></select></label><label>主题色模式<select name="accentMode"><option value="PRESET">预设主题</option><option value="CUSTOM_SOLID">自定义纯色</option><option value="CUSTOM_GRADIENT">自定义渐变</option></select></label><label class="full">主题预设<select name="accentPreset">${PRESETS.map((p) => `<option value="${p[0]}">${p[1]}</option>`).join("")}</select></label><div class="full theme-swatches" aria-label="预设主题"></div>
-    <label>自定义纯色<input name="customSolidColor" type="color"></label><label>渐变类型<select name="customGradientType"><option value="LINEAR">线性</option><option value="RADIAL">径向</option></select></label><label class="full">渐变颜色（2–3 个 HEX 色值，逗号分隔）<input name="gradientText" placeholder="#2639E9,#873FF2"></label><label>渐变角度<input name="customGradientAngle" type="number" min="0" max="360" step="1"></label>
-    <label>导航布局<select name="navigationLayout"><option value="LEFT">左侧导航</option><option value="TOP">顶部导航</option></select></label><label>导航配色<select name="sidebarTheme"><option value="DARK">深色</option><option value="LIGHT">浅色</option></select></label><label>内容宽度<select name="contentWidth"><option value="FLUID">自适应</option><option value="FIXED">居中定宽</option></select></label><label>表格滚动<select name="tableScrollMode"><option value="AUTO">随页面滚动</option><option value="FIXED">固定表头 / 内部滚动</option></select></label><label class="check-label"><input type="checkbox" name="fixedSidebar">固定导航</label><label class="check-label"><input type="checkbox" name="colorWeak">色弱辅助</label></div><p id="theme-error" role="alert"></p><div class="toolbar"><button type="submit">保存主题</button><button type="button" class="secondary" id="reset-theme">恢复默认</button></div></form>`;
+  drawer.innerHTML = `<form method="dialog" class="drawer-head"><h2 id="theme-title">主题设置</h2><button class="secondary small" aria-label="取消主题设置">取消</button></form><p class="sub">点选预设或色块即可预览，保存后保留在当前浏览器。</p>
+    <form id="theme-form"><div class="form-grid"><label>显示模式<select name="colorScheme"><option value="LIGHT">浅色</option><option value="DARK">深色</option><option value="SYSTEM">跟随系统</option></select></label><label>配色方式<select name="accentMode"><option value="PRESET">主题预设</option><option value="CUSTOM_SOLID">自选纯色</option><option value="CUSTOM_GRADIENT">自选渐变</option></select></label></div>
+    <section data-color-section="PRESET" class="theme-section"><label>主题预设<select name="accentPreset">${PRESETS.map((p) => `<option value="${p[0]}">${p[1]}</option>`).join("")}</select></label><div class="theme-swatches" aria-label="预设主题"></div></section>
+    <section data-color-section="CUSTOM_SOLID" class="theme-section"><label>点击色块选择主题色<input name="customSolidColor" type="color" aria-label="主题纯色"></label><p class="sub">使用系统颜色选择器，不需要填写色号。</p></section>
+    <section data-color-section="CUSTOM_GRADIENT" class="theme-section"><div class="theme-gradient-preview" aria-label="渐变效果预览"></div><label>渐变类型<select name="customGradientType"><option value="LINEAR">线性渐变</option><option value="RADIAL">径向渐变</option></select></label><input name="gradientText" type="hidden"><div id="gradient-stops" class="gradient-stops"></div><button type="button" class="secondary small" id="toggle-gradient-stop">添加中间色</button><div id="gradient-direction"><label>渐变方向 <output id="gradient-angle-value"></output><input name="customGradientAngle" type="range" min="0" max="360" step="1"></label><div class="theme-directions"><button type="button" class="secondary small" data-theme-angle="90">水平</button><button type="button" class="secondary small" data-theme-angle="0">垂直</button><button type="button" class="secondary small" data-theme-angle="135">对角</button></div></div></section>
+    <details class="theme-layout"><summary>布局与辅助选项</summary><div class="form-grid"><label>导航布局<select name="navigationLayout"><option value="LEFT">左侧导航</option><option value="TOP">顶部导航</option></select></label><label>导航配色<select name="sidebarTheme"><option value="DARK">深色</option><option value="LIGHT">浅色</option></select></label><label>内容宽度<select name="contentWidth"><option value="FLUID">自适应</option><option value="FIXED">居中定宽</option></select></label><label>表格滚动<select name="tableScrollMode"><option value="AUTO">随页面滚动</option><option value="FIXED">固定表头 / 内部滚动</option></select></label><label class="check-label"><input type="checkbox" name="fixedSidebar">固定导航</label><label class="check-label"><input type="checkbox" name="colorWeak">色弱辅助</label></div></details><p id="theme-error" role="alert"></p><div class="toolbar theme-footer"><button type="submit">保存主题</button><button type="button" class="secondary" id="reset-theme">恢复默认</button></div></form>`;
   doc.body.append(drawer);
   const form = drawer.querySelector("#theme-form"),
     error = drawer.querySelector("#theme-error");
@@ -220,6 +222,47 @@ export function initTheme(win = window) {
     }
     form.elements.namedItem("gradientText").value =
       config.customGradientColors.join(",");
+    drawer
+      .querySelectorAll("[data-color-section]")
+      .forEach(
+        (section) =>
+          (section.hidden = section.dataset.colorSection !== config.accentMode),
+      );
+    const stops = drawer.querySelector("#gradient-stops");
+    if (
+      stops.querySelectorAll("input").length !==
+      config.customGradientColors.length
+    )
+      stops.innerHTML = config.customGradientColors
+        .map(
+          (color, i) =>
+            `<label>${i === 0 ? "起始色" : i === config.customGradientColors.length - 1 ? "结束色" : "中间色"}<input type="color" data-gradient-index="${i}" aria-label="渐变颜色 ${i + 1}"></label>`,
+        )
+        .join("");
+    stops
+      .querySelectorAll("input")
+      .forEach((input, i) => (input.value = config.customGradientColors[i]));
+    drawer.querySelector("#toggle-gradient-stop").textContent =
+      config.customGradientColors.length === 2 ? "添加中间色" : "移除中间色";
+    drawer.querySelector("#gradient-angle-value").textContent =
+      config.customGradientAngle + "°";
+    drawer.querySelector("#gradient-direction").hidden =
+      config.customGradientType === "RADIAL";
+    drawer.querySelector(".theme-gradient-preview").style.background =
+      config.customGradientType === "RADIAL"
+        ? `radial-gradient(circle,${config.customGradientColors.join(",")})`
+        : `linear-gradient(${config.customGradientAngle}deg,${config.customGradientColors.join(",")})`;
+    drawer
+      .querySelectorAll(".theme-swatch")
+      .forEach((b) =>
+        b.setAttribute(
+          "aria-pressed",
+          String(
+            config.accentMode === "PRESET" &&
+              b.dataset.preset === config.accentPreset,
+          ),
+        ),
+      );
   }
   function read() {
     const data = Object.fromEntries(new win.FormData(form));
@@ -258,9 +301,36 @@ export function initTheme(win = window) {
       drawer.close();
     }
   });
-  form.addEventListener("change", (event) => {
+  function changed(event) {
+    if (event.target.dataset.gradientIndex !== undefined) {
+      const colors = [...config.customGradientColors];
+      colors[Number(event.target.dataset.gradientIndex)] = event.target.value;
+      form.elements.namedItem("gradientText").value = colors.join(",");
+    }
     if (event.target.name !== "gradientText") read();
+  }
+  form.addEventListener("change", changed);
+  form.addEventListener("input", (event) => {
+    if (["color", "range"].includes(event.target.type)) changed(event);
   });
+  drawer
+    .querySelector("#toggle-gradient-stop")
+    .addEventListener("click", () => {
+      const colors = config.customGradientColors;
+      form.elements.namedItem("gradientText").value = (
+        colors.length === 2
+          ? [colors[0], mix(colors[0], colors[1], 0.5), colors[1]]
+          : [colors[0], colors[2]]
+      ).join(",");
+      read();
+    });
+  drawer.querySelectorAll("[data-theme-angle]").forEach((b) =>
+    b.addEventListener("click", () => {
+      form.elements.namedItem("customGradientAngle").value =
+        b.dataset.themeAngle;
+      read();
+    }),
+  );
   drawer.querySelector("#reset-theme").addEventListener("click", () => {
     preview(DEFAULT_THEME);
     sync();
@@ -272,7 +342,9 @@ export function initTheme(win = window) {
     button.className = "theme-swatch";
     button.title = p[1];
     button.setAttribute("aria-label", p[1]);
-    button.style.background =
+    button.dataset.preset = p[0];
+    button.innerHTML = `<span class="theme-swatch-color" aria-hidden="true"></span><span class="theme-swatch-name">${p[1]}</span>`;
+    button.querySelector(".theme-swatch-color").style.background =
       p.length > 3 ? `linear-gradient(135deg,${p[2]},${p[3]})` : p[2];
     button.addEventListener("click", () => {
       preview({ ...config, accentMode: "PRESET", accentPreset: p[0] });

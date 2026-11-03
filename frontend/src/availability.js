@@ -47,13 +47,19 @@ export function createAvailabilityPage(ctx) {
           .map(([state, label]) =>
             panel(
               label + " · 每日状态快照（UTC）",
-              chart(
-                r.history.map((h) => ({
-                  at: h.day,
-                  value: h.counts[state]?.count || 0,
-                  note: `${label} · 快照采集 ${stamp(h.observed_at)} · 最近48小时检查 ${h.counts[state]?.fresh || 0}`,
-                })),
-              ),
+              (r.reports || [r])
+                .map(
+                  (part) =>
+                    `<p class="sub">${part.market.store === "apple" ? "App Store" : "Google Play"} · ${esc(part.market.language)}</p>` +
+                    chart(
+                      part.history.map((h) => ({
+                        at: h.day,
+                        value: h.counts[state]?.count || 0,
+                        note: `${label} · 快照采集 ${stamp(h.observed_at)} · 最近48小时检查 ${h.counts[state]?.fresh || 0}`,
+                      })),
+                    ),
+                )
+                .join(""),
             ),
           )
           .join(
@@ -63,7 +69,14 @@ export function createAvailabilityPage(ctx) {
           `<p class="sub">最近最多${r.limit}条。缺失次数须满足采集配置的次数和间隔，网络错误单独重试。</p>${table(
             ["应用", "有效状态", "已计入缺失次数", "最近检查", "采集错误"],
             r.pending.map((a) => [
-              appLink(m.store, a.app_id, a.name),
+              appLink(
+                a.store || m.store,
+                a.app_id,
+                a.name,
+                null,
+                a.country,
+                a.language,
+              ),
               esc(labels[a.state] || a.state),
               num(a.misses),
               stamp(a.checked_at),
@@ -75,7 +88,14 @@ export function createAvailabilityPage(ctx) {
           `<p class="sub">最近最多${r.limit}条。首次验证是观星观察起点；重新出现和地区不可用均保留历史证据。</p>${table(
             ["应用", "事件", "观察时间"],
             r.events.map((e) => [
-              appLink(m.store, e.app_id, e.name),
+              appLink(
+                e.store || m.store,
+                e.app_id,
+                e.name,
+                null,
+                e.country,
+                e.language,
+              ),
               esc(names[e.kind]),
               stamp(e.observed_at),
             ]),

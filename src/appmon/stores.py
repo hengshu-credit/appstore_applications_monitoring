@@ -14,9 +14,10 @@ from .db import reserve
 
 
 class FetchError(Exception):
-    def __init__(self, message, retry_after=0):
+    def __init__(self, message, retry_after=0, details=None):
         super().__init__(message)
         self.retry_after = retry_after
+        self.details = details or {}
 
 
 @dataclass
@@ -49,6 +50,7 @@ class Client:
         time.sleep(delay)
         self.report('request', f'{method} 请求 {urlsplit(url).hostname}；超时上限 {self.cfg["timeout_seconds"]} 秒')
         started = time.monotonic()
+        details=dict(stage='http_request',method=method,host=urlsplit(url).hostname,timeout_seconds=self.cfg['timeout_seconds'])
         try:
             if method == "GET":
                 r = self.session.get(url, timeout=self.cfg["timeout_seconds"], **kwargs)
@@ -56,7 +58,7 @@ class Client:
                 r = self.session.request(method, url, timeout=self.cfg["timeout_seconds"], **kwargs)
         except requests.RequestException as e:
             # Do not persist exception URLs, proxy credentials or bearer tokens.
-            raise FetchError(type(e).__name__) from e
+            raise FetchError(type(e).__name__,details=details) from e
         self.report('response', f'HTTP {r.status_code}；响应耗时 {time.monotonic()-started:.2f} 秒')
         if r.status_code in (403, 429) or r.status_code >= 500:
             delay = 300
@@ -69,16 +71,17 @@ class Client:
                 except (TypeError, ValueError):
                     pass
             reserve(self.db, f"rate:{store}", delay)
-            raise FetchError(f"HTTP {r.status_code}", delay)
+            raise FetchError(f"HTTP {r.status_code}", delay, details|dict(status_code=r.status_code,retry_after_seconds=delay))
         if r.status_code not in (200, 404):
-            raise FetchError(f"HTTP {r.status_code}")
+            raise FetchError(f"HTTP {r.status_code}",details=details|dict(status_code=r.status_code))
         return r
 
     def fetch(self, job):
         store, app_id = job["store"], job["app_id"]
         if store == "apple":
             r = self.get(store, "https://itunes.apple.com/lookup",
-                         {"id": app_id, "country": job["country"], "entity": "software"})
+                         {"id": app_id, "country": job["country"], "entity": "software", "lang":job.get("language","en")},
+                         headers={"Accept-Language":job.get("language","en")})
             if r.status_code != 200:
                 raise FetchError("Apple lookup endpoint unavailable")
             try:

@@ -27,6 +27,20 @@ def record_daily(db, now=None):
 
 
 def report(db, value):
+    if value.get('store')=='all':
+        reports=[report(db,value|{'store':s}) for s in ('google','apple')]
+        counts={};attempts={}
+        for r in reports:
+            for c in r['counts']:
+                row=counts.setdefault(c['state'],dict(state=c['state'],count=0,fresh=0))
+                row['count']+=c['count'];row['fresh']+=int(c['fresh'] or 0)
+            for a in r['attempts']:attempts[a['outcome']]=attempts.get(a['outcome'],0)+a['count']
+        return {'market':value,'reports':reports,'observed_at':time.time(),'counts':list(counts.values()),'history':[],
+            'attempts':[{'outcome':k,'count':v} for k,v in attempts.items()],
+            'pending':[p for r in reports for p in r['pending']],
+            'events':sorted([p for r in reports for p in r['events']],key=lambda p:p['observed_at'],reverse=True),
+            'unobserved_watched':sum(r['unobserved_watched'] for r in reports),'limit':200,
+            'scope':'两家商店分别按当前国家与请求语言查询；数量汇总，历史曲线按商店区分。首次验证不等于新上架。'}
     m = market(value, require_app=False)
     days = value.get('days', 30)
     if type(days) is not int or not 1 <= days <= 365:

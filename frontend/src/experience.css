@@ -1,0 +1,171 @@
+/* Compact context controls; body forms retain their standard 42px size. */
+header {
+  padding: 10px 28px;
+  gap: 12px;
+}
+header > div:first-child {
+  min-width: 0;
+}
+header .eyebrow {
+  display: none;
+}
+header h1 {
+  font-size: 20px;
+  margin: 0;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+}
+header .market {
+  --control-height: 34px;
+  gap: 8px;
+}
+header .store-field,
+header .market .country-field {
+  width: 150px;
+}
+header .language-field {
+  width: 160px;
+}
+header #store-trigger,
+header .market #country-trigger,
+header #language-trigger,
+header #refresh-page,
+header #open-theme {
+  height: 34px;
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+header .market-field,
+header .country-field {
+  gap: 3px;
+  font-size: 11px;
+}
+header .market-value,
+header .market-actions button {
+  font-size: 13px;
+}
+.store-logo-stack {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.store-logo-stack .store-logo {
+  width: 18px;
+  height: 18px;
+  flex-basis: 18px;
+}
+.language-note {
+  padding: 6px 9px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.appicon-wrap {
+  position: relative;
+  display: inline-block;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+}
+.appicon-wrap .appicon {
+  position: absolute;
+  inset: 0;
+}
+.appicon-wrap [hidden] {
+  display: none;
+}
+button.appicon-refresh.link {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 17px;
+  height: 17px;
+  padding: 1px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--accent-text);
+  opacity: 0;
+}
+button.appicon-refresh.link .ui-icon {
+  width: 12px;
+  height: 12px;
+}
+.appicon-wrap:hover .appicon-refresh,
+.appicon-refresh:focus-visible,
+.appicon-wrap[data-icon-status="error"] .appicon-refresh,
+.appicon-wrap[data-icon-status="paused"] .appicon-refresh {
+  opacity: 1;
+}
+.appicon-wrap[aria-busy="true"]::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+}
+.store-scope-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.store-scope-badge .store-logo {
+  width: 14px;
+  height: 14px;
+  flex-basis: 14px;
+}
+.log-entry-details {
+  margin-top: 6px;
+}
+.log-entry-details summary {
+  cursor: pointer;
+  color: var(--accent-text);
+}
+.log-entry-details pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 300px;
+  overflow: auto;
+  font-size: 12px;
+}
+.multi-store-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.multi-store-grid > .panel {
+  min-width: 0;
+}
+.store-choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px;
+  border: 1px solid var(--line);
+  background: var(--soft);
+  margin-bottom: 16px;
+}
+@media (max-width: 1100px) {
+  .multi-store-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 750px) {
+  header {
+    padding: 12px 18px;
+    gap: 10px;
+  }
+  header h1 {
+    font-size: 18px;
+  }
+}

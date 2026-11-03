@@ -11,6 +11,34 @@ const taskStates = {
 export function createTaskLogViewer({ api, esc, stamp }, win = window) {
   const doc = win.document;
   let current = null;
+  const detailNames = {
+    error_type: "异常类型",
+    cause_type: "底层异常",
+    stage: "执行阶段",
+    method: "请求方式",
+    host: "服务域名",
+    status_code: "HTTP 状态",
+    timeout_seconds: "超时上限（秒）",
+    retry_after_seconds: "重试等待（秒）",
+    duration_seconds: "耗时（秒）",
+    stack: "调用位置",
+    note: "说明",
+  };
+  function expandedDetails(row) {
+    if (!row.details && row.level !== "error") return "";
+    const details =
+      row.details && typeof row.details === "object"
+        ? row.details
+        : { note: "这条历史记录仅保留摘要，没有记录更详细的诊断信息。" };
+    return `<details class="log-entry-details"><summary>${row.level === "error" ? "查看错误详情" : "查看详细日志"}</summary>${Object.entries(
+      details,
+    )
+      .map(
+        ([key, value]) =>
+          `<div class="log-detail-field"><strong>${esc(detailNames[key] || key)}</strong><pre>${esc(typeof value === "object" ? JSON.stringify(value, null, 2) : String(value))}</pre></div>`,
+      )
+      .join("")}</details>`;
+  }
   function close() {
     current?.close();
   }
@@ -65,7 +93,7 @@ export function createTaskLogViewer({ api, esc, stamp }, win = window) {
         const li = doc.createElement("li");
         li.dataset.id = row.id;
         li.className = "log-line log-" + row.level;
-        li.innerHTML = `<time>${esc(stamp(row.created_at))}</time><span class="log-level">${esc({ info: "信息", warning: "警告", error: "失败" }[row.level] || row.level)}</span><span class="log-execution" title="${esc(row.execution_id || "管理操作")}">${row.execution_id ? "#" + esc(row.execution_id.slice(0, 8)) : "管理操作"}</span><span class="log-message">${esc(row.message)}</span>`;
+        li.innerHTML = `<time>${esc(stamp(row.created_at))}</time><span class="log-level">${esc({ info: "信息", warning: "警告", error: "失败" }[row.level] || row.level)}</span><span class="log-execution" title="${esc(row.execution_id || "管理操作")}">${row.execution_id ? "#" + esc(row.execution_id.slice(0, 8)) : "管理操作"}</span><div class="log-content"><span class="log-message">${esc(row.message)}</span>${expandedDetails(row)}</div>`;
         list.append(li);
       }
       if ($("#log-follow").checked && !historyMode)

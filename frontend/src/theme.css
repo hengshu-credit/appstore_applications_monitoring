@@ -292,6 +292,144 @@ dialog::backdrop {
 #theme-error {
   color: var(--red);
 }
+#theme-settings [hidden] {
+  display: none;
+}
+.theme-section {
+  margin: 18px 0;
+  display: grid;
+  gap: 14px;
+}
+#theme-settings input[type="color"] {
+  display: block;
+  width: 100%;
+  height: 44px;
+  min-height: 44px;
+  padding: 4px;
+  cursor: pointer;
+}
+#theme-settings .theme-swatches {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 12px;
+}
+#theme-settings .theme-swatch {
+  height: auto;
+  padding: 0;
+  background: var(--surface);
+  color: var(--ink);
+  display: block;
+  overflow: hidden;
+}
+.theme-swatch-color {
+  display: block;
+  height: 26px;
+}
+.theme-swatch-name {
+  display: block;
+  padding: 6px 3px;
+  font-size: 11px;
+}
+#theme-settings .theme-swatch[aria-pressed="true"] {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.gradient-stops {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 12px;
+}
+.theme-gradient-preview {
+  height: 76px;
+  border: 1px solid var(--line);
+}
+.theme-directions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.theme-layout {
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+.theme-layout summary {
+  cursor: pointer;
+  color: var(--ink);
+  margin-bottom: 12px;
+}
+.theme-footer {
+  position: sticky;
+  bottom: -24px;
+  background: var(--surface);
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+#theme-settings input[type="range"] {
+  appearance: none;
+  background: transparent;
+  padding: 0;
+  min-height: 32px;
+  height: 32px;
+  accent-color: var(--accent);
+}
+#theme-settings input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  background: var(--line);
+}
+#theme-settings input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 20px;
+  margin-top: -8px;
+  border: 0;
+  border-radius: 0;
+  background: var(--accent-text);
+}
+#theme-settings input[type="range"]::-moz-range-track {
+  height: 4px;
+  background: var(--line);
+}
+#theme-settings input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 20px;
+  border: 0;
+  border-radius: 0;
+  background: var(--accent-text);
+}
+.log-content {
+  min-width: 0;
+}
+.log-entry-details {
+  margin-top: 8px;
+}
+.log-entry-details summary {
+  color: var(--accent-text);
+  cursor: pointer;
+}
+.log-detail-field {
+  margin-top: 10px;
+}
+.log-detail-field strong {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+.log-detail-field pre {
+  max-height: 280px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 4px 0;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 12px;
+}
+@media (max-width: 700px) {
+  .log-line .log-content {
+    grid-column: 1/-1;
+  }
+}
 [data-width="fixed"] main,
 [data-width="fixed"] footer {
   max-width: 1440px;

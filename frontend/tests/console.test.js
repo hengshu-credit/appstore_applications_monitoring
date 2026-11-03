@@ -26,6 +26,12 @@ const appleCountries = JSON.parse(
     "utf8",
   ),
 ).countries;
+catalogFixture.locales = JSON.parse(
+  await readFile(
+    new URL("../../src/appmon/market_locales.json", import.meta.url),
+    "utf8",
+  ),
+);
 catalogFixture.countries = catalogFixture.countries.map((c) => ({
   ...c,
   apple_supported: appleCountries.includes(c.code),
@@ -76,6 +82,11 @@ const newModules = (
     ),
     wrappedModule("app-insights.js", "createAppInsights"),
     wrappedModule("availability.js", "createAvailabilityPage"),
+    wrappedModule(
+      "market-scope.js",
+      "effectiveLanguage,autoCaption,languageChoices,recommendedLanguage,selectedStores,languageName",
+    ),
+    wrappedModule("app-icons.js", "createAppIconManager"),
     wrappedModule("market-controls.js", "initMarketControls"),
     wrappedModule("task-logs.js", "createTaskLogViewer"),
     wrappedModule("collection-center.js", "createCollectionCenter"),
@@ -96,6 +107,50 @@ const overview = {
 const tick = async () => {
   for (let i = 0; i < 12; i++) await new Promise((r) => setTimeout(r, 5));
 };
+
+test("country follows automatic language and all-store views send explicit scope", async () => {
+  const { window, calls } = await setup((path) =>
+    path.startsWith("/api/keywords?") ? [] : undefined,
+  );
+  try {
+    const doc = window.document;
+    doc.querySelector("#global-country").value = "kz";
+    doc
+      .querySelector("#global-country")
+      .dispatchEvent(new window.Event("change"));
+    await tick();
+    assert.equal(doc.querySelector("#global-language").value, "auto");
+    assert.match(doc.querySelector("#language-value").textContent, /哈萨克/);
+    doc.querySelector("#store-trigger").click();
+    doc.querySelector('#store-menu [data-value="apple"]').click();
+    await tick();
+    assert.match(doc.querySelector("#language-value").textContent, /俄语/);
+    doc.querySelector("#store-trigger").click();
+    doc.querySelector('#store-menu [data-value="all"]').click();
+    window.location.hash = "keywords";
+    await tick();
+    assert.ok(calls.some((c) => c.path === "/api/keywords?store=all"));
+    assert.equal(doc.querySelectorAll("#store-value img").length, 2);
+    assert.match(
+      doc.querySelector("#language-value").textContent,
+      /哈萨克.*俄语/,
+    );
+    doc.querySelector("#language-trigger").click();
+    doc.querySelector('#language-menu [data-value="en"]').click();
+    doc.querySelector("#global-country").value = "th";
+    doc
+      .querySelector("#global-country")
+      .dispatchEvent(new window.Event("change"));
+    await tick();
+    assert.equal(doc.querySelector("#global-language").value, "en");
+    assert.equal(
+      JSON.parse(window.sessionStorage.getItem("appmon-market")).language_mode,
+      "manual",
+    );
+  } finally {
+    await window.happyDOM.close();
+  }
+});
 
 const emptyApp = {
   app: { store: "apple", app_id: "123", name: "Example", category: "6015" },
@@ -123,7 +178,7 @@ async function setup(responder) {
     let data =
       path === "/api/catalog"
         ? catalogFixture
-        : path === "/api/overview"
+        : path.split("?")[0] === "/api/overview"
           ? overview
           : responder?.(path, options);
     if (
@@ -138,7 +193,10 @@ async function setup(responder) {
       };
     if (data === undefined && path === "/api/research/collection/pipelines")
       data = [];
-    if (data === undefined && path === "/api/research/collection/activity")
+    if (
+      data === undefined &&
+      path.split("?")[0] === "/api/research/collection/activity"
+    )
       data = { plans: [], heartbeat: null };
     if (data === undefined) throw new Error("Unmocked route " + path);
     return { ok: true, status: 200, json: async () => data };
@@ -196,7 +254,7 @@ test("navigation queries the API and escapes upstream application content", asyn
 
 test("watchlist configuration moves to the center and sends explicit market and numeric interval", async () => {
   const { window, calls } = await setup((path, options) => {
-    if (path === "/api/watchlist") return [];
+    if (path.split("?")[0] === "/api/watchlist") return [];
     if (path === "/api/research/plans/preview") {
       const v = JSON.parse(options.body);
       return {
@@ -243,7 +301,7 @@ test("watchlist configuration moves to the center and sends explicit market and 
 test("failed API produces visible error and retry recovers", async () => {
   let broken = true;
   const { window } = await setup((path) => {
-    if (path === "/api/keywords") {
+    if (path.split("?")[0] === "/api/keywords") {
       if (broken) throw new Error("offline");
       return [];
     }
@@ -338,7 +396,7 @@ test("app collect button submits current storefront and shows asynchronous progr
     window.document.querySelector("#collect-app-now").click();
     await tick();
     assert.equal(request.country, "kz");
-    assert.equal(request.language, "en");
+    assert.equal(request.language, "ru");
     assert.equal(
       window.document.querySelector("#collect-app-now").disabled,
       true,
@@ -456,7 +514,7 @@ test("pending task controls block editing and cannot replace a newly selected pa
       return new Promise((resolve) => {
         release = resolve;
       });
-    if (path === "/api/keywords") return [];
+    if (path.split("?")[0] === "/api/keywords") return [];
   });
   try {
     window.location.hash = "collection";
@@ -485,7 +543,7 @@ test("pending task controls block editing and cannot replace a newly selected pa
 
 test("ranking screen distinguishes failed latest attempt from preserved successful data", async () => {
   const { window } = await setup((path) =>
-    path === "/api/keywords"
+    path.split("?")[0] === "/api/keywords"
       ? [
           {
             id: 1,
@@ -761,11 +819,14 @@ test("app selection creates a same-market competitor set with no assumed ownersh
         })),
         next: null,
       };
-    if (path === "/api/research/comparisons" && options.method === "POST") {
+    if (
+      path.split("?")[0] === "/api/research/comparisons" &&
+      options.method === "POST"
+    ) {
       saved = JSON.parse(options.body);
       return { id: 1, revision: 1 };
     }
-    if (path === "/api/research/comparisons") return [];
+    if (path.split("?")[0] === "/api/research/comparisons") return [];
   });
   try {
     window.location.hash = "apps";

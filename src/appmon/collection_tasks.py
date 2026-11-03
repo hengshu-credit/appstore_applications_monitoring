@@ -3,7 +3,7 @@ import time
 from .intelligence import hours, text
 from .task_logs import emit
 
-TABLES = {'watchlist': 'watchlist', 'keywords': 'keyword_targets', 'targets': 'observation_targets'}
+TABLES = {'watchlist': 'watchlist', 'keywords': 'keyword_targets', 'targets': 'observation_targets', 'icons':'app_icons'}
 UNION = '''SELECT 'watchlist' resource,w.id,'details' kind,w.store,w.country,w.language,w.app_id,
     COALESCE(a.name,w.app_id) label,'' category,'' collection,w.group_name,NULL depth,
     w.refresh_hours,w.enabled,COALESCE(j.failures,0) failures,j.last_error,j.due,j.lease_until,l.last_success success_at
@@ -17,12 +17,17 @@ UNION = '''SELECT 'watchlist' resource,w.id,'details' kind,w.store,w.country,w.l
     SELECT 'targets',t.id,t.kind,t.store,t.country,t.language,t.app_id,
     CASE WHEN t.kind='reviews' THEN t.app_id WHEN t.kind='featured' THEN 'Apple Today' ELSE t.collection END,
     t.category,t.collection,'',t.depth,t.refresh_hours,t.enabled,t.failures,t.last_error,t.due,t.lease_until,r.observed_at
-    FROM observation_targets t LEFT JOIN observation_runs r ON r.id=t.latest_success_id'''
+    FROM observation_targets t LEFT JOIN observation_runs r ON r.id=t.latest_success_id
+    UNION ALL
+    SELECT 'icons',i.id,'icons',i.store,i.country,i.language,i.app_id,COALESCE(i.name,i.app_id),'','','',NULL,
+    i.refresh_hours,i.enabled,i.failures,i.last_error,i.due,i.lease_until,i.checked_at
+    FROM app_icons i WHERE i.requested=1'''
 
 
 def list_tasks(db, *, kind='', store='', country='', language='', state='', q='', page=1, limit=50):
-    if kind and kind not in ('details','keywords','chart','reviews','featured'):
+    if kind and kind not in ('details','keywords','chart','reviews','featured','icons'):
         raise ValueError('未知采集类型')
+    if store=='all':store=''
     if store and store not in ('google','apple'):
         raise ValueError('未知商店')
     if not 1 <= page <= 100000 or not 1 <= limit <= 200 or len(q) > 255:
@@ -68,6 +73,8 @@ def edit_task(db, resource, identifier, value):
             db.execute('''UPDATE jobs SET due=LEAST(due,%s),token=NULL,lease_until=0
                 WHERE store=%s AND app_id=%s AND country=%s AND language=%s''',
                        (time.time()+interval*3600, *[row[k] for k in ('store','app_id','country','language')]))
+        elif resource=='icons':
+            db.execute('UPDATE app_icons SET refresh_hours=%s,due=LEAST(due,%s),token=NULL,lease_until=0 WHERE id=%s',(interval,time.time()+interval*3600,identifier))
         else:
             depth = value.get('depth',row['depth'])
             maximum = 200 if resource=='keywords' else 500

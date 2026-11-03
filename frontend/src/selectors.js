@@ -24,7 +24,13 @@ export function matchesCategory(category, query) {
   ].some((v) => searchKey(v).includes(searchKey(query)));
 }
 
-export function createSelectors({ api, getMarket, onError, win = window }) {
+export function createSelectors({
+  api,
+  getMarket,
+  onError,
+  onCatalog,
+  win = window,
+}) {
   const doc = win.document;
   let catalog,
     loading,
@@ -50,6 +56,7 @@ export function createSelectors({ api, getMarket, onError, win = window }) {
       loading = api("/catalog")
         .then((value) => {
           catalog = value;
+          onCatalog?.(value);
           syncCountry();
           return value;
         })
@@ -79,7 +86,8 @@ export function createSelectors({ api, getMarket, onError, win = window }) {
       value.innerHTML = `${catalog?.countries.some((c) => c.code === code) ? `<img class="country-flag" src="/flags/${pickerEscape(code)}.svg" alt="">` : ""}<span>${pickerEscape(countryName(code))}</span>`;
   }
   function countryButton(c) {
-    const disabled = getMarket().store === "apple" && !c.apple_supported;
+    const disabled =
+      ["apple", "all"].includes(getMarket().store) && !c.apple_supported;
     return `<button type="button" class="country-option" data-country-code="${c.code}" aria-pressed="${getMarket().country === c.code}" ${disabled ? "disabled" : ""} title="${pickerEscape(c.name + " · " + c.english + " (" + c.code.toUpperCase() + ")" + (disabled ? " · 暂不支持此 Apple 地区" : ""))}"><img class="country-flag" src="/flags/${c.code}.svg" alt="" loading="lazy"><span>${pickerEscape(c.name)}</span><small>${c.code.toUpperCase()}</small></button>`;
   }
   function renderCountries() {
@@ -153,6 +161,8 @@ export function createSelectors({ api, getMarket, onError, win = window }) {
     id = "category-value",
     purpose = "pool",
   ) {
+    if (store === "all")
+      return `<input type="hidden" id="${id}" name="category" value=""><span class="sub">选择单个商店可筛选官方分类</span>`;
     return `<div class="category-field"><span id="${id}-label">应用分类</span><input type="hidden" id="${id}" name="category" value="${pickerEscape(value)}"><button type="button" class="picker-trigger secondary category-trigger" data-category-input="${id}" data-category-purpose="${purpose}" aria-haspopup="dialog" aria-expanded="false" aria-labelledby="${id}-label ${id}-caption"><span id="${id}-caption">${pickerEscape(categoryName(store, value))}</span><span aria-hidden="true">⌄</span></button></div>`;
   }
   function renderCategories() {
@@ -244,6 +254,8 @@ export function createSelectors({ api, getMarket, onError, win = window }) {
   );
 
   function categorySidebar(store, selected = "") {
+    if (store === "all")
+      return `<section class="panel category-sidebar"><h2>应用商店</h2><p class="sub">同时查看 Google Play 与 App Store，按商店交错分页。分类筛选需先选择单店。</p></section>`;
     return `<section class="panel category-sidebar"><h2>应用分类</h2><input type="search" id="category-tree-search" placeholder="搜索分类" aria-label="搜索应用池分类"><p class="smallprint" id="category-count-scope">按商店统计已知应用池 · 数量加载中</p><div id="category-tree"></div></section>`;
   }
   async function mountSidebar(store, selected, onSelect) {
@@ -308,7 +320,9 @@ export function createSelectors({ api, getMarket, onError, win = window }) {
   return {
     supportsMarket: (store, country) =>
       !!catalog?.countries.some(
-        (c) => c.code === country && (store !== "apple" || c.apple_supported),
+        (c) =>
+          c.code === country &&
+          (!["apple", "all"].includes(store) || c.apple_supported),
       ),
     chartDefinitions: (store) => catalog?.charts?.[store] || [],
     ready,

@@ -6,6 +6,7 @@ export const taskKinds = {
   chart: "分类榜单",
   reviews: "用户评论",
   featured: "编辑推荐",
+  icons: "应用图标",
 };
 const states = {
   scheduled: "定时采集",
@@ -33,6 +34,7 @@ export function createCollectionCenter(ctx) {
     market,
     toast,
     selectors,
+    appLink,
     currentRevision,
     nextRevision,
   } = ctx;
@@ -62,7 +64,7 @@ export function createCollectionCenter(ctx) {
     const editRevision = currentRevision();
     editor(
       "编辑采集任务",
-      `<p class="sub">${esc(taskKinds[row.kind])} · ${esc(row.label)} · ${esc(row.country.toUpperCase())} / ${esc(row.language)}</p><form id="edit-task-form" class="form-grid">${field("刷新周期（小时）", "refresh_hours", row.refresh_hours, "number", 'min="0.25" max="8760" step="0.25" required')}${row.resource === "watchlist" ? field("监控分组", "group_name", row.group_name, "text", "required") : field("采集结果上限", "depth", row.depth, "number", `min="1" max="${row.resource === "keywords" ? 200 : 500}" required`)}<p class="sub full">保留已有历史及启用状态。需要切换应用或市场时，请新建独立任务。</p><div class="full form-actions"><button type="submit">保存设置</button></div></form>`,
+      `<p class="sub">${esc(taskKinds[row.kind])} · ${esc(row.label)} · ${esc(row.country.toUpperCase())} / ${esc(row.language)}</p><form id="edit-task-form" class="form-grid">${field("刷新周期（小时）", "refresh_hours", row.refresh_hours, "number", 'min="0.25" max="8760" step="0.25" required')}${row.resource === "watchlist" ? field("监控分组", "group_name", row.group_name, "text", "required") : row.resource === "icons" ? "" : field("采集结果上限", "depth", row.depth, "number", `min="1" max="${row.resource === "keywords" ? 200 : 500}" required`)}<p class="sub full">保留已有历史及启用状态。需要切换应用或市场时，请新建独立任务。</p><div class="full form-actions"><button type="submit">保存设置</button></div></form>`,
     );
     bindForm("#edit-task-form", async (v) => {
       await api(
@@ -71,7 +73,9 @@ export function createCollectionCenter(ctx) {
           refresh_hours: Number(v.refresh_hours),
           ...(row.resource === "watchlist"
             ? { group_name: v.group_name }
-            : { depth: Number(v.depth) }),
+            : row.resource === "icons"
+              ? {}
+              : { depth: Number(v.depth) }),
         },
         "PUT",
       );
@@ -81,12 +85,16 @@ export function createCollectionCenter(ctx) {
     });
   }
   function creationForm() {
+    if (market().store === "all")
+      return '<div class="store-choice"><p>新建采集计划需要明确商店，请在顶部选择 Google Play 或 App Store；已有任务可在全部商店范围管理。</p><button id="back-to-tasks" class="secondary">返回任务列表</button></div>';
     const m = market(),
       kind = preset?.kind || "details";
     return `<div class="collection-create-heading"><div><h2>新建采集计划</h2><p class="sub">当前市场：${storeLogo(m.store)} ${m.store === "apple" ? "App Store" : "Google Play"} · ${esc(selectors.countryName(m.country))} · ${esc(m.language)}。可在页面右上角切换。</p></div><button type="button" class="secondary" id="back-to-tasks">返回任务列表</button></div><form id="plan-form" class="form-grid">
       ${field("计划名称", "name", "应用研究计划", "text", "required")}${field("监控分组", "group_name", "重点应用", "text", "required")}${field("刷新周期（小时）", "refresh_hours", 24, "number", 'min="0.25" max="8760" step="0.25" required')}
       <fieldset class="full task-types"><legend>选择需要采集的数据</legend>${Object.entries(
-        taskKinds,
+        Object.fromEntries(
+          Object.entries(taskKinds).filter(([k]) => k !== "icons"),
+        ),
       )
         .map(
           ([k, label]) =>
@@ -117,6 +125,7 @@ export function createCollectionCenter(ctx) {
       refresh().catch((e) => toast(e.message));
     };
     const form = $("#plan-form");
+    if (!form) return;
     function showFields() {
       const enabled = (k) => form.elements[`collect_${k}`]?.checked;
       form.querySelectorAll("[data-plan-field]").forEach((el) => {
@@ -220,6 +229,7 @@ export function createCollectionCenter(ctx) {
         location.pathname + location.search + "#collection",
       );
     }
+    filters.store = market().store;
     const [tasks, pipelines, quality] = await Promise.all([
       api(
         "/research/collection/tasks?" +
@@ -245,7 +255,7 @@ export function createCollectionCenter(ctx) {
                 "商店",
                 "store",
                 [
-                  ["", "全部商店"],
+                  ["all", "全部商店"],
                   ["google", "Google Play"],
                   ["apple", "App Store"],
                 ],
@@ -262,11 +272,11 @@ export function createCollectionCenter(ctx) {
                 ],
                 tasks.items.map((t, index) => [
                   `<input type="checkbox" data-task-index="${index}" aria-label="选择任务 ${esc(t.kind === "chart" ? selectors.chartDefinitions(t.store).find((d) => d.id === t.collection)?.name || t.label : t.label)}">`,
-                  `<span class="task-kind">${icon(t.kind === "details" ? "apps" : t.kind === "chart" ? "charts" : t.kind)}${esc(taskKinds[t.kind])}</span><div class="task-label">${esc(t.kind === "chart" ? selectors.chartDefinitions(t.store).find((d) => d.id === t.collection)?.name || t.label : t.label)}</div>${t.category ? `<div class="sub">${esc(selectors.categoryName(t.store, t.category))}</div>` : ""}`,
+                  `<span class="task-kind">${icon(t.kind === "details" ? "apps" : t.kind === "chart" ? "charts" : t.kind)}${esc(taskKinds[t.kind])}</span><div class="task-label">${t.app_id ? appLink(t.store, t.app_id, t.label, null, t.country, t.language) : esc(t.kind === "chart" ? selectors.chartDefinitions(t.store).find((d) => d.id === t.collection)?.name || t.label : t.label)}</div>${t.category ? `<div class="sub">${esc(selectors.categoryName(t.store, t.category))}</div>` : ""}`,
                   `<span class="store-caption">${storeLogo(t.store)}${t.store === "apple" ? "App Store" : "Google Play"}</span><div class="sub">${esc(t.country.toUpperCase())} · ${esc(t.language)}</div>`,
-                  `${t.refresh_hours} 小时<div class="sub">${t.depth ? num(t.depth) + " 条" : "单应用详情"}</div>`,
+                  `${t.refresh_hours} 小时<div class="sub">${t.depth ? num(t.depth) + " 条" : t.kind === "icons" ? "图标缓存" : "单应用详情"}</div>`,
                   `${stamp(t.success_at)}<div class="sub">${t.enabled ? "到期 " + (t.due ? stamp(t.due) : "尽快执行") : "已暂停"}</div>`,
-                  `<span class="badge ${t.task_state === "error" ? "warn" : t.task_state === "running" ? "good" : ""}">${esc(states[t.task_state])}</span>${t.last_error ? `<details class="task-error"><summary>查看错误</summary>${esc(t.last_error)}</details>` : ""}`,
+                  `<span class="badge ${t.task_state === "error" ? "warn" : t.task_state === "running" ? "good" : ""}">${esc(states[t.task_state])}</span>`,
                   `<div class="task-actions"><button class="link" data-task-logs="${index}">日志${t.task_state === "running" ? " · 实时" : ""}</button><button class="link" data-edit-task="${index}">编辑</button><button class="link" data-task-action="${index}" data-action="${t.enabled ? "pause" : "resume"}">${t.enabled ? "暂停" : "恢复"}</button><button class="link" data-task-action="${index}" data-action="refresh" ${t.enabled ? "" : "disabled"}>立即采集</button></div>`,
                 ]),
               )}<div class="task-pagination"><span>共 ${num(tasks.total)} 个任务 · 第 ${page} / ${Math.max(1, Math.ceil(tasks.total / 50))} 页</span><div class="actions"><button class="secondary small" id="previous-tasks" ${page <= 1 ? "disabled" : ""}>上一页</button><button class="secondary small" id="next-tasks" ${tasks.has_more ? "" : "disabled"}>下一页</button></div></div>`,
@@ -295,6 +305,14 @@ export function createCollectionCenter(ctx) {
       )
     )
       return;
+    const storeFilter = $('#task-filters [name="store"]');
+    if (storeFilter)
+      storeFilter.onchange = () => {
+        $("#global-store").value = storeFilter.value;
+        $("#global-store").dispatchEvent(
+          new Event("change", { bubbles: true }),
+        );
+      };
     $("#new-collection").onclick = () => {
       section = "create";
       preset = null;

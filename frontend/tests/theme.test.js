@@ -104,3 +104,41 @@ test("theme previews cancel cleanly; saving persists; corrupted storage recovers
     await win.happyDOM.close();
   }
 });
+
+test("gradient colors and direction can be configured without typing color codes", async () => {
+  const win = new Window({ url: "http://localhost:5173" });
+  win.document.body.innerHTML = '<button id="open-theme">Theme</button>';
+  try {
+    const controller = initTheme(win);
+    win.document.querySelector("#open-theme").click();
+    const form = win.document.querySelector("#theme-form");
+    form.elements.accentMode.value = "CUSTOM_GRADIENT";
+    form.elements.accentMode.dispatchEvent(
+      new win.Event("change", { bubbles: true }),
+    );
+    assert.equal(form.elements.gradientText.type, "hidden");
+    assert.equal(
+      win.document.querySelector('[data-color-section="PRESET"]').hidden,
+      true,
+    );
+    const color = win.document.querySelector('[data-gradient-index="0"]');
+    color.value = "#ff8800";
+    color.dispatchEvent(new win.Event("input", { bubbles: true }));
+    assert.equal(controller.get().customGradientColors[0], "#ff8800");
+    win.document.querySelector("#toggle-gradient-stop").click();
+    assert.equal(
+      win.document.querySelectorAll("[data-gradient-index]").length,
+      3,
+    );
+    win.document.querySelector('[data-theme-angle="90"]').click();
+    assert.equal(controller.get().customGradientAngle, 90);
+    form.dispatchEvent(
+      new win.Event("submit", { bubbles: true, cancelable: true }),
+    );
+    const saved = JSON.parse(win.localStorage.getItem(THEME_KEY));
+    assert.equal(saved.customGradientColors.length, 3);
+    assert.equal(saved.customGradientAngle, 90);
+  } finally {
+    await win.happyDOM.close();
+  }
+});
