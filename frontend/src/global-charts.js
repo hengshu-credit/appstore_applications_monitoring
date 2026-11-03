@@ -91,13 +91,50 @@ export function createGlobalCharts(ctx) {
     const selected = new Set(data.selected_codes),
       definitions = selectors.chartDefinitions(store),
       types = new Set(filters.collections.split(","));
+    const detailUrl = (c, b) =>
+      "#chart?" +
+      qs({
+        store,
+        country: c.country,
+        language: c.language,
+        collection: b.collection,
+        category: filters.category,
+        as_of: at,
+      });
+    const boardTitle = (c, b, label) =>
+      `<a class="chart-title-link" href="${esc(detailUrl(c, b))}" title="${esc(c.name + " " + b.definition.name + "：查看完整榜单")}" aria-label="${esc(c.name + " " + b.definition.name + "：查看完整榜单")}">${esc(label)}<span aria-hidden="true">↗</span></a>`;
+    const boardMeta = (b) => {
+      const state = b.unsupported
+        ? "此组合不支持"
+        : b.quality === "insufficient_history"
+          ? "历史不足，暂不能生成派生榜"
+          : b.fresh
+            ? "有效观察"
+            : b.lease_until > Date.now() / 1000
+              ? "采集中"
+              : b.observed_at
+                ? "历史数据待更新"
+                : "尚未采集";
+      const detail = [
+        state,
+        stamp(b.observed_at),
+        `返回 ${b.returned_count} 条`,
+        b.last_error,
+        b.reason,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      return `<p class="smallprint global-chart-meta" title="${esc(detail)}">${esc(state)} · ${stamp(b.observed_at)}<br>返回 ${b.returned_count} 条${b.last_error ? " · " + esc(b.last_error) : ""}${b.reason ? " · " + esc(b.reason) : ""}</p>`;
+    };
+    const more = (c, b) =>
+      `<a class="chart-more-link" href="${esc(detailUrl(c, b))}">查看完整榜单与应用资料 →</a>`;
     const cards = data.countries
       .map(
         (c) =>
           `<section class="panel global-country"><div class="panel-heading"><h2>${esc(c.name)} <span class="sub">${esc(c.country.toUpperCase())}</span></h2><span class="sub">${esc(c.language)}</span></div><div class="global-lists">${c.boards
             .map(
               (b) =>
-                `<section class="global-chart"><h3>${esc(b.definition.name)}${b.definition.mode === "derived" ? "（派生）" : ""}</h3><p class="smallprint">${b.unsupported ? "此组合不支持" : b.quality === "insufficient_history" ? "历史不足，暂不能生成派生榜" : b.fresh ? "有效观察" : b.lease_until > Date.now() / 1000 ? "采集中" : b.observed_at ? "历史数据待更新" : "尚未采集"} · ${stamp(b.observed_at)}<br>返回 ${b.returned_count} 条${b.last_error ? " · " + esc(b.last_error) : ""}</p>${b.reason ? `<p class="smallprint">${esc(b.reason)}</p>` : ""}${table(
+                `<section class="global-chart"><h3>${boardTitle(c, b, b.definition.name + (b.definition.mode === "derived" ? "（派生）" : ""))}</h3>${boardMeta(b)}${table(
                   ["名次", "应用"],
                   b.items.map((r) => [
                     r.position,
@@ -110,7 +147,7 @@ export function createGlobalCharts(ctx) {
                       c.language,
                     ),
                   ]),
-                )}</section>`,
+                )}${more(c, b)}</section>`,
             )
             .join("")}</div></section>`,
       )
@@ -124,7 +161,7 @@ export function createGlobalCharts(ctx) {
             .map((c) => {
               const board = c.boards.find((b) => b.collection === kind);
               if (!board) return "";
-              return `<section class="global-chart"><h3>${esc(c.name)} (${esc(c.country.toUpperCase())})</h3><p class="smallprint">${board.fresh ? "有效观察" : board.reason || "待更新"} · ${stamp(board.observed_at)}</p>${table(
+              return `<section class="global-chart"><h3>${boardTitle(c, board, `${c.name} (${c.country.toUpperCase()})`)}</h3>${boardMeta(board)}${table(
                 ["名次", "应用"],
                 board.items.map((r) => [
                   r.position,
@@ -137,7 +174,7 @@ export function createGlobalCharts(ctx) {
                     c.language,
                   ),
                 ]),
-              )}</section>`;
+              )}${more(c, board)}</section>`;
             })
             .join("")}</div></div>`,
         );

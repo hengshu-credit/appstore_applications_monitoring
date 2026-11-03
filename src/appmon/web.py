@@ -236,6 +236,13 @@ def create_app(cfg):
         if category:catalog.category_aliases(store,category)
         return charts.view(db,m['store'],m['country'],m['language'],collection,category,as_of=as_of,compare_days=compare_days)
 
+    @api.get('/charts/detail')
+    def chart_detail(store:str,country:str='us',language:str='en',collection:str='top-free',category:str='',as_of:float|None=None,
+                     q:str=Query('',max_length=255),offset:int=0,limit:int=50,db=DB):
+        m=intel.market(dict(store=store,country=country,language=language),require_app=False)
+        if category:catalog.category_aliases(store,category)
+        return charts.detail(db,m['store'],m['country'],m['language'],collection,category,as_of,q,offset,limit,cfg=cfg)
+
     @api.get('/discovery/growth')
     def growth_view(store:str,country:str='us',language:str='en',days:int=7,metric:str='ratings',as_of:float|None=None,
                     category:str='',q:str=Query('',max_length=255),pricing:str='',monetization:str='',new_days:int=0,db=DB):

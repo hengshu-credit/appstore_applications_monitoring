@@ -1,6 +1,9 @@
 """Store charts and explicitly labeled, locally derived ranking views."""
 import json
 import time
+import gzip
+import math
+from pathlib import Path
 from datetime import datetime, timezone
 
 DEFINITIONS = [
@@ -146,3 +149,58 @@ def app_rankings(db,store,app_id,country,language,categories):
                            'change':entry['change'] if entry else None,'reason':report['reason'],
                            'status':'unsupported' if report.get('unsupported') else 'not_checked' if not report['latest_success'] else 'observed' if entry else 'not_observed'})
     return result
+
+
+def detail(db,store,country,language,collection='top-free',category='',as_of=None,q='',offset=0,limit=50,cfg=None):
+    """Page through the observed chart and attach separately dated market metadata."""
+    if type(offset) is not int or offset<0 or offset>10000 or limit not in (25,50,100):raise ValueError('榜单分页参数无效')
+    report=view(db,store,country,language,collection,category,as_of=as_of)
+    items=report['items'];metadata={};chart_metadata={};metadata_warning=''
+    current=report['latest_success']
+    if cfg and store=='apple' and current and current['source']=='apple-rss-chart' and current.get('raw_path'):
+        try:
+            root=Path(cfg['data_dir']).resolve();raw=(root/current['raw_path']).resolve()
+            if not raw.is_relative_to(root):raise ValueError('Invalid response path')
+            with gzip.open(raw,'rb') as stream:content=stream.read(8_000_001)
+            if len(content)>8_000_000:raise ValueError('Chart response too large')
+            entries=json.loads(content).get('feed',{}).get('entry',[])
+            if isinstance(entries,dict):entries=[entries]
+            for entry in entries:
+                identifier=str(entry['id']['attributes']['im:id'])
+                price=entry.get('im:price',{}).get('attributes',{})
+                try:amount=float(price['amount'])
+                except (KeyError,ValueError,TypeError):amount=None
+                if amount is not None and (not math.isfinite(amount) or amount<0):amount=None
+                category_info=entry.get('category',{}).get('attributes',{})
+                chart_metadata[identifier]={k:v for k,v in {'price':amount,'currency':price.get('currency'),
+                    'category_id':category_info.get('im:id'),'category':category_info.get('label'),
+                    'released':entry.get('im:releaseDate',{}).get('label')}.items() if v is not None}
+        except (OSError,ValueError,KeyError,TypeError,AttributeError):
+            chart_metadata={};metadata_warning='榜单原始补充字段暂不可读取，仍显示已保存的排名与应用资料。'
+    if items:
+        ids=[r['app_id'] for r in items];marks=','.join('%s' for _ in ids)
+        if as_of is not None:
+            rows=db.execute(f'''SELECT app_id,payload,observed_at FROM (
+                SELECT app_id,payload,observed_at,ROW_NUMBER() OVER(PARTITION BY app_id ORDER BY observed_at DESC,id DESC) rn
+                FROM snapshots WHERE store=%s AND country=%s AND language=%s AND observed_at<=%s AND app_id IN ({marks})
+                ) s WHERE rn=1''',(store,country,language,report['latest_success']['observed_at'],*ids)).fetchall()
+        else:
+            rows=db.execute(f'''SELECT app_id,payload,last_success observed_at,state FROM listings
+                WHERE store=%s AND country=%s AND language=%s AND app_id IN ({marks})''',(store,country,language,*ids)).fetchall()
+        metadata={r['app_id']:r|{'payload':json.loads(r['payload'] or '{}')} for r in rows}
+    enriched=[]
+    for item in items:
+        saved=metadata.get(item['app_id'],{});p=saved.get('payload',{})
+        facts=chart_metadata.get(item['app_id'],{})|{k:v for k,v in p.items() if v is not None}
+        row=item|{'name':item.get('name') or p.get('name') or item['app_id'],
+                  'icon':item.get('icon') or p.get('icon'),'developer':item.get('developer') or p.get('developer'),
+                  'metadata':facts,'metadata_observed_at':saved.get('observed_at') or (current['observed_at'] if chart_metadata.get(item['app_id']) else None),
+                  'metadata_origin':'detail' if saved.get('observed_at') else 'chart' if chart_metadata.get(item['app_id']) else None,
+                  'listing_state':saved.get('state')}
+        if q and q.casefold() not in ' '.join(str(row.get(k) or '') for k in ('name','app_id','developer')).casefold():continue
+        enriched.append(row)
+    return {k:v for k,v in report.items() if k not in ('items','history','exited_items')}|{
+        'items':enriched[offset:offset+limit],'total':len(enriched),'chart_count':len(items),'offset':offset,'limit':limit,
+        'has_more':offset+limit<len(enriched),'metadata_warning':metadata_warning,'metadata_note':
+        '历史应用资料仅使用不晚于该榜单快照的记录。' if as_of is not None else
+        '应用资料优先使用该市场的最近成功观察，缺失字段可由榜单公开字段补充；两类数据分别保留观察时间。Google累计安装数为全球公开指标。'}

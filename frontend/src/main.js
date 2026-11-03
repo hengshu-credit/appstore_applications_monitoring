@@ -7,6 +7,7 @@ import "./research.css";
 import { createResearchPages } from "./research.js";
 import { createDiscoveryPages } from "./discovery.js";
 import { createGlobalCharts } from "./global-charts.js";
+import { createChartDetail } from "./chart-detail.js";
 import "./global-charts.css";
 import { createSelectors } from "./selectors.js";
 import { effectiveLanguage } from "./market-scope.js";
@@ -241,7 +242,7 @@ function move(value) {
 function appLink(store, id, name, imageURL, country, language) {
   const m = market(store),
     lang = language || m.language;
-  return `<div class="appcell"><span class="appicon-wrap" data-icon-store="${esc(store)}" data-icon-app="${esc(id)}" data-icon-country="${esc(country || m.country)}" data-icon-language="${esc(lang)}" data-icon-source="${esc(imageURL || "")}" data-icon-name="${esc(name || id)}"><img class="appicon" alt="" hidden><span class="appicon appicon-placeholder">${storeLogo(store)}</span><button type="button" class="appicon-refresh link" data-icon-refresh aria-label="补采图标">${icon("refresh")}</button></span><div><button class="link appname" data-app="${esc(id)}" data-store="${esc(store)}" data-country="${esc(country || m.country)}" data-language="${esc(lang)}">${esc(name || id)}</button><div class="appid">${market().store === "all" ? `<span class="store-scope-badge">${storeLogo(store)} ${store === "apple" ? "App Store" : "Google Play"}</span> · ` : ""}${esc(id)}</div></div></div>`;
+  return `<div class="appcell"><span class="appicon-wrap" data-icon-store="${esc(store)}" data-icon-app="${esc(id)}" data-icon-country="${esc(country || m.country)}" data-icon-language="${esc(lang)}" data-icon-source="${esc(imageURL || "")}" data-icon-name="${esc(name || id)}"><img class="appicon" alt="" hidden><span class="appicon appicon-placeholder">${storeLogo(store)}</span><button type="button" class="appicon-refresh link" data-icon-refresh aria-label="补采图标">${icon("refresh")}</button></span><div><button class="link appname" title="${esc(name || id)}" data-app="${esc(id)}" data-store="${esc(store)}" data-country="${esc(country || m.country)}" data-language="${esc(lang)}">${esc(name || id)}</button><div class="appid">${market().store === "all" ? `<span class="store-scope-badge">${storeLogo(store)} ${store === "apple" ? "App Store" : "Google Play"}</span> · ` : ""}${esc(id)}</div></div></div>`;
 }
 function field(label, name, value = "", type = "text", extra = "") {
   return `<label>${label}<input name="${name}" value="${esc(value)}" type="${type}" ${extra}></label>`;
@@ -1396,6 +1397,23 @@ const discoveryPages = createDiscoveryPages({
   currentRevision: () => revision,
 });
 const routes = {
+  chart: createChartDetail({
+    api,
+    esc,
+    stamp,
+    num,
+    panel,
+    table,
+    field,
+    select,
+    bindForm,
+    mount,
+    market,
+    selectors,
+    appLink,
+    $,
+    toast,
+  }),
   globalcharts: createGlobalCharts({
     $,
     api,
@@ -1442,15 +1460,33 @@ async function render() {
   const name = (location.hash.slice(1) || "overview").split("?")[0],
     route = routes[name] || overview,
     rev = ++revision;
-  $("#page-title").textContent = (nav.find(
-    (n) => n[0] === name.split("/")[0],
-  ) || nav[0])[2];
+  $("#page-title").textContent =
+    name === "chart"
+      ? "榜单详情"
+      : (nav.find((n) => n[0] === name.split("/")[0]) || nav[0])[2];
   document
     .querySelectorAll("[data-nav]")
-    .forEach((a) => a.classList.toggle("active", a.dataset.nav === name));
+    .forEach((a) =>
+      a.classList.toggle(
+        "active",
+        a.dataset.nav === (name === "chart" ? "globalcharts" : name),
+      ),
+    );
   mount('<div class="empty">正在加载观察记录…</div>');
   try {
     const parts = name.split("/");
+    if (name === "chart") {
+      const p = new URLSearchParams(location.hash.split("?")[1] || "");
+      if (
+        !["apple", "google"].includes(p.get("store")) ||
+        !/^[a-z]{2}$/.test(p.get("country") || "")
+      )
+        throw Error("榜单链接的商店或国家无效");
+      $("#global-store").value = p.get("store");
+      $("#global-country").value = p.get("country");
+      $("#global-language").value = p.get("language") || "auto";
+      saveMarket();
+    }
     if (["app", "aso"].includes(parts[0]) && parts.length === 3) {
       $("#global-store").value = decodeURIComponent(parts[1]);
       saveMarket();
@@ -1551,6 +1587,25 @@ $("#refresh-page").addEventListener("click", render);
 ["global-store", "global-country", "global-language"].forEach((id) =>
   $("#" + id).addEventListener("change", () => {
     saveMarket();
+    if (location.hash.slice(1).split("?")[0] === "chart") {
+      const m = market();
+      if (m.store === "all") {
+        location.hash = "charts";
+        return;
+      }
+      const p = Object.fromEntries(
+        new URLSearchParams(location.hash.split("?")[1] || ""),
+      );
+      location.hash =
+        "chart?" +
+        qs({
+          ...p,
+          ...m,
+          category: id === "global-store" ? "" : p.category,
+          offset: 0,
+        });
+      return;
+    }
     const parts = location.hash.slice(1).split("/");
     if (
       id === "global-store" &&

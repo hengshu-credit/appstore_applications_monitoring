@@ -83,6 +83,7 @@ const newModules = (
     wrappedModule("app-insights.js", "createAppInsights"),
     wrappedModule("discovery.js", "createDiscoveryPages"),
     wrappedModule("global-charts.js", "createGlobalCharts"),
+    wrappedModule("chart-detail.js", "createChartDetail"),
     wrappedModule("availability.js", "createAvailabilityPage"),
     wrappedModule(
       "market-scope.js",
@@ -1138,6 +1139,126 @@ test("official popularity does not send a network query when credentials are unc
       ).length,
       0,
     );
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("global chart links retain storefront, category and time and open a richer paged chart", async () => {
+  let detailQuery;
+  const longName = "很长的应用名称用于验证两行截断与完整悬停文本 <unsafe>";
+  const { window, calls } = await setup((path) => {
+    if (path.startsWith("/api/charts/global?"))
+      return {
+        selected_codes: ["jp"],
+        total_countries: 1,
+        page_size: 6,
+        has_more: false,
+        fresh_boards: 1,
+        requested_boards: 1,
+        observed_boards: 1,
+        note: "按国家",
+        available_countries: [{ code: "jp", name: "日本", english: "Japan" }],
+        countries: [
+          {
+            country: "jp",
+            name: "日本",
+            language: "ja",
+            boards: [
+              {
+                collection: "top-paid",
+                definition: catalogFixture.charts.google[1],
+                items: [
+                  { app_id: "com.example.app", name: longName, position: 1 },
+                ],
+                fresh: true,
+                observed_at: 10,
+                returned_count: 100,
+              },
+            ],
+          },
+        ],
+      };
+    if (path.startsWith("/api/charts/detail?")) {
+      detailQuery = new URL(path, "http://localhost").searchParams;
+      return {
+        definition: catalogFixture.charts.google[1],
+        items: [
+          {
+            app_id: "com.example.app",
+            name: longName,
+            position: 1,
+            developer: "Developer",
+            metadata: {
+              rating: 4.7,
+              ratings: 123,
+              price: 6,
+              currency: "JPY",
+              version: "1.2",
+            },
+            metadata_observed_at: 100,
+          },
+        ],
+        total: 100,
+        chart_count: 100,
+        offset: Number(detailQuery.get("offset") || 0),
+        limit: 50,
+        has_more:
+          !detailQuery.get("offset") || detailQuery.get("offset") === "0",
+        base_returned_count: 100,
+        latest_success: { observed_at: 10, source: "fixture" },
+        metadata_note: "资料独立观察",
+      };
+    }
+  });
+  try {
+    window.location.hash = "globalcharts";
+    await tick();
+    window.document.querySelector("#global-category").value = "FINANCE";
+    window.document.querySelector('#global-chart-form [name="as_of"]').value =
+      "2026-10-01";
+    window.document
+      .querySelector("#global-chart-form")
+      .dispatchEvent(
+        new window.Event("submit", { bubbles: true, cancelable: true }),
+      );
+    await tick();
+    const title = window.document.querySelector(".global-chart .appname");
+    assert.equal(title.title, longName);
+    assert.equal(window.document.querySelector("#content unsafe"), null);
+    const link = window.document.querySelector(".chart-title-link");
+    assert.ok(link.href.includes("country=jp"));
+    assert.ok(link.href.includes("collection=top-paid"));
+    link.click();
+    await tick();
+    assert.equal(window.location.hash.split("?")[0], "#chart");
+    assert.equal(detailQuery.get("country"), "jp");
+    assert.equal(detailQuery.get("language"), "ja");
+    assert.equal(detailQuery.get("category"), "FINANCE");
+    assert.equal(
+      Number(detailQuery.get("as_of")),
+      Date.parse("2026-10-01T23:59:59") / 1000,
+    );
+    assert.match(
+      window.document.querySelector("#content").textContent,
+      /Developer/,
+    );
+    assert.match(window.document.querySelector("#content").textContent, /JPY/);
+    window.document.querySelector("#chart-detail-next").click();
+    await tick();
+    assert.ok(
+      calls.some(
+        (c) =>
+          c.path.includes("/charts/detail?") && c.path.includes("offset=50"),
+      ),
+    );
+    window.document.querySelector("#global-country").value = "us";
+    window.document
+      .querySelector("#global-country")
+      .dispatchEvent(new window.Event("change"));
+    await tick();
+    assert.equal(detailQuery.get("country"), "us");
+    assert.equal(detailQuery.get("offset"), "0");
   } finally {
     await window.happyDOM.close();
   }

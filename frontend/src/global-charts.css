@@ -20,21 +20,116 @@
 }
 .global-chart .appcell {
   min-width: 0;
+  height: 42px;
 }
-.global-chart .appname {
-  max-width: 160px;
+.global-chart .appcell > div:last-child,
+.chart-detail-table .appcell > div:last-child {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  height: 40px;
+}
+.global-chart .appname,
+.chart-detail-table .appname {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  line-height: 20px;
+  max-height: 40px;
+  min-height: 0;
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: normal;
   overflow-wrap: anywhere;
   text-align: left;
 }
-.global-chart .appid {
+.global-chart .appid,
+.chart-detail-table .appid {
   display: none;
 }
 .global-chart .appicon-wrap {
   flex-shrink: 0;
 }
 .global-chart td {
-  padding: 8px 4px;
+  padding: 10px 4px;
+  height: 64px;
+  vertical-align: middle;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.global-chart table {
+  table-layout: fixed;
+}
+.global-chart th:first-child {
+  width: 42px;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+.global-chart th:last-child {
+  padding-left: 4px;
+}
+.global-chart-meta {
+  height: 34px;
+  line-height: 17px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+.chart-title-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  text-decoration: none;
+}
+.chart-title-link:hover,
+.chart-title-link:focus-visible {
+  color: var(--accent-text);
+  text-decoration: underline;
+}
+.chart-title-link span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.chart-more-link {
+  display: block;
+  margin-top: 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.chart-detail-table table {
+  min-width: 1550px;
+  table-layout: fixed;
+}
+.chart-detail-table th:first-child {
+  width: 62px;
+}
+.chart-detail-table th:nth-child(2) {
+  width: 260px;
+}
+.chart-detail-table th:nth-child(8) {
+  width: 180px;
+}
+.chart-detail-table td {
+  height: 64px;
+  padding: 10px 13px;
+  vertical-align: middle;
+}
+.chart-detail-table .appcell {
+  min-width: 0;
+}
+.chart-detail-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .global-country-options {
   display: grid;
@@ -52,9 +147,6 @@
 @media (max-width: 680px) {
   .global-lists {
     grid-template-columns: 1fr;
-  }
-  .global-chart .appname {
-    max-width: none;
   }
 }
 
