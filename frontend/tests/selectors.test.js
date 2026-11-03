@@ -16,13 +16,13 @@ const catalog = JSON.parse(
 );
 const appleMarkets = JSON.parse(
   await readFile(
-    new URL("../../src/appmon/apple_markets.json", import.meta.url),
+    new URL("../../src/appmon/apple_countries.json", import.meta.url),
     "utf8",
   ),
 );
 catalog.countries = catalog.countries.map((c) => ({
   ...c,
-  apple_supported: c.code in appleMarkets,
+  apple_supported: appleMarkets.countries.includes(c.code),
 }));
 const tick = () => new Promise((r) => setTimeout(r, 10));
 function setup() {
@@ -59,7 +59,7 @@ test("country search accepts Chinese, English and ISO codes", () => {
   assert.ok(matchesCountry(china, "china"));
   assert.ok(matchesCountry(hongkong, "hongkong"));
   assert.ok(matchesCountry(hongkong, "香港"));
-  assert.equal(catalog.countries.length, 249);
+  assert.equal(catalog.countries.length, 250);
 });
 
 test("country picker filters Asia subregions and commits the selected ISO value", async () => {

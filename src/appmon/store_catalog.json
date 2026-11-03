@@ -3237,6 +3237,19 @@
         "津巴布韦",
         "Zimbabwe"
       ]
+    },
+    {
+      "code": "xk",
+      "name": "科索沃",
+      "english": "Kosovo",
+      "aliases": [
+        "XK",
+        "XKS",
+        "Kosovo",
+        "科索沃"
+      ],
+      "continent": "europe",
+      "region": ""
     }
   ],
   "continents": [

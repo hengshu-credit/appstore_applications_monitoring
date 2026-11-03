@@ -98,12 +98,14 @@ export function createCollectionCenter(ctx) {
       <div data-plan-field="chart">${selectors.categoryField(m.store, "", "plan-category", "chart")}${select(
         "榜单类型",
         "collection",
-        [
-          ["top-free", "免费榜"],
-          ["top-paid", "付费榜"],
-          ["top-grossing", "畅销榜"],
-        ],
-      )}</div>
+        selectors
+          .chartDefinitions(m.store)
+          .map((d) => [
+            d.id,
+            d.name + (d.mode === "derived" ? "（本站派生）" : ""),
+          ]),
+        preset?.collection || "top-free",
+      )}<p class="sub">本站派生榜复用对应基榜，不作为官方榜单。</p></div>
       <div data-plan-field="observations">${field("榜单 / 评论 / 推荐结果上限", "depth", 100, "number", 'min="1" max="500" required')}</div>
       <div data-plan-field="keywords">${field("关键词结果上限", "keyword_depth", 50, "number", 'min="1" max="200" required')}</div>
       <p class="sub full">结果上限不保证实际返回数量。已有相同目标会更新设置，并保留暂停状态与历史。</p><div class="full form-actions"><button type="submit">预览采集计划</button></div></form><div id="plan-preview"></div><details class="plan-history"><summary>导入已有关键词词库（JSON）</summary><form id="keyword-import"><label>包含商店、国家、语言和关键词的数组<textarea name="json" required placeholder='[{"store":"google","country":"th","language":"th","keyword":"เงินกู้"}]'></textarea></label><button type="submit" class="spacer">校验并导入词库</button></form><p class="sub">支持跨市场批量导入；整批验证，保留已有任务历史和暂停状态。</p></details>`;
@@ -209,6 +211,7 @@ export function createCollectionCenter(ctx) {
       section = "create";
       preset = {
         kind: params.get("new"),
+        collection: params.get("collection") || "top-free",
         app_ids: params.get("app") ? [params.get("app")] : [],
       };
       history.replaceState(
@@ -258,8 +261,8 @@ export function createCollectionCenter(ctx) {
                   "操作",
                 ],
                 tasks.items.map((t, index) => [
-                  `<input type="checkbox" data-task-index="${index}" aria-label="选择任务 ${esc(t.label)}">`,
-                  `<span class="task-kind">${icon(t.kind === "details" ? "apps" : t.kind === "chart" ? "charts" : t.kind)}${esc(taskKinds[t.kind])}</span><div class="task-label">${esc(t.label)}</div>${t.category ? `<div class="sub">${esc(selectors.categoryName(t.store, t.category))}</div>` : ""}`,
+                  `<input type="checkbox" data-task-index="${index}" aria-label="选择任务 ${esc(t.kind === "chart" ? selectors.chartDefinitions(t.store).find((d) => d.id === t.collection)?.name || t.label : t.label)}">`,
+                  `<span class="task-kind">${icon(t.kind === "details" ? "apps" : t.kind === "chart" ? "charts" : t.kind)}${esc(taskKinds[t.kind])}</span><div class="task-label">${esc(t.kind === "chart" ? selectors.chartDefinitions(t.store).find((d) => d.id === t.collection)?.name || t.label : t.label)}</div>${t.category ? `<div class="sub">${esc(selectors.categoryName(t.store, t.category))}</div>` : ""}`,
                   `<span class="store-caption">${storeLogo(t.store)}${t.store === "apple" ? "App Store" : "Google Play"}</span><div class="sub">${esc(t.country.toUpperCase())} · ${esc(t.language)}</div>`,
                   `${t.refresh_hours} 小时<div class="sub">${t.depth ? num(t.depth) + " 条" : "单应用详情"}</div>`,
                   `${stamp(t.success_at)}<div class="sub">${t.enabled ? "到期 " + (t.due ? stamp(t.due) : "尽快执行") : "已暂停"}</div>`,

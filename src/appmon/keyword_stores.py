@@ -115,13 +115,41 @@ def parse_apple(data):
     return ordered_apps("apple", apps)
 
 
+def parse_apple_web(text, country):
+    match=re.search(r'<script[^>]*id="serialized-server-data"[^>]*>(.*?)</script>',text,re.S)
+    if not match:raise FetchError('Apple web search dataset unavailable')
+    data=json.loads(match[1])
+    pages=[p for p in data.get('data',[]) if p.get('intent',{}).get('$kind')=='SearchResultsPageIntent']
+    if len(pages)!=1 or pages[0]['intent'].get('storefront')!=country:
+        raise FetchError('Apple returned a different storefront; no fallback')
+    shelves=pages[0]['data'].get('shelves')
+    if not isinstance(shelves,list):raise FetchError('Apple web search shelves changed')
+    results=[]
+    for shelf in shelves:
+        if shelf.get('id')!='SearchResults.shelfId':continue
+        for item in shelf.get('items',[]):
+            if item.get('$kind')!='AppSearchResult':continue
+            lockup=item.get('lockup',{})
+            results.append({'app_id':str(lockup.get('adamId','')),'name':lockup.get('title')})
+    if not any(s.get('id')=='SearchResults.shelfId' for s in shelves):
+        raise FetchError('Apple web search results section missing')
+    return ordered_apps('apple',results)
+
+
 class KeywordClient(Client):
     def search(self, target):
         store = target["store"]
         if store == "apple":
             storefront = APPLE_MARKETS.get(target["country"])
             if not storefront:
-                raise FetchError("Unsupported Apple country; US fallback is disabled")
+                from .catalog import APPLE_COUNTRIES
+                if target['country'] not in APPLE_COUNTRIES:raise FetchError('Unsupported Apple storefront')
+                response=self.get(store,f"https://apps.apple.com/{target['country']}/iphone/search",
+                                  {'term':target['keyword'],'l':target['language']})
+                if response.status_code!=200:raise FetchError(f'Apple web search HTTP {response.status_code}')
+                try:apps=parse_apple_web(response.text,target['country'])
+                except (ValueError,TypeError,KeyError,AttributeError) as exc:raise FetchError('Apple web search schema changed') from exc
+                return SearchResult(apps[:target['depth']],response.content,'apple-web-search',parser_version='apple-web-v1')
             response = self.get(store, "https://search.itunes.apple.com/WebObjects/MZStore.woa/wa/search",
                                 {"clientApplication": "Software", "media": "software", "term": target["keyword"]},
                                 headers={"X-Apple-Store-Front": f"{storefront},24 t:native",

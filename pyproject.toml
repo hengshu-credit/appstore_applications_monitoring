@@ -22,4 +22,4 @@ where = ["src"]
 "share/appmon/licenses" = ["licenses/appgoblin-play-scraper.txt", "licenses/appgoblin-data.txt", "licenses/mradex-google-play-scraper.txt", "licenses/app-store-scraper.txt", "licenses/unicode-cldr.txt"]
 
 [tool.setuptools.package-data]
-appmon = ["apple_markets.json", "google_chart_request.json", "store_catalog.json"]
+appmon = ["apple_markets.json", "apple_countries.json", "google_chart_request.json", "store_catalog.json"]

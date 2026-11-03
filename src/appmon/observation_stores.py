@@ -4,6 +4,7 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from importlib.resources import files
+from urllib.parse import urlsplit
 
 from .keyword_stores import path
 from .ingest import valid_id
@@ -105,26 +106,36 @@ class ObservationClient(Client):
         if t["store"] == "google":
             payload = json.loads(files("appmon").joinpath("google_chart_request.json").read_text(encoding="utf-8"))
             payload[0][1][0][1][1] = t["depth"]
-            payload[0][2][1:] = [{"top-free": "topselling_free", "top-paid": "topselling_paid", "top-grossing": "topgrossing"}[t["collection"]], t["category"] or "APPLICATION"]
+            payload[0][2][1:] = [{"top-free": "topselling_free", "top-paid": "topselling_paid", "top-grossing": "topgrossing",
+                                 "new-free":"topselling_new_free","new-paid":"topselling_new_paid","trending":"movers_shakers"}[t["collection"]], t["category"] or "APPLICATION"]
             r = self.rpc(t, "vyAe2", payload)
             items = google_chart(batch_payload(r.text, "vyAe2"))
             return ObservationResult(items[:t["depth"]], r.content, "google-play-chart-rpc", "returned_chart_range")
-        collection = {"top-free": "topfreeapplications", "top-paid": "toppaidapplications", "top-grossing": "topgrossingapplications"}[t["collection"]]
+        collection = {"top-free": "topfreeapplications", "top-paid": "toppaidapplications", "top-grossing": "topgrossingapplications",
+                      "new-free":"newfreeapplications","new-paid":"newpaidapplications"}[t["collection"]]
         genre = f"/genre={t['category']}" if t["category"] else ""
         r = self.get("apple", f"https://itunes.apple.com/{t['country']}/rss/{collection}/limit={min(t['depth'], 200)}{genre}/json")
         if r.status_code != 200:
             raise FetchError("Apple chart unavailable for selected collection/category")
         data = r.json()
         rows = path(data, "feed", "entry")
+        if rows is None and isinstance(data.get('feed'),dict) and 'id' in data['feed']:rows=[]
+        if isinstance(rows,dict):rows=[rows]
         if not isinstance(rows, list):
             raise FetchError("Apple chart entries missing")
         items = []
         for row in rows:
+            link=path(row,'id','label')
+            if isinstance(link,str):
+                region=urlsplit(link).path.split('/')[1:2]
+                if region and len(region[0])==2 and region[0].lower()!=t['country']:
+                    raise FetchError('Apple chart returned a different country; no fallback')
             app_id = str(row["id"]["attributes"]["im:id"])
             if not valid_id("apple", app_id):
                 raise FetchError("Apple chart ID invalid")
             items.append(dict(id=app_id, app_id=app_id, name=row["im:name"]["label"],
-                              developer=path(row, "im:artist", "label"), icon=row["im:image"][-1]["label"]))
+                              developer=path(row, "im:artist", "label"), icon=row["im:image"][-1]["label"],
+                              released=path(row,'im:releaseDate','label')))
         return ObservationResult(items[:t["depth"]], r.content, "apple-rss-chart", "returned_chart_range")
 
     def reviews(self, t):

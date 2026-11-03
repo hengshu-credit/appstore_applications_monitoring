@@ -70,7 +70,7 @@ docker compose -f compose.yaml --env-file .env --profile keywords stop keywords
 
 - [AppGoblin 关键词 API](https://github.com/appgoblin-dev/appgoblin/blob/main/backend/api_app/controllers/public/v1/keywords.py) 的公开返回结构当前固定 `country="US"`；不把它改写成泰国等地区数据，也不使用其美国难度指标冒充本地指标。
 - Google 根据 [MrAdex77/google-play-scraper](https://github.com/MrAdex77/google-play-scraper) 的结构化搜索结果映射提取有序结果与顶部精确匹配卡，使用 `gl`/`hl` 请求国家和语言。不把页面全部链接或推荐栏按应用 ID 排序后当作排名。
-- Apple 根据 [app-store-scraper](https://github.com/facundoolano/app-store-scraper) 的 native search 协议发送明确的 `X-Apple-Store-Front` 与 `Accept-Language`，直接读取结果 ID 顺序。未知国家拒绝配置，不静默回退 US；不经过可能重排结果的批量详情 lookup。
+- Apple 对已有数字ID映射的市场使用 [app-store-scraper](https://github.com/facundoolano/app-store-scraper) 的 native search 协议；对官方支持但旧映射遗漏的市场（例如哈萨克斯坦），使用对应国家的 Apple 网页搜索结构化结果，并验证响应中的市场代码。支持表现为175个市场，未知地区拒绝配置，不静默回退 US；两种来源分别记录 source/parser_version，不跨协议计算排名升降。
 - [AsoBeast](https://github.com/AsoBeast/asobeast) 提供关键词周期检查、市场分离和历史快照的参考；此项目在现有 Python/MySQL 内独立实现，没有引入其 AGPL 应用源码或额外 Node 服务。
 
 **本版双商店仅采集首个搜索响应，`coverage=first_response`。** `depth=200` 只是最多保留 200 个结果，不保证获得 200 条；Google 常只返回约 20–30 个。分页尚未实现，不把“本次 30 条中未找到”写成“排名大于 200”。语言字段是请求语言，商店可能按自身规则回退，本系统没有声称验证了实际返回语言。国家参数、服务器 IP、商店实验等会影响结果；这是公开搜索来源的观察排名，不保证等同于每个当地用户、设备或广告位排名。每份快照记录 source、parser_version、coverage 与原始响应，便于复核。

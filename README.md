@@ -6,6 +6,8 @@
 
 顶部商店与语言已统一为下拉选择，商店显示 logo 与名称，侧栏采用统一线性图标。所有采集目标和基础流程可在 [统一采集中心](docs/collection-center.md) 管理。
 
+应用详情支持当前市场的一键采集及榜单/关键词排名汇总；Apple 市场扩展为175项，榜单中心提供七种直接或明确标注的派生榜单。详见 [应用研究与榜单口径](docs/app-research.md)。
+
 参考点点、七麦、AppTweak、Appark、AppFollow新增事件中心、ASO版本化草稿、评论处理工作台、竞品集合、开发者下钻和采集计划/质量中心，并扩展应用库高级筛选与批量操作。页面设计、证据来源与采集方案见 [五平台研究与设计](docs/platform-research-and-design.md)。
 
 ```powershell

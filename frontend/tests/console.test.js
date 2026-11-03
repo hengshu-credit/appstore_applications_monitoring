@@ -20,6 +20,37 @@ const catalogFixture = JSON.parse(
     "utf8",
   ),
 );
+const appleCountries = JSON.parse(
+  await readFile(
+    new URL("../../src/appmon/apple_countries.json", import.meta.url),
+    "utf8",
+  ),
+).countries;
+catalogFixture.countries = catalogFixture.countries.map((c) => ({
+  ...c,
+  apple_supported: appleCountries.includes(c.code),
+}));
+catalogFixture.charts = Object.fromEntries(
+  ["google", "apple"].map((store) => [
+    store,
+    [
+      ["top-free", "免费榜"],
+      ["top-paid", "付费榜"],
+      ["top-grossing", "畅销榜"],
+      ["trending", "人气飙升榜"],
+      ["new-free", "最新免费榜"],
+      ["new-grossing", "最新畅销榜"],
+      ["new-paid", "最新付费榜"],
+    ].map(([id, name]) => ({
+      id,
+      name,
+      mode:
+        id === "new-grossing" || (store === "apple" && id === "trending")
+          ? "derived"
+          : "direct",
+    })),
+  ]),
+);
 const researchSource = (
   await readFile(new URL("../src/research.js", import.meta.url), "utf8")
 )
@@ -58,6 +89,17 @@ const overview = {
 };
 const tick = async () => {
   for (let i = 0; i < 12; i++) await new Promise((r) => setTimeout(r, 5));
+};
+
+const emptyApp = {
+  app: { store: "apple", app_id: "123", name: "Example", category: "6015" },
+  listing: null,
+  snapshots: [],
+  events: [],
+  keywords: { coverage: [] },
+  job: null,
+  chart_rankings: [],
+  collection_request: null,
 };
 async function setup(responder) {
   const window = new Window({
@@ -214,6 +256,132 @@ test("failed API produces visible error and retry recovers", async () => {
   }
 });
 
+test("app country changes keep app identity while store changes leave cross-store IDs behind", async () => {
+  const { window, calls } = await setup((path) => {
+    if (path.startsWith("/api/apps/apple/123?")) return emptyApp;
+    if (path === "/api/research/markets/apple/123")
+      return { items: [], scope: "observed" };
+    if (path.startsWith("/api/apps?")) return { items: [], next: null };
+  });
+  try {
+    window.location.hash = "app/apple/123";
+    await tick();
+    assert.equal(window.document.querySelector("#global-store").value, "apple");
+    window.document.querySelector("#country-trigger").click();
+    await tick();
+    const country = window.document.querySelector(
+      '#country-picker [data-country-code="kz"]',
+    );
+    assert.equal(country.disabled, false);
+    country.click();
+    await tick();
+    assert.ok(
+      calls.some(
+        (c) =>
+          c.path.startsWith("/api/apps/apple/123?") &&
+          c.path.includes("country=kz"),
+      ),
+    );
+    assert.match(
+      window.document.querySelector("#country-value").textContent,
+      /哈萨克斯坦/,
+    );
+    const store = window.document.querySelector("#global-store");
+    store.value = "google";
+    store.dispatchEvent(new window.Event("change"));
+    await tick();
+    assert.equal(window.location.hash, "#apps");
+    assert.equal(
+      window.document.querySelector("#global-store").value,
+      "google",
+    );
+    assert.equal(
+      calls.some((c) => c.path.startsWith("/api/apps/google/123")),
+      false,
+    );
+    assert.equal(window.document.querySelector(".errorbox"), null);
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("app collect button submits current storefront and shows asynchronous progress", async () => {
+  let request;
+  const { window } = await setup((path, options) => {
+    if (path.startsWith("/api/apps/apple/123?")) return emptyApp;
+    if (path === "/api/research/markets/apple/123")
+      return { items: [], scope: "observed" };
+    if (path === "/api/apps/apple/123/collect") {
+      request = JSON.parse(options.body);
+      return {
+        id: 7,
+        state: "running",
+        finished: 0,
+        total: 1,
+        errors: 0,
+        tasks: [],
+        scope: "public data",
+      };
+    }
+  });
+  try {
+    window.document.querySelector("#global-country").value = "kz";
+    window.location.hash = "app/apple/123";
+    await tick();
+    window.document.querySelector("#collect-app-now").click();
+    await tick();
+    assert.equal(request.country, "kz");
+    assert.equal(request.language, "en");
+    assert.equal(
+      window.document.querySelector("#collect-app-now").disabled,
+      true,
+    );
+    assert.match(
+      window.document.querySelector("#app-collection-progress").textContent,
+      /0\/1/,
+    );
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("chart center exposes seven views and requests the selected collection", async () => {
+  const { window, calls } = await setup((path) => {
+    if (path.startsWith("/api/charts/view?")) {
+      const id = new URL(path, "http://localhost").searchParams.get(
+        "collection",
+      );
+      return {
+        definition: catalogFixture.charts.google.find((d) => d.id === id),
+        items: [],
+        target: null,
+        latest_success: null,
+      };
+    }
+  });
+  try {
+    window.location.hash = "charts";
+    await tick();
+    const select = window.document.querySelector(
+      '#chart-view-form [name="collection"]',
+    );
+    assert.equal(select.options.length, 7);
+    select.value = "new-grossing";
+    select.dispatchEvent(new window.Event("change"));
+    await tick();
+    assert.ok(
+      calls.some(
+        (c) =>
+          c.path.includes("/charts/view?") &&
+          c.path.includes("collection=new-grossing"),
+      ),
+    );
+    assert.match(window.document.querySelector("main").textContent, /本站派生/);
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
 test("keyword-only plan sends multilingual words and configured depth", async () => {
   let preview;
   const { window } = await setup((path, options) => {
@@ -346,6 +514,7 @@ test("ranking screen distinguishes failed latest attempt from preserved successf
         : undefined,
   );
   try {
+    window.document.querySelector("#global-store").value = "apple";
     window.location.hash = "keywords";
     await tick();
     window.document.querySelector("[data-keyword]").click();

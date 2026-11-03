@@ -53,8 +53,10 @@ def preview_plan(value):
     if flags['chart']:
         category=value.get('category',''); collection=value.get('collection','top-free')
         if not isinstance(category,str) or len(category)>64:raise ValueError('分类无效')
-        if collection not in ('top-free','top-paid','top-grossing'):
-            raise ValueError('未知榜单类型')
+        from .charts import definition
+        collection=definition(m['store'],collection)['base_collection']
+        if category and not definition(m['store'],collection)['category_supported']:
+            raise ValueError('该商店公开新应用榜仅支持总榜，请选择全部分类')
         if category and category!='APPLICATION' and (category not in BY_ID[m['store']] or BY_ID[m['store']][category]['legacy']):
             raise ValueError('请选择当前商店的官方分类')
         if category=='APPLICATION' and m['store']!='google':raise ValueError('Apple不支持Google分类ID')
@@ -92,7 +94,10 @@ def work_plans(db, limit=20):
             emit(db,'plans',row['id'],'started',f'开始配置目标，从 {completed}/{len(actions)} 继续')
             try:
                 for action in actions[completed:completed+limit]:
-                    if action['kind']=='details':watch(db,action['value'])
+                    if action.get('immediate'):
+                        from .app_collection import schedule_action
+                        schedule_action(db,action)
+                    elif action['kind']=='details':watch(db,action['value'])
                     elif action['kind']=='keywords':add_targets(db,[action['value']])
                     else:add_observation_target(db,action['value'])
                     completed+=1;processed+=1

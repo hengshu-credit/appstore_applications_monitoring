@@ -33,11 +33,13 @@ class CatalogTest(unittest.TestCase):
 
     def test_offline_country_catalog_support_is_explicit(self):
         catalog=public_catalog()
-        self.assertEqual(len(catalog['countries']),249)
-        self.assertEqual(len({c['code'] for c in catalog['countries']}),249)
+        self.assertEqual(len(catalog['countries']),250)
+        self.assertEqual(len({c['code'] for c in catalog['countries']}),250)
         china=next(c for c in catalog['countries'] if c['code']=='cn')
         self.assertEqual(china['region'],'east_asia')
         self.assertTrue(china['apple_supported'])
+        self.assertEqual(sum(c['apple_supported'] for c in catalog['countries']),175)
+        self.assertTrue(next(c for c in catalog['countries'] if c['code']=='kz')['apple_supported'])
         self.assertTrue(any(not c['apple_supported'] for c in catalog['countries']))
 
 

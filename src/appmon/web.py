@@ -22,6 +22,7 @@ from . import catalog
 from . import aso, review_desk, insights, collection
 from . import collection_tasks, pipelines
 from . import task_logs
+from . import charts, app_collection
 from datetime import date, datetime, timezone
 from . import keywords, intelligence as intel, analytics, alerts, exports
 
@@ -208,7 +209,8 @@ def create_app(cfg):
 
     @api.get("/apps/{store}/{app_id}")
     def app_detail(store: str, app_id: str, country: str = "us", language: str = "en", db=DB):
-        intel.market(dict(store=store, app_id=app_id, country=country, language=language))
+        normalized=intel.market(dict(store=store, app_id=app_id, country=country, language=language))
+        country,language=normalized['country'],normalized['language']
         base = db.execute("SELECT * FROM apps WHERE store=%s AND app_id=%s", (store, app_id)).fetchone()
         if not base:
             raise HTTPException(404, "应用尚未进入应用池")
@@ -220,9 +222,26 @@ def create_app(cfg):
         for row in [*snapshots, *([listing] if listing else [])]:
             row["payload"] = json.loads(row["payload"]) if row["payload"] else None
         return {"app": base, "listing": listing, "snapshots": snapshots,
+                "chart_rankings":charts.app_rankings(db,store,app_id,country,language,['']+([base['category_id']] if base['category_id'] else [])),
+                "collection_request":app_collection.latest(db,dict(store=store,app_id=app_id,country=country,language=language)),
                 "events": db.execute("SELECT * FROM events WHERE store=%s AND app_id=%s AND country=%s AND language=%s ORDER BY id DESC LIMIT 100", key).fetchall(),
                 "keywords": keywords.app_coverage(db, store, app_id, country, language),
                 "job": db.execute("SELECT due,failures,last_error FROM jobs WHERE store=%s AND app_id=%s AND country=%s AND language=%s", key).fetchone()}
+
+    @api.post('/apps/{store}/{app_id}/collect')
+    def collect_app(store:str,app_id:str,value:dict=Body(...),db=DB):
+        return app_collection.collect(db,value|{'store':store,'app_id':app_id})
+
+    @api.get('/apps/{store}/{app_id}/collection')
+    def app_collection_status(store:str,app_id:str,country:str='us',language:str='en',db=DB):
+        m=intel.market(dict(store=store,app_id=app_id,country=country,language=language))
+        return app_collection.latest(db,m)
+
+    @api.get('/charts/view')
+    def chart_view(store:str,country:str='us',language:str='en',collection:str='top-free',category:str='',db=DB):
+        m=intel.market(dict(store=store,country=country,language=language),require_app=False)
+        if category:catalog.category_aliases(store,category)
+        return charts.view(db,m['store'],m['country'],m['language'],collection,category)
 
     @api.get("/watchlist")
     def watchlist(db=DB):

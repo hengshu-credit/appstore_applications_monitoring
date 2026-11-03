@@ -1,0 +1,249 @@
+{
+  "checked_on": "2026-11-03",
+  "note": "Live endpoint probes; counts are returned counts before client truncation. A 200 response does not prove a distinct new-app chart.",
+  "probes": {
+    "apple-chart-probes": [
+      {
+        "country": "us",
+        "collection": "topfreeapplications",
+        "http": 200,
+        "count": 10,
+        "first_ids": [
+          "6741796873",
+          "6760173601",
+          "632064380"
+        ]
+      },
+      {
+        "country": "kz",
+        "collection": "topfreeapplications",
+        "http": 200,
+        "count": 10,
+        "first_ids": [
+          "6504287215",
+          "1619733462",
+          "6448311069"
+        ]
+      },
+      {
+        "country": "us",
+        "collection": "topgrossingapplications",
+        "http": 200,
+        "count": 10,
+        "first_ids": [
+          "6448311069",
+          "835599320",
+          "544007664"
+        ]
+      },
+      {
+        "country": "us",
+        "collection": "newfreeapplications",
+        "http": 200,
+        "count": 109,
+        "first_ids": [
+          "6814014317",
+          "6770325762",
+          "6783577553"
+        ]
+      },
+      {
+        "country": "us",
+        "collection": "newpaidapplications",
+        "http": 200,
+        "count": 110,
+        "first_ids": [
+          "6821024643",
+          "6821004696",
+          "6822096684"
+        ]
+      },
+      {
+        "country": "us",
+        "collection": "newapplications",
+        "http": 200,
+        "count": 109,
+        "first_ids": [
+          "6814014317",
+          "6770325762",
+          "6783577553"
+        ]
+      }
+    ],
+    "google-chart-probes": [
+      {
+        "collection": "topselling_free",
+        "count": 10,
+        "ids": [
+          "com.facebook.aura",
+          "com.openai.chatgpt",
+          "com.ss.android.ugc.tiktok.pro"
+        ]
+      },
+      {
+        "collection": "topselling_new_free",
+        "count": 10,
+        "ids": [
+          "com.aiphoto.aivideo.aiportrait.generatorimage",
+          "com.luvasadistro.phoneclean.storage",
+          "com.jtrlabs.hypercleanner.trash.storage"
+        ]
+      },
+      {
+        "collection": "topselling_new_paid",
+        "count": 1,
+        "ids": [
+          "com.bitnirva.cloudmining"
+        ]
+      },
+      {
+        "collection": "movers_shakers",
+        "count": 10,
+        "ids": [
+          "com.tcs.nyrr",
+          "com.alibaba.aliexpresshd",
+          "com.lowes.android"
+        ]
+      }
+    ],
+    "extra-chart-probes": [
+      {
+        "store": "google",
+        "collection": "topgrossing_new",
+        "count": 10,
+        "ids": [
+          "com.google.android.apps.subscriptions.red",
+          "com.zhiliaoapp.musically",
+          "com.openai.chatgpt"
+        ]
+      },
+      {
+        "store": "google",
+        "collection": "topselling_new_grossing",
+        "error": "Google chart schema changed"
+      },
+      {
+        "store": "apple",
+        "collection": "newgrossingapplications",
+        "error": "HTTP 400"
+      },
+      {
+        "store": "apple",
+        "collection": "newfreeapplications",
+        "status": 200,
+        "count": 109,
+        "genres": [
+          "{'attributes': {'im:id': '6016', 'term': 'Entertainment', 'scheme': 'https://apps.apple.com/us/genre/ios-entertainment/id6016?uo=2', 'label': 'Entertainment'}}",
+          "{'attributes': {'im:id': '6002', 'term': 'Utilities', 'scheme': 'https://apps.apple.com/us/genre/ios-utilities/id6002?uo=2', 'label': 'Utilities'}}",
+          "{'attributes': {'im:id': '6012', 'term': 'Lifestyle', 'scheme': 'https://apps.apple.com/us/genre/ios-lifestyle/id6012?uo=2', 'label': 'Lifestyle'}}"
+        ]
+      },
+      {
+        "store": "apple",
+        "collection": "newpaidapplications",
+        "status": 200,
+        "count": 110,
+        "genres": [
+          "{'attributes': {'im:id': '6016', 'term': 'Entertainment', 'scheme': 'https://apps.apple.com/us/genre/ios-entertainment/id6016?uo=2', 'label': 'Entertainment'}}",
+          "{'attributes': {'im:id': '6000', 'term': 'Business', 'scheme': 'https://apps.apple.com/us/genre/ios-business/id6000?uo=2', 'label': 'Business'}}",
+          "{'attributes': {'im:id': '6023', 'term': 'Food & Drink', 'scheme': 'https://apps.apple.com/us/genre/ios-food-drink/id6023?uo=2', 'label': 'Food & Drink'}}"
+        ]
+      }
+    ],
+    "google-category-probes": [
+      {
+        "collection": "topselling_new_free",
+        "category": "FINANCE",
+        "count": 10,
+        "sample": [
+          [
+            "com.money.tracker.budget.planner.expense.manager.saver",
+            "Money Manager: Expense Planner"
+          ],
+          [
+            "org.capcu.grip",
+            "Capital CU ND Mobile"
+          ],
+          [
+            "com.money.expense.tracker.budget.finance.save",
+            "Daily Loan - Money Tracker"
+          ]
+        ]
+      },
+      {
+        "collection": "topselling_new_paid",
+        "category": "FINANCE",
+        "count": 1,
+        "sample": [
+          [
+            "com.bitnirva.cloudmining",
+            "BitNirva: Bitcoin Cloud Mining"
+          ]
+        ]
+      },
+      {
+        "collection": "movers_shakers",
+        "category": "FINANCE",
+        "count": 10,
+        "sample": [
+          [
+            "com.fis.ebt.nch",
+            "ebtEDGE NEW!"
+          ],
+          [
+            "com.fis.ebtedge",
+            "ebtEDGE"
+          ],
+          [
+            "com.propel.ebenefits",
+            "Propel EBT & SNAP Benefits"
+          ]
+        ]
+      }
+    ],
+    "chart-crosschecks": [
+      {
+        "store": "google",
+        "collection": "topgrossing",
+        "ids": [
+          "com.google.android.apps.subscriptions.red",
+          "com.zhiliaoapp.musically",
+          "com.openai.chatgpt",
+          "com.amazon.mShop.android.shopping",
+          "com.peacocktv.peacockandroid",
+          "com.spotify.music",
+          "com.wbd.stream",
+          "com.crunchyroll.crunchyroid",
+          "com.cbs.app",
+          "com.tinder"
+        ]
+      },
+      {
+        "store": "apple",
+        "country": "kz",
+        "collection": "newfreeapplications",
+        "count": 109,
+        "feed": {
+          "label": "https://itunes.apple.com/kz/rss/newfreeapplications/limit=10/json"
+        },
+        "first_links": [
+          "https://apps.apple.com/kz/app/%E4%B8%89%E5%9C%8B%E5%B9%BB%E6%83%B3%E9%8C%84-%E9%96%8B%E5%B1%80%E9%80%815%E6%98%9F%E9%97%9C%E7%BE%BD/id6817645832?uo=2",
+          "https://apps.apple.com/kz/app/retrovault-player/id6764720109?uo=2"
+        ]
+      },
+      {
+        "store": "apple",
+        "country": "kz",
+        "collection": "newpaidapplications",
+        "count": 110,
+        "feed": {
+          "label": "https://itunes.apple.com/kz/rss/newpaidapplications/limit=10/json"
+        },
+        "first_links": [
+          "https://apps.apple.com/kz/app/one-more-stone/id6819893352?uo=2",
+          "https://apps.apple.com/kz/app/fukicopy/id6827835611?uo=2"
+        ]
+      }
+    ]
+  }
+}

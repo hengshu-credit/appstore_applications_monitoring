@@ -106,6 +106,10 @@ def main():
         out = ROOT / 'frontend/public/flags' / (code.lower() + '.svg')
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(flags.extractfile(flag_path).read())
+    # Apple uses XK/XKS for a storefront outside the ISO 249-country set.
+    countries.append({'code':'xk','name':'科索沃','english':'Kosovo','aliases':['XK','XKS','Kosovo','科索沃'],
+                      'continent':'europe','region':''})
+    (ROOT/'frontend/public/flags/xk.svg').write_bytes(flags.extractfile('package/flags/4x3/xk.svg').read())
     license_dir = ROOT / 'frontend/public/licenses'
     license_dir.mkdir(parents=True, exist_ok=True)
     (license_dir / 'unicode-cldr.txt').write_bytes(core.extractfile('package/LICENSE').read())

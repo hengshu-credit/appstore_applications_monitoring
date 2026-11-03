@@ -4,6 +4,84 @@
   flex: 0 0 20px;
   vertical-align: middle;
 }
+/* Common form controls share one size; text actions and choice tiles stay semantic. */
+button:not(.link):not(.theme-swatch):not(.country-option):not(
+    [role="option"]
+  ):not([role="tab"]),
+.button {
+  min-height: 42px;
+  height: 42px;
+  line-height: 20px;
+  padding: 0 12px;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  vertical-align: bottom;
+}
+.actions button,
+.market-actions button,
+button[type="submit"],
+.button {
+  justify-content: center;
+}
+.button {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+  white-space: nowrap;
+}
+input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not(
+    [type="color"]
+  ),
+select:not([multiple]) {
+  height: 42px;
+  min-height: 42px;
+  line-height: 20px;
+  padding: 0 11px;
+  font-size: 14px;
+}
+.toolbar {
+  align-items: flex-end;
+}
+.panel-heading {
+  flex-wrap: wrap;
+}
+.panel-heading > div {
+  min-width: 0;
+  max-width: 100%;
+}
+.panel-heading .actions {
+  flex-wrap: wrap;
+}
+.toolbar > label,
+.toolbar > .category-field {
+  flex: 1;
+  min-width: 160px;
+}
+.toolbar > button,
+.toolbar > .button {
+  flex: 0 0 auto;
+}
+.toolbar label,
+.category-field {
+  line-height: 18px;
+  gap: 6px;
+}
+dialog button {
+  width: auto;
+}
+#login button[type="submit"] {
+  width: 100%;
+}
+.market-value {
+  font-size: 14px;
+}
+.button:hover {
+  background: var(--hover);
+  text-decoration: none;
+}
 .nav-icon {
   display: inline-flex;
   align-items: center;

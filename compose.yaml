@@ -39,6 +39,9 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-appstore_applications_monitoring}
       MYSQL_USER: ${MYSQL_USER:-appmon}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+      HTTP_PROXY: ${APPMON_HTTP_PROXY:-}
+      HTTPS_PROXY: ${APPMON_HTTPS_PROXY:-}
+      NO_PROXY: localhost,127.0.0.1,mysql,web,frontend
     depends_on:
       mysql:
         condition: service_healthy

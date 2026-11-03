@@ -1,0 +1,122 @@
+{
+  "country": "kz",
+  "store": "apple",
+  "name": "WhatsApp Messenger",
+  "rankings": [
+    {
+      "name": "免费榜",
+      "category": "",
+      "mode": "direct",
+      "position": 99,
+      "status": "observed"
+    },
+    {
+      "name": "付费榜",
+      "category": "",
+      "mode": "direct",
+      "position": null,
+      "status": "not_observed"
+    },
+    {
+      "name": "畅销榜",
+      "category": "",
+      "mode": "direct",
+      "position": null,
+      "status": "not_observed"
+    },
+    {
+      "name": "人气飙升榜",
+      "category": "",
+      "mode": "derived",
+      "position": null,
+      "status": "not_observed"
+    },
+    {
+      "name": "最新免费榜",
+      "category": "",
+      "mode": "direct",
+      "position": null,
+      "status": "not_observed"
+    },
+    {
+      "name": "最新畅销榜",
+      "category": "",
+      "mode": "derived",
+      "position": null,
+      "status": "not_observed"
+    },
+    {
+      "name": "最新付费榜",
+      "category": "",
+      "mode": "direct",
+      "position": null,
+      "status": "not_observed"
+    },
+    {
+      "name": "免费榜",
+      "category": "6005",
+      "mode": "direct",
+      "position": 6,
+      "status": "observed"
+    },
+    {
+      "name": "付费榜",
+      "category": "6005",
+      "mode": "direct",
+      "position": null,
+      "status": "not_observed"
+    },
+    {
+      "name": "畅销榜",
+      "category": "6005",
+      "mode": "direct",
+      "position": 5,
+      "status": "observed"
+    },
+    {
+      "name": "人气飙升榜",
+      "category": "6005",
+      "mode": "derived",
+      "position": null,
+      "status": "not_observed"
+    },
+    {
+      "name": "最新免费榜",
+      "category": "6005",
+      "mode": "direct",
+      "position": null,
+      "status": "unsupported"
+    },
+    {
+      "name": "最新畅销榜",
+      "category": "6005",
+      "mode": "derived",
+      "position": null,
+      "status": "not_observed"
+    },
+    {
+      "name": "最新付费榜",
+      "category": "6005",
+      "mode": "direct",
+      "position": null,
+      "status": "unsupported"
+    }
+  ],
+  "keywords": [
+    {
+      "keyword": "WhatsApp Messenger",
+      "position": 1,
+      "source": "apple-web-search"
+    }
+  ],
+  "javascriptErrors": [],
+  "collection": {
+    "id": 2,
+    "state": "complete",
+    "requested_at": 1793696728.3975801,
+    "total": 12,
+    "finished": 12,
+    "errors": 0
+  },
+  "scope": "Observed values during local verification on 2026-11-03 Asia/Shanghai, not permanent rankings. First direct web attempt failed TLS; verified local collector proxy and reran all 12 tasks successfully."
+}

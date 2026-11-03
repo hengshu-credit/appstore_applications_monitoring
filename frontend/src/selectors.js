@@ -306,6 +306,11 @@ export function createSelectors({ api, getMarket, onError, win = window }) {
     }
   }
   return {
+    supportsMarket: (store, country) =>
+      !!catalog?.countries.some(
+        (c) => c.code === country && (store !== "apple" || c.apple_supported),
+      ),
+    chartDefinitions: (store) => catalog?.charts?.[store] || [],
     ready,
     syncCountry,
     countryName,

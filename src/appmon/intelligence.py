@@ -57,10 +57,15 @@ def add_observation_target(db, value):
     m = market(value, kind == "reviews")
     m["app_id"] = m["app_id"] if kind == "reviews" else ""
     collection = value.get("collection", "top-free") if kind == "chart" else ""
+    if kind=='chart':
+        from .charts import definition
+        collection=definition(m['store'],collection)['base_collection']
     category = value.get("category", "") if kind == "chart" else ""
+    if kind=='chart' and category and not definition(m['store'],collection)['category_supported']:
+        raise ValueError('该商店公开新应用榜仅支持总榜，请选择全部分类')
     if kind == "featured" and m["store"] != "apple":
         raise ValueError("Featured observations currently support Apple Today")
-    if collection not in ("", "top-free", "top-paid", "top-grossing"):
+    if collection not in ("", "top-free", "top-paid", "top-grossing", "new-free", "new-paid", "trending"):
         raise ValueError("Unknown chart collection")
     if not isinstance(category, str) or not re.fullmatch(r"[A-Za-z0-9_]{0,64}", category):
         raise ValueError("Invalid category identifier")

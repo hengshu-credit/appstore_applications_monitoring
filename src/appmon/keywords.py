@@ -12,6 +12,7 @@ from .ingest import disk_check
 from .keyword_stores import APPLE_MARKETS, PARSER_VERSION, SOURCES, KeywordClient, ordered_apps
 from .monitor import raw_save
 from .stores import FetchError
+from .catalog import APPLE_COUNTRIES
 
 log = logging.getLogger(__name__)
 
@@ -28,8 +29,8 @@ def validate_target(value):
         raise ValueError("keyword must contain 1-255 visible characters")
     if store not in SOURCES or not re.fullmatch(r"[a-z]{2}", country):
         raise ValueError("store must be google/apple and country must be a two-letter code")
-    if store == "apple" and country not in APPLE_MARKETS:
-        raise ValueError("Unsupported Apple country; no US fallback")
+    if store == "apple" and country not in APPLE_COUNTRIES:
+        raise ValueError("该地区未列入 Apple 官方 App Store 市场；请选择其他地区，不会自动切换至美国")
     if not re.fullmatch(r"[a-z]{2,3}(?:-[a-z]{2}|-[a-z]{4})?(?:-[a-z]{2})?", language):
         raise ValueError("language must be a language tag, e.g. th, vi, fil, en-ph")
     depth = value.get("depth", 50)
@@ -89,6 +90,7 @@ def save_search(db, cfg, target, result=None, error=None, now=None):
     if len(apps) > target["depth"]:
         raise ValueError("Search exceeded requested depth")
     raw_path = raw_save(cfg["data_dir"], result.raw) if result else None
+    web_search=target['store']=='apple' and target['country'] not in APPLE_MARKETS
     with db:
         current = db.execute("SELECT * FROM keyword_targets WHERE id=%s AND token=%s FOR UPDATE",
                              (target["id"], target["token"])).fetchone()
@@ -100,8 +102,8 @@ def save_search(db, cfg, target, result=None, error=None, now=None):
         db.execute('''INSERT INTO keyword_runs(target_id,observed_at,outcome,source,parser_version,
             requested_depth,returned_count,coverage,raw_path,error) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
                    (target["id"], now, "error" if error else "ok",
-                    result.source if result else SOURCES[target["store"]],
-                    result.parser_version if result else PARSER_VERSION, target["depth"],
+                    result.source if result else 'apple-web-search' if web_search else SOURCES[target["store"]],
+                    result.parser_version if result else 'apple-web-v1' if web_search else PARSER_VERSION, target["depth"],
                     None if error else len(apps), result.coverage if result else "first_response",
                     raw_path, str(error) if error else None))
         run_id = db.cursor.lastrowid

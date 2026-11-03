@@ -4,6 +4,7 @@ from importlib.resources import files
 
 CATALOG = json.loads(files('appmon').joinpath('store_catalog.json').read_text(encoding='utf-8'))
 APPLE_MARKETS = json.loads(files('appmon').joinpath('apple_markets.json').read_text(encoding='utf-8'))
+APPLE_COUNTRIES = set(json.loads(files('appmon').joinpath('apple_countries.json').read_text(encoding='utf-8'))['countries'])
 BY_ID = {store: {c['id']: c for c in rows} for store, rows in CATALOG['categories'].items()}
 BY_ALIAS = {store: {alias.casefold(): c['id'] for c in rows for alias in c['aliases']}
             for store, rows in CATALOG['categories'].items()}
@@ -41,7 +42,9 @@ def category_aliases(store, value):
 
 
 def public_catalog():
-    return CATALOG | {'countries': [c | {'apple_supported': c['code'] in APPLE_MARKETS} for c in CATALOG['countries']],
+    from .charts import capabilities
+    return CATALOG | {'countries': [c | {'apple_supported': c['code'] in APPLE_COUNTRIES} for c in CATALOG['countries']],
+                      'charts':{store:capabilities(store) for store in ('apple','google')},
                       'country_scope': '国家/地区是公开商店请求地区；可用性以实际采集结果为准。Apple 仅开放当前支持的地区。'}
 
 
