@@ -6,6 +6,9 @@ import "./selectors.css";
 import "./research.css";
 import { createResearchPages } from "./research.js";
 import { createSelectors } from "./selectors.js";
+import { icon } from "./icons.js";
+import { initMarketControls } from "./market-controls.js";
+import "./workspace.css";
 import { initTheme } from "./theme.js";
 initTheme();
 const $ = (s, root = document) => root.querySelector(s);
@@ -48,7 +51,10 @@ try {
     $("#global-language").value = saved.language;
   }
 } catch {}
+const marketControls = initMarketControls();
+$(".brand .mark").innerHTML = icon("brand");
 function saveMarket() {
+  marketControls.sync();
   selectors.syncCountry();
   try {
     sessionStorage.setItem("appmon-market", JSON.stringify(market()));
@@ -94,8 +100,8 @@ const nav = [
 ];
 $("#navigation").innerHTML = nav
   .map(
-    ([id, icon, label]) =>
-      `<a href="#${id}" data-nav="${id}"><span class="nav-icon">${icon}</span>${label}</a>`,
+    ([id, , label]) =>
+      `<a href="#${id}" data-nav="${id}"><span class="nav-icon">${icon(id)}</span>${label}</a>`,
   )
   .join("");
 function toast(message) {
@@ -180,8 +186,8 @@ function appLink(store, id, name, icon, country, language) {
 function field(label, name, value = "", type = "text", extra = "") {
   return `<label>${label}<input name="${name}" value="${esc(value)}" type="${type}" ${extra}></label>`;
 }
-function select(label, name, options) {
-  return `<label>${label}<select name="${name}">${options.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("")}</select></label>`;
+function select(label, name, options, selected = "") {
+  return `<label>${label}<select name="${name}">${options.map(([v, l]) => `<option value="${esc(v)}" ${String(v) === String(selected) ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`;
 }
 function formData(form) {
   return Object.fromEntries(new FormData(form));
@@ -422,7 +428,7 @@ async function appDetail(store, id, rev = ++revision) {
     m = { ...market(), store, app_id: id };
   if (
     !mount(
-      `<div class="panel-heading"><div>${appLink(store, id, p.name || data.app.name, p.icon)}<p class="sub">${esc(store)} · ${esc(m.country.toUpperCase())} · ${esc(m.language)} · ${esc(p.developer || "开发者待采集")}</p></div><div class="actions"><button id="quick-watch">加入重点监控</button><button class="secondary" id="open-aso-workbench">ASO 工作台</button></div></div><div class="callout">最近成功：${esc(stamp(data.listing?.last_success))} · ${data.listing ? esc(data.listing.state) : "未采集"}${data.job?.last_error ? " · 最近失败：" + esc(data.job.last_error) : ""}</div><div class="cards">${metric("商店评分", p.rating, "来自最近一次商店观察")}${metric("评分数", p.ratings, "累计公开评分数量")}${metric("版本快照", data.snapshots.length, "显示最近最多100次变更")}${metric("覆盖关键词", data.keywords.coverage.length, "仅限本系统已跟踪词库")}</div><div class="grid2">${panel("当前商店资料", `<h3>${esc(p.name || "等待采集")}</h3><p>版本 ${esc(p.version || "—")} · ${esc(data.app.category_name || p.category || "—")}</p><p>${esc(p.summary || "")}</p><details><summary>描述与版本说明</summary><div class="review-text">${esc(p.description || "暂无描述")}</div><h3 class="spacer">版本说明</h3><div class="review-text">${esc(p.release_notes || "暂无版本说明")}</div></details>${safeURL(p.url) ? `<a href="${safeURL(p.url)}" target="_blank" rel="noopener">查看商店原页 ↗</a>` : ""}`)}${panel("评分变化", chart([...data.snapshots].reverse().map((r) => ({ at: r.observed_at, value: r.payload?.rating }))))}</div><div id="app-market-matrix"></div>${panel("素材与版本历史", `<label>选择历史快照<select id="snapshot-choice">${data.snapshots.map((r, i) => `<option value="${i}">${esc(stamp(r.observed_at))} · ${esc(r.payload?.version || "")}</option>`).join("")}</select></label><div id="snapshot-view"></div>`)}${panel(
+      `<div class="panel-heading"><div>${appLink(store, id, p.name || data.app.name, p.icon)}<p class="sub">${esc(store)} · ${esc(m.country.toUpperCase())} · ${esc(m.language)} · ${esc(p.developer || "开发者待采集")}</p></div><div class="actions"><button id="quick-watch">配置应用采集</button><button class="secondary" id="open-aso-workbench">ASO 工作台</button></div></div><div class="callout">最近成功：${esc(stamp(data.listing?.last_success))} · ${data.listing ? esc(data.listing.state) : "未采集"}${data.job?.last_error ? " · 最近失败：" + esc(data.job.last_error) : ""}</div><div class="cards">${metric("商店评分", p.rating, "来自最近一次商店观察")}${metric("评分数", p.ratings, "累计公开评分数量")}${metric("版本快照", data.snapshots.length, "显示最近最多100次变更")}${metric("覆盖关键词", data.keywords.coverage.length, "仅限本系统已跟踪词库")}</div><div class="grid2">${panel("当前商店资料", `<h3>${esc(p.name || "等待采集")}</h3><p>版本 ${esc(p.version || "—")} · ${esc(data.app.category_name || p.category || "—")}</p><p>${esc(p.summary || "")}</p><details><summary>描述与版本说明</summary><div class="review-text">${esc(p.description || "暂无描述")}</div><h3 class="spacer">版本说明</h3><div class="review-text">${esc(p.release_notes || "暂无版本说明")}</div></details>${safeURL(p.url) ? `<a href="${safeURL(p.url)}" target="_blank" rel="noopener">查看商店原页 ↗</a>` : ""}`)}${panel("评分变化", chart([...data.snapshots].reverse().map((r) => ({ at: r.observed_at, value: r.payload?.rating }))))}</div><div id="app-market-matrix"></div>${panel("素材与版本历史", `<label>选择历史快照<select id="snapshot-choice">${data.snapshots.map((r, i) => `<option value="${i}">${esc(stamp(r.observed_at))} · ${esc(r.payload?.version || "")}</option>`).join("")}</select></label><div id="snapshot-view"></div>`)}${panel(
         "关键词覆盖",
         table(
           ["关键词", "最近位置", "变化", "数据时间", "状态"],
@@ -476,13 +482,8 @@ async function appDetail(store, id, rev = ++revision) {
   };
   renderSnapshot();
   $("#snapshot-choice").addEventListener("change", renderSnapshot);
-  $("#quick-watch").addEventListener("click", async () => {
-    try {
-      await api("/watchlist", m);
-      toast("已加入重点监控");
-    } catch (e) {
-      toast(e.message);
-    }
+  $("#quick-watch").addEventListener("click", () => {
+    researchPages.planForApps([id]);
   });
   $("#aso-check").addEventListener("click", async () => {
     try {
@@ -498,65 +499,38 @@ async function appDetail(store, id, rev = ++revision) {
     }
   });
 }
+function collectionLink(kind) {
+  return `<div class="collection-link"><span>采集目标、周期与状态统一在采集中心配置。</span><a href="#collection?new=${kind}">前往采集中心 →</a></div>`;
+}
 async function watchlist(rev) {
   const rows = await api("/watchlist");
-  if (
-    !mount(
-      `<p class="lead">重点应用使用独立工作进程，避免被百万应用基线队列拖延。国家与语言使用顶部设置。</p>${panel("添加重点应用", `<form id="watch-form" class="toolbar">${field("应用 ID", "app_id", "", "text", "required")}${field("监控分组", "group_name", "重点应用", "text", "required")}${field("刷新周期（小时）", "refresh_hours", 24, "number", 'min="0.25" max="8760" step="0.25" required')}<button type="submit">添加监控</button></form>`)}${panel(
-        "监控列表",
+  mount(
+    collectionLink("details") +
+      panel(
+        "重点监控结果",
         table(
-          ["应用", "市场 / 分组", "状态", "周期 / 下次采集", "操作"],
+          ["应用", "市场 / 分组", "状态", "周期 / 下次采集", "管理"],
           rows.map((r) => [
             appLink(r.store, r.app_id, r.name, null, r.country, r.language),
             `${esc(r.country)} / ${esc(r.language)}<div class="sub">${esc(r.group_name)}</div>`,
             badge(r.state) +
-              `<div class="sub">${r.enabled ? "监控中" : "已暂停"}${r.failures ? " · " + r.failures + "次失败" : ""}</div>`,
+              `<div class="sub">${r.enabled ? "监控中" : "已暂停"}</div>`,
             r.refresh_hours + 'h<div class="sub">' + stamp(r.due) + "</div>",
-            controlButtons("watchlist", r),
+            '<a href="#collection">管理任务</a>',
           ]),
         ),
-      )}`,
-      rev,
-    )
-  )
-    return;
-  bindForm("#watch-form", async (data) => {
-    await api("/watchlist", {
-      ...market(),
-      ...data,
-      refresh_hours: Number(data.refresh_hours),
-    });
-    toast("监控目标已保存");
-    await watchlist(revision);
-  });
+      ),
+    rev,
+  );
 }
 async function observations(rev, kind) {
   const rows = await api("/targets?kind=" + kind);
-  const isReview = kind === "reviews",
-    isFeatured = kind === "featured";
-  if (
-    !mount(
-      `<p class="lead">${isFeatured ? "记录 Apple Today 推荐卡片及其应用关联。卡片展示顺序与商店榜单排名分别保存。" : isReview ? "持续采集最近评论，保留编辑前的历史观察。公开来源返回范围有限。" : "按商店、国家、分类保存有序榜单；新入榜、掉出观察范围与名次变化均可回溯。"}</p>${panel(
-        "配置采集目标",
-        `<form id="target-form" class="toolbar">${isReview ? field("应用 ID", "app_id", "", "text", "required") : ""}${
-          !isReview && !isFeatured
-            ? select("榜单", "collection", [
-                ["top-free", "免费榜"],
-                ["top-paid", "付费榜"],
-                ["top-grossing", "商店畅销排行"],
-              ]) +
-              selectors.categoryField(
-                market().store,
-                "",
-                "chart-category",
-                "chart",
-              )
-            : ""
-        }${field("最多保留条数", "depth", 100, "number", 'min="1" max="500" required')}${field("周期（小时）", "refresh_hours", 24, "number", 'min="0.25" max="8760" step="0.25" required')}<button type="submit">添加目标</button></form>${isFeatured ? '<p class="sub">此模块固定使用 Apple，国家与语言沿用顶部设置。</p>' : ""}`,
-      )}${panel(
-        "采集任务",
+  mount(
+    collectionLink(kind) +
+      panel(
+        "采集结果",
         table(
-          ["目标", "市场", "范围 / 周期", "状态", "操作"],
+          ["目标", "市场", "范围 / 周期", "最近状态", "管理"],
           rows.map((r) => [
             `<button class="link" data-target="${r.id}">${esc(r.app_id || r.collection || "Apple Today")}</button><div class="sub">${esc(selectors.categoryName(r.store, r.category))}</div>`,
             `${esc(r.store)} · ${esc(r.country)} / ${esc(r.language)}`,
@@ -570,26 +544,12 @@ async function observations(rev, kind) {
                       ? "已有快照"
                       : "queued",
                 ),
-            controlButtons("targets", r),
+            '<a href="#collection">管理任务</a>',
           ]),
         ),
-      )}`,
-      rev,
-    )
-  )
-    return;
-  bindForm("#target-form", async (data) => {
-    await api("/targets", {
-      ...market(),
-      ...data,
-      kind,
-      ...(isFeatured ? { store: "apple" } : {}),
-      depth: Number(data.depth),
-      refresh_hours: Number(data.refresh_hours),
-    });
-    toast("采集目标已保存");
-    await observations(revision, kind);
-  });
+      ),
+    rev,
+  );
 }
 async function targetDetail(id, runId, rev = ++revision) {
   const report = await api(
@@ -671,12 +631,12 @@ async function targetDetail(id, runId, rev = ++revision) {
 }
 async function keywordPage(rev) {
   const rows = await api("/keywords");
-  if (
-    !mount(
-      `<p class="lead">为每个国家与请求语言维护词库。排名来自实际返回顺序，未出现不等于零排名。</p>${panel("添加关键词", `<form id="keyword-form" class="toolbar">${field("关键词（支持任意语言）", "keyword", "", "text", "required")}${field("结果上限", "depth", 50, "number", 'min="1" max="200" required')}${field("周期（小时）", "refresh_hours", 24, "number", 'min="0.25" step="0.25" required')}<button type="submit">开始跟踪</button></form><details><summary>批量导入 JSON</summary><form id="keyword-import"><label>关键词数组<textarea name="json" placeholder='[{"store":"google","country":"th","language":"th","keyword":"เงินกู้"}]' required></textarea></label><button type="submit" class="spacer">导入词库</button></form></details>`)}${panel(
+  mount(
+    collectionLink("keywords") +
+      panel(
         "跟踪词库",
         table(
-          ["关键词", "商店 / 市场", "深度 / 周期", "最近尝试", "操作"],
+          ["关键词", "商店 / 市场", "深度 / 周期", "最近尝试", "管理"],
           rows.map((r) => [
             `<button class="link" data-keyword="${r.id}">${esc(r.keyword)}</button>`,
             `${esc(r.store)} · ${esc(r.country)} / ${esc(r.language)}`,
@@ -686,31 +646,12 @@ async function keywordPage(rev) {
               : r.latest_success_id
                 ? "已有观察"
                 : "等待采集",
-            controlButtons("keywords", r),
+            '<a href="#collection">管理任务</a>',
           ]),
         ),
-      )}`,
-      rev,
-    )
-  )
-    return;
-  bindForm("#keyword-form", async (data) => {
-    await api("/keywords", [
-      {
-        ...market(),
-        ...data,
-        depth: Number(data.depth),
-        refresh_hours: Number(data.refresh_hours),
-      },
-    ]);
-    toast("关键词已保存");
-    await keywordPage(revision);
-  });
-  bindForm("#keyword-import", async (data) => {
-    await api("/keywords", JSON.parse(data.json));
-    toast("词库已导入");
-    await keywordPage(revision);
-  });
+      ),
+    rev,
+  );
 }
 async function keywordDetail(id, rev = ++revision) {
   const r = await api("/keywords/" + id);
@@ -1042,8 +983,9 @@ const routes = {
   exports: exportPage,
 };
 async function render() {
+  $("#collection-editor")?.remove();
   $("#research-dialog")?.close();
-  const name = location.hash.slice(1) || "overview",
+  const name = (location.hash.slice(1) || "overview").split("?")[0],
     route = routes[name] || overview,
     rev = ++revision;
   $("#page-title").textContent = (nav.find(

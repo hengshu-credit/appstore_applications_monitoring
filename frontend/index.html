@@ -34,12 +34,33 @@
           <h1 id="page-title">监控概览</h1>
         </div>
         <div class="market">
-          <label
-            >商店<select id="global-store">
-              <option value="google">Google Play</option>
-              <option value="apple">App Store</option>
-            </select></label
-          >
+          <div class="market-field store-field">
+            <span id="store-label">应用商店</span
+            ><input id="global-store" type="hidden" value="google" />
+            <button
+              id="store-trigger"
+              type="button"
+              class="market-trigger secondary"
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              aria-controls="store-menu"
+              aria-labelledby="store-label store-value"
+            >
+              <span class="market-value" id="store-value"></span
+              ><svg
+                class="ui-icon chevron"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            <div id="store-menu" class="market-menu" hidden>
+              <div role="listbox" aria-label="应用商店"></div>
+            </div>
+          </div>
           <div class="country-field">
             <span id="country-label">国家 / 地区</span
             ><input id="global-country" value="us" type="hidden" /><button
@@ -54,14 +75,42 @@
               ><span aria-hidden="true">⌄</span>
             </button>
           </div>
-          <label
-            >语言<input
-              id="global-language"
-              value="en"
-              maxlength="16"
-              aria-label="请求语言" /></label
-          ><button id="refresh-page" class="secondary">刷新</button
-          ><button id="open-theme" class="secondary">主题设置</button>
+          <div class="market-field language-field">
+            <span id="language-label">请求语言</span
+            ><input id="global-language" type="hidden" value="en" />
+            <button
+              id="language-trigger"
+              type="button"
+              class="market-trigger secondary"
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              aria-controls="language-menu"
+              aria-labelledby="language-label language-value"
+            >
+              <span class="market-value" id="language-value"></span
+              ><svg
+                class="ui-icon chevron"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            <div id="language-menu" class="market-menu" hidden>
+              <input
+                type="search"
+                placeholder="搜索名称或语言代码"
+                aria-label="搜索请求语言"
+              />
+              <div role="listbox" aria-label="请求语言"></div>
+            </div>
+          </div>
+          <div class="market-actions">
+            <button id="refresh-page" class="secondary">刷新</button
+            ><button id="open-theme" class="secondary">主题设置</button>
+          </div>
         </div>
       </header>
       <main id="content" aria-live="polite">

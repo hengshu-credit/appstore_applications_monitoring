@@ -20,6 +20,7 @@ from .db import connect
 from .ingest import valid_id
 from . import catalog
 from . import aso, review_desk, insights, collection
+from . import collection_tasks, pipelines
 from datetime import date, datetime, timezone
 from . import keywords, intelligence as intel, analytics, alerts, exports
 
@@ -265,6 +266,8 @@ def create_app(cfg):
 
     @api.post("/control/{resource}/{identifier}")
     def control(resource: str, identifier: int, value: dict = Body(...), db=DB):
+        if resource in collection_tasks.TABLES:
+            return collection_tasks.control_tasks(db, {'tasks':[{'resource':resource,'id':identifier}], 'action':value.get('action')})
         table = {"watchlist": "watchlist", "targets": "observation_targets", "keywords": "keyword_targets", "rules": "alert_rules"}.get(resource)
         if not table or not db.execute(f"SELECT id FROM {table} WHERE id=%s", (identifier,)).fetchone():
             raise HTTPException(404, "任务不存在")
@@ -420,6 +423,29 @@ def create_app(cfg):
 
     @api.get('/research/collection')
     def data_center(db=DB):return collection.quality(db)
+
+    @api.get('/research/collection/tasks')
+    def collection_registry(kind:str='',store:str='',country:str='',language:str='',state:str='',q:str='',
+                            page:int=Query(1,ge=1,le=100000),limit:int=Query(50,ge=1,le=200),db=DB):
+        return collection_tasks.list_tasks(db,kind=kind,store=store,country=country,language=language,state=state,q=q,page=page,limit=limit)
+
+    @api.get('/research/collection/activity')
+    def collection_activity(db=DB):
+        return {'plans':db.execute('SELECT id,name,status,completed,total,error,created_at FROM collection_plans ORDER BY id DESC LIMIT 100').fetchall(),
+                'heartbeat':db.execute("SELECT next_at FROM schedules WHERE name='console-heartbeat'").fetchone()}
+
+    @api.post('/research/collection/tasks/batch')
+    def batch_collection(value:dict=Body(...),db=DB):return collection_tasks.control_tasks(db,value)
+
+    @api.put('/research/collection/tasks/{resource}/{identifier}')
+    def update_collection_task(resource:str,identifier:int,value:dict=Body(...),db=DB):
+        return collection_tasks.edit_task(db,resource,identifier,value)
+
+    @api.get('/research/collection/pipelines')
+    def collection_pipelines(db=DB):return pipelines.report(db,cfg)
+
+    @api.put('/research/collection/pipelines/{name}')
+    def save_pipeline(name:str,value:dict=Body(...),db=DB):return pipelines.save(db,cfg,name,value)
 
     @api.post('/research/plans/preview')
     def preview_collection(value:dict=Body(...)):return collection.preview_plan(value)

@@ -22,10 +22,27 @@ const catalogFixture = JSON.parse(
 );
 const researchSource = (
   await readFile(new URL("../src/research.js", import.meta.url), "utf8")
-).replace(/^export /gm, "");
+)
+  .replace(/^export /gm, "")
+  .replace(/^import .*;$/gm, "");
 const source = (
   await readFile(new URL("../src/main.js", import.meta.url), "utf8")
 ).replace(/import ['"]\.\/style\.css['"];?/, "");
+async function wrappedModule(name, exports) {
+  const code = (
+    await readFile(new URL("../src/" + name, import.meta.url), "utf8")
+  )
+    .replace(/^import .*;$/gm, "")
+    .replace(/^export /gm, "");
+  return `const {${exports}} = (()=>{${code};return {${exports}};})();`;
+}
+const newModules = (
+  await Promise.all([
+    wrappedModule("icons.js", "icon,storeLogo"),
+    wrappedModule("market-controls.js", "initMarketControls"),
+    wrappedModule("collection-center.js", "createCollectionCenter"),
+  ])
+).join("\n");
 const overview = {
   counts: {
     watchlist: 1,
@@ -60,6 +77,20 @@ async function setup(responder) {
         : path === "/api/overview"
           ? overview
           : responder?.(path, options);
+    if (
+      data === undefined &&
+      path.startsWith("/api/research/collection/tasks?")
+    )
+      data = {
+        items: [],
+        total: 0,
+        summary: { running: 0, pending: 0, error: 0, paused: 0 },
+        has_more: false,
+      };
+    if (data === undefined && path === "/api/research/collection/pipelines")
+      data = [];
+    if (data === undefined && path === "/api/research/collection/activity")
+      data = { plans: [], heartbeat: null };
     if (data === undefined) throw new Error("Unmocked route " + path);
     return { ok: true, status: 200, json: async () => data };
   };
@@ -69,6 +100,9 @@ async function setup(responder) {
       selectorSource +
       "\n" +
       researchSource +
+      "\n" +
+      "\n" +
+      newModules +
       "\n" +
       source.replace(/^import .*;$/gm, ""),
   );
@@ -104,35 +138,53 @@ test("navigation queries the API and escapes upstream application content", asyn
     assert.equal(window.document.querySelector("img[onerror]"), null);
     assert.ok(calls.some((c) => c.path.startsWith("/api/apps?")));
     assert.equal(window.document.querySelectorAll("nav a").length, 16);
+    assert.equal(window.document.querySelectorAll("nav a .ui-icon").length, 16);
   } finally {
     await window.happyDOM.close();
   }
 });
 
-test("watchlist form sends explicit market and numeric interval to Python API", async () => {
-  const { window, calls } = await setup((path) =>
-    path === "/api/watchlist" ? [] : undefined,
-  );
+test("watchlist configuration moves to the center and sends explicit market and numeric interval", async () => {
+  const { window, calls } = await setup((path, options) => {
+    if (path === "/api/watchlist") return [];
+    if (path === "/api/research/plans/preview") {
+      const v = JSON.parse(options.body);
+      return {
+        total: 1,
+        actions: [
+          {
+            kind: "details",
+            value: { app_id: v.app_ids[0], refresh_hours: v.refresh_hours },
+          },
+        ],
+      };
+    }
+    if (path === "/api/research/plans") return { id: 1 };
+  });
   try {
     window.location.hash = "watchlist";
     await tick();
-    window.document.querySelector("[name=app_id]").value = "com.example.app";
-    window.document.querySelector("[name=refresh_hours]").value = "6";
-    window.document
-      .querySelector("#watch-form")
-      .dispatchEvent(
-        new window.Event("submit", { bubbles: true, cancelable: true }),
-      );
+    assert.equal(window.document.querySelector("#watch-form"), null);
+    window.document.querySelector('a[href="#collection?new=details"]').click();
+    await tick();
+    const form = window.document.querySelector("#plan-form");
+    form.elements.app_ids.value = "com.example.app";
+    form.elements.refresh_hours.value = "6";
+    form.dispatchEvent(
+      new window.Event("submit", { bubbles: true, cancelable: true }),
+    );
+    await tick();
+    window.document.querySelector("#commit-plan").click();
     await tick();
     const call = calls.find(
-      (c) => c.path === "/api/watchlist" && c.options.method === "POST",
+      (c) => c.path === "/api/research/plans" && c.options.method === "POST",
     );
     assert.ok(call);
     const body = JSON.parse(call.options.body);
     assert.equal(body.refresh_hours, 6);
     assert.equal(body.country, "us");
     assert.equal(body.store, "google");
-    assert.equal(body.app_id, "com.example.app");
+    assert.deepEqual(body.app_ids, ["com.example.app"]);
   } finally {
     await window.happyDOM.close();
   }
@@ -153,7 +205,103 @@ test("failed API produces visible error and retry recovers", async () => {
     broken = false;
     window.document.querySelector("#retry-load").click();
     await tick();
-    assert.ok(window.document.querySelector("#keyword-form"));
+    assert.ok(
+      window.document.querySelector('a[href="#collection?new=keywords"]'),
+    );
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("keyword-only plan sends multilingual words and configured depth", async () => {
+  let preview;
+  const { window } = await setup((path, options) => {
+    if (path === "/api/research/plans/preview") {
+      preview = JSON.parse(options.body);
+      return {
+        total: 2,
+        actions: preview.keywords.map((keyword) => ({
+          kind: "keywords",
+          value: {
+            keyword,
+            depth: preview.keyword_depth,
+            refresh_hours: preview.refresh_hours,
+          },
+        })),
+      };
+    }
+  });
+  try {
+    window.location.hash = "collection?new=keywords";
+    await tick();
+    const form = window.document.querySelector("#plan-form");
+    assert.equal(form.elements.collect_keywords.checked, true);
+    form.elements.keywords.value = "เงินกู้\nvay tiền";
+    form.elements.keyword_depth.value = "25";
+    form.dispatchEvent(
+      new window.Event("submit", { bubbles: true, cancelable: true }),
+    );
+    await tick();
+    assert.deepEqual(preview.keywords, ["เงินกู้", "vay tiền"]);
+    assert.equal(preview.keyword_depth, 25);
+    assert.equal(preview.details, false);
+    assert.deepEqual(preview.app_ids, []);
+    assert.ok(window.document.querySelector("#commit-plan"));
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("pending task controls block editing and cannot replace a newly selected page", async () => {
+  let release;
+  const { window } = await setup((path) => {
+    if (path.startsWith("/api/research/collection/tasks?"))
+      return {
+        total: 1,
+        summary: { running: 0, pending: 1, error: 0, paused: 0 },
+        has_more: false,
+        items: [
+          {
+            resource: "keywords",
+            id: 1,
+            kind: "keywords",
+            label: "loan",
+            store: "google",
+            country: "th",
+            language: "th",
+            depth: 50,
+            refresh_hours: 24,
+            enabled: 1,
+            task_state: "pending",
+          },
+        ],
+      };
+    if (path === "/api/research/collection/tasks/batch")
+      return new Promise((resolve) => {
+        release = resolve;
+      });
+    if (path === "/api/keywords") return [];
+  });
+  try {
+    window.location.hash = "collection";
+    await tick();
+    window.document
+      .querySelector('[data-task-action="0"][data-action="pause"]')
+      .click();
+    await tick();
+    assert.equal(
+      window.document.querySelector('[data-edit-task="0"]').disabled,
+      true,
+    );
+    window.location.hash = "keywords";
+    await tick();
+    release({ updated: 1 });
+    await tick();
+    assert.equal(
+      window.document.querySelector("#page-title").textContent,
+      "关键词中心",
+    );
+    assert.equal(window.document.querySelector("#task-filters"), null);
   } finally {
     await window.happyDOM.close();
   }
@@ -390,7 +538,10 @@ test("collection plan requires a fresh preview and creates only reviewed actions
   try {
     window.location.hash = "collection";
     await tick();
+    window.document.querySelector("#new-collection").click();
+    await tick();
     const form = window.document.querySelector("#plan-form");
+    form.elements.collect_reviews.checked = true;
     form.elements.app_ids.value = "com.example.app";
     form.dispatchEvent(
       new window.Event("submit", { bubbles: true, cancelable: true }),

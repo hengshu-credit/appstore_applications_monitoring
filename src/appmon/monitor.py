@@ -101,10 +101,15 @@ def save_result(db, cfg, job, result=None, error=None, now=None):
         raise
 
 
-def work(cfg, db, limit, client=None):
+def work(cfg, db, limit, client=None, managed=False):
     client = client or Client(cfg, db)
     counts = {"processed": 0, "ok": 0, "missing": 0, "error": 0, "stale": 0}
     for _ in range(limit):
+        if managed:
+            from .pipelines import configured
+            enabled, cfg = configured(db,cfg,'pool')
+            if not enabled:
+                break
         disk_check(cfg["data_dir"], cfg["min_free_gb"])
         job = claim(db, cfg["countries"], cfg["language"], cfg["lease_seconds"])
         if not job:
@@ -123,7 +128,7 @@ def work(cfg, db, limit, client=None):
     return counts
 
 
-def discover(cfg, db, client=None, max_sources=None):
+def discover(cfg, db, client=None, max_sources=None, managed=False):
     client = client or Client(cfg, db)
     sources = []
     for country in cfg["countries"]:
@@ -136,6 +141,10 @@ def discover(cfg, db, client=None, max_sources=None):
         sources += [(r["store"], country, "developer", str(r["developer"])) for r in developers if r["developer"]]
     results = []
     for source in sources[:max_sources]:
+        if managed:
+            from .pipelines import settings
+            if not settings(db,cfg,'discovery')['enabled']:
+                break
         store, country, kind, term = source
         name = ":".join(source)
         schedule = db.execute("SELECT next_at FROM schedules WHERE name=%s", ("discover:" + name,)).fetchone()
@@ -167,21 +176,33 @@ def discover(cfg, db, client=None, max_sources=None):
 
 def daemon(cfg, db):
     from .keywords import work_keywords
+    from .pipelines import configured
     while True:
         keyword_counts = work_keywords(cfg, db, cfg["batch_size"])
         if keyword_counts["processed"]:
             log.info("Keyword batch %s", keyword_counts)
         row = db.execute("SELECT next_at FROM schedules WHERE name='seed-sync'").fetchone()
-        if not row or row["next_at"] <= time.time():
+        seed_enabled, seed_cfg = configured(db,cfg,'seed')
+        if seed_enabled and (not row or row["next_at"] <= time.time()):
             try:
-                sync_seed(cfg, db)
-                enqueue(db, cfg["countries"], cfg["language"])
-                reserve(db, "seed-sync", cfg["seed_sync_hours"] * 3600)
+                sync_seed(seed_cfg, db)
+                reserve(db, "seed-sync", seed_cfg["seed_sync_hours"] * 3600)
             except Exception as e:
                 log.error("Seed sync failed: %s", type(e).__name__)
                 reserve(db, "seed-sync", 3600)
-        discover(cfg, db)
-        counts = work(cfg, db, cfg["batch_size"])
+        discovery_enabled, discovery_cfg = configured(db,cfg,'discovery')
+        if discovery_enabled:
+            discover(discovery_cfg, db, managed=True)
+        pool_enabled, pool_cfg = configured(db,cfg,'pool')
+        # Expand regional jobs once per configuration (and periodically for new IDs).
+        if pool_enabled:
+            signature = dump({'countries':pool_cfg['countries'],'language':pool_cfg['language']})
+            queue_name = 'pool-enqueue:' + hashlib.sha256(signature.encode()).hexdigest()
+            queued = db.execute('SELECT next_at FROM schedules WHERE name=%s',(queue_name,)).fetchone()
+            if not queued or queued['next_at'] <= time.time():
+                enqueue(db,pool_cfg['countries'],pool_cfg['language'])
+                reserve(db,queue_name,cfg['seed_sync_hours']*3600)
+        counts = work(pool_cfg, db, cfg["batch_size"], managed=True)
         log.info("Batch %s", counts)
         if not counts["processed"]:
             time.sleep(30)

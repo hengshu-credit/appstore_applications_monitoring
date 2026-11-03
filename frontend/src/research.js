@@ -1,3 +1,4 @@
+import { createCollectionCenter } from "./collection-center.js";
 // Business workflows built on observed records. Shared visual tokens live in theme.css.
 export function createResearchPages(ctx) {
   const {
@@ -633,19 +634,13 @@ export function createResearchPages(ctx) {
             ),
           )}<button class="secondary" id="monitor-set">为此集合创建监控计划</button>`;
         bindButton("#monitor-set", async () => {
-          await api("/research/plans", {
-            ...s,
-            app_ids: s.members.map((m) => m.app_id),
-            keywords: [],
-            details: true,
-            reviews: true,
-            chart: false,
-            featured: false,
-            refresh_hours: 24,
-            group_name: s.name,
-            name: s.name + "监控",
-          });
-          toast("集合监控计划已排队，可到采集中心查看");
+          for (const key of ["store", "country", "language"]) {
+            document.querySelector("#global-" + key).value = s[key];
+          }
+          document
+            .querySelector("#global-store")
+            .dispatchEvent(new Event("change", { bubbles: true }));
+          planForApps(s.members.map((m) => m.app_id));
         });
       } catch (e) {
         toast(e.message);
@@ -732,123 +727,7 @@ export function createResearchPages(ctx) {
     });
   }
 
-  async function collectionCenter(rev) {
-    const data = await api("/research/collection");
-    const s = data.summary;
-    if (
-      !mount(
-        `<p class="lead">先预览采集目标再提交计划，查看数据来源、刷新周期、实际覆盖和失败任务。</p><div class="cards">${metric("展示任务", s.listed, "每类最多1000个目标")}${metric("待更新 / 未成功", s.stale, "根据最近成功时间和周期判断")}${metric("失败任务", s.failed, "保留上次成功数据")}${metric("已暂停", s.paused, "计划更新不会自动恢复")}</div><div class="callout">采集工作进程心跳：${esc(stamp(data.heartbeat?.next_at))}。计划“已配置”表示目标已入队，数据需要等待实际采集。</div>${panel("创建采集计划", `<form id="plan-form" class="form-grid">${field("计划名称", "name", "应用研究计划", "text", "required")}${field("关注分组", "group_name", "研究应用", "text", "required")}${field("周期（小时）", "refresh_hours", 24, "number", 'min="0.25" max="8760" step="0.25" required')}<label>应用ID（每行一个，最多50个）<textarea name="app_ids"></textarea></label><label>关键词（每行一个，最多100个）<textarea name="keywords"></textarea></label><div>${selectors.categoryField(market().store, "", "plan-category", "chart")}</div><label class="check-label"><input type="checkbox" name="details" checked>应用详情与素材</label><label class="check-label"><input type="checkbox" name="reviews" checked>最近评论</label><label class="check-label"><input type="checkbox" name="chart">分类免费榜</label>${market().store === "apple" ? '<label class="check-label"><input type="checkbox" name="featured">Apple Today推荐</label>' : ""}<div class="full form-actions"><button type="submit">预览计划</button></div></form><div id="plan-preview"></div>`)}${panel(
-          "计划进度",
-          table(
-            ["名称", "配置进度", "状态", "创建时间", "操作"],
-            data.plans.map((p) => [
-              esc(p.name),
-              p.completed + " / " + p.total,
-              status(p.status) + (p.error ? " " + esc(p.error) : ""),
-              stamp(p.created_at),
-              p.status === "error"
-                ? `<button class="link" data-retry-plan="${p.id}">重试未完成部分</button>`
-                : "—",
-            ]),
-          ),
-        )}${panel(
-          "采集目标与质量",
-          table(
-            [
-              "类型 / 目标",
-              "市场",
-              "周期",
-              "最后成功 / 尝试",
-              "实际覆盖",
-              "状态",
-              "操作",
-            ],
-            data.targets.map((t) => [
-              esc(kindNames[t.kind] || t.kind) +
-                '<div class="appid">' +
-                esc(t.keyword || t.app_id || t.collection || "Today") +
-                "</div>",
-              esc(marketCaption(t)),
-              t.refresh_hours + "h",
-              stamp(t.success_at) +
-                '<div class="sub">尝试 ' +
-                stamp(t.attempt_at) +
-                "</div>",
-              esc(coverageNames[t.coverage] || t.coverage || "未成功") +
-                " / " +
-                num(t.returned_count),
-              t.last_error
-                ? `<span class="down">${esc(t.last_error)}</span>`
-                : t.stale
-                  ? "待更新"
-                  : "有效观察",
-              ctx.controlButtons(t.resource, t),
-            ]),
-          ),
-        )}${panel("数据采集方案", `<div class="source-grid">${data.sources.map((source) => `<article class="source-card"><span class="badge ${source.method === "authorization" ? "warn" : "neutral"}">${source.method === "authorization" ? "需授权 / 导入" : "公开观察"}</span><h3>${esc(source.name)}</h3><p>${esc(source.fields)}</p><p class="sub">来源：${esc(source.source)}</p><p class="sub">周期：${esc(source.cadence)}</p><div class="callout">${esc(source.coverage)}</div></article>`).join("")}</div>`)}`,
-        rev,
-      )
-    )
-      return;
-    for (const type of ["input", "change"])
-      $("#plan-form").addEventListener(type, () => {
-        $("#plan-preview").innerHTML = "";
-      });
-    bindForm("#plan-form", async (v, form) => {
-      const spec = {
-        ...market(),
-        name: v.name,
-        group_name: v.group_name,
-        refresh_hours: Number(v.refresh_hours),
-        app_ids: v.app_ids.split(/\s+/).filter(Boolean),
-        keywords: v.keywords
-          .split("\n")
-          .map((x) => x.trim())
-          .filter(Boolean),
-        category: v.category,
-        collection: "top-free",
-        ...Object.fromEntries(
-          ["details", "reviews", "chart", "featured"].map((k) => [
-            k,
-            !!form.elements[k]?.checked,
-          ]),
-        ),
-      };
-      const preview = await api("/research/plans/preview", spec);
-      if (rev !== currentRevision()) return;
-      $("#plan-preview").innerHTML =
-        `<div class="callout spacer">将配置 ${preview.total} 个目标 · ${esc(preview.scope)}</div>${table(
-          ["类型", "应用 / 关键词 / 榜单", "周期"],
-          preview.actions.map((a) => [
-            esc(kindNames[a.kind] || a.kind),
-            esc(
-              a.value.app_id || a.value.keyword || a.value.category || "总榜",
-            ),
-            a.value.refresh_hours + "h",
-          ]),
-        )}<button id="commit-plan">确认创建此计划</button>`;
-      bindButton("#commit-plan", async () => {
-        await api("/research/plans", spec);
-        toast("计划已排队");
-        await collectionCenter(nextRevision());
-      });
-    });
-    $("#content").addEventListener("click", async function handler(event) {
-      if (rev !== currentRevision()) {
-        this.removeEventListener("click", handler);
-        return;
-      }
-      const b = event.target.closest("[data-retry-plan]");
-      if (b) {
-        try {
-          await api("/research/plans/" + b.dataset.retryPlan + "/retry", {});
-          await collectionCenter(nextRevision());
-        } catch (e) {
-          toast(e.message);
-        }
-      }
-    });
-  }
+  const collectionCenter = createCollectionCenter(ctx);
 
   async function marketMatrix(store, appId, rev) {
     const data = await api(
@@ -882,27 +761,7 @@ export function createResearchPages(ctx) {
     );
   }
   function planForApps(ids) {
-    dialog(
-      "批量加入监控",
-      `<p>已选 ${ids.length} 个应用 · ${esc(marketCaption(market()))}</p><form id="bulk-plan" class="toolbar">${field("关注分组", "group_name", "重点应用", "text", "required")}${field("周期（小时）", "refresh_hours", 24, "number", 'min="0.25" max="8760" step="0.25" required')}<button type="submit">创建详情与评论采集计划</button></form><p class="sub">计划会添加详情和评论目标；已有目标更新周期并保留暂停状态。</p>`,
-    );
-    bindForm("#bulk-plan", async (v) => {
-      await api("/research/plans", {
-        ...market(),
-        name: v.group_name + "批量监控",
-        group_name: v.group_name,
-        refresh_hours: Number(v.refresh_hours),
-        app_ids: ids,
-        keywords: [],
-        details: true,
-        reviews: true,
-        chart: false,
-        featured: false,
-      });
-      $("#research-dialog").close();
-      toast("批量监控计划已排队");
-      location.hash = "collection";
-    });
+    collectionCenter.prepare(ids);
   }
   function setForApps(ids) {
     dialog(

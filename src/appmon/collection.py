@@ -26,6 +26,12 @@ SOURCES = [
 def preview_plan(value):
     m = market(value, require_app=False)
     interval = hours(value.get('refresh_hours',24))
+    keyword_depth = value.get('keyword_depth', 50)
+    depth = value.get('depth', 100)
+    if type(depth) is not int or not 1 <= depth <= 500:
+        raise ValueError('榜单、推荐与评论深度须为1–500的整数')
+    if type(keyword_depth) is not int or not 1 <= keyword_depth <= 200:
+        raise ValueError('关键词深度须为1–200的整数')
     apps = value.get('app_ids',[]); words = value.get('keywords',[])
     if not isinstance(apps,list) or len(apps)>50 or not isinstance(words,list) or len(words)>100:
         raise ValueError('每个计划最多50个应用、100个关键词')
@@ -40,9 +46,9 @@ def preview_plan(value):
     actions=[]
     for app_id in apps:
         if flags['details']:actions.append({'kind':'details','value':base|{'app_id':app_id,'group_name':group,'refresh_hours':interval}})
-        if flags['reviews']:actions.append({'kind':'reviews','value':base|{'app_id':app_id,'kind':'reviews','depth':100,'refresh_hours':interval}})
+        if flags['reviews']:actions.append({'kind':'reviews','value':base|{'app_id':app_id,'kind':'reviews','depth':depth,'refresh_hours':interval}})
     for keyword in list(dict.fromkeys(words)):
-        if keyword.strip():actions.append({'kind':'keywords','value':validate_target(base|{'keyword':keyword,'refresh_hours':interval})})
+        if keyword.strip():actions.append({'kind':'keywords','value':validate_target(base|{'keyword':keyword,'depth':keyword_depth,'refresh_hours':interval})})
     if flags['chart']:
         category=value.get('category',''); collection=value.get('collection','top-free')
         if not isinstance(category,str) or len(category)>64:raise ValueError('分类无效')
@@ -51,10 +57,10 @@ def preview_plan(value):
         if category and category!='APPLICATION' and (category not in BY_ID[m['store']] or BY_ID[m['store']][category]['legacy']):
             raise ValueError('请选择当前商店的官方分类')
         if category=='APPLICATION' and m['store']!='google':raise ValueError('Apple不支持Google分类ID')
-        actions.append({'kind':'chart','value':base|{'kind':'chart','category':category,'collection':collection,'depth':100,'refresh_hours':interval}})
+        actions.append({'kind':'chart','value':base|{'kind':'chart','category':category,'collection':collection,'depth':depth,'refresh_hours':interval}})
     if flags['featured']:
         if m['store']!='apple':raise ValueError('Today推荐只支持Apple')
-        actions.append({'kind':'featured','value':base|{'kind':'featured','depth':100,'refresh_hours':interval}})
+        actions.append({'kind':'featured','value':base|{'kind':'featured','depth':depth,'refresh_hours':interval}})
     if not actions:raise ValueError('请至少选择一个有目标的采集任务')
     return {'actions':actions,'total':len(actions),'market':base,
             'scope':'这是任务配置数量，不是请求量或完成时间承诺。已有目标会更新周期，暂停状态保留。'}

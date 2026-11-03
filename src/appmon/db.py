@@ -183,7 +183,9 @@ def claim(db, countries, language, lease_seconds, now=None):
     placeholders = ','.join('%s' for _ in countries)
     with db:
         row = db.execute(f'''SELECT * FROM jobs WHERE due<=%s AND lease_until<=%s
-            AND country IN ({placeholders}) AND language=%s ORDER BY due LIMIT 1
+            AND country IN ({placeholders}) AND language=%s
+            AND NOT EXISTS (SELECT 1 FROM watchlist w WHERE w.store=jobs.store AND w.app_id=jobs.app_id
+                AND w.country=jobs.country AND w.language=jobs.language) ORDER BY due LIMIT 1
             FOR UPDATE SKIP LOCKED''', (now, now, *countries, language)).fetchone()
         if not row:
             return None

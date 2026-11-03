@@ -2,6 +2,8 @@
 from .db import APP_KEY, REGION
 
 TABLES = {
+    'collection_controls': '''name VARCHAR(32) PRIMARY KEY, settings LONGTEXT NOT NULL,
+        updated_at DOUBLE NOT NULL''',
     'aso_drafts': f'''id BIGINT AUTO_INCREMENT PRIMARY KEY, {APP_KEY}, {REGION},
         name VARCHAR(120) NOT NULL, revision INT NOT NULL DEFAULT 1, metadata LONGTEXT NOT NULL,
         baseline_snapshot_id BIGINT, note TEXT NOT NULL, created_at DOUBLE NOT NULL, updated_at DOUBLE NOT NULL,
