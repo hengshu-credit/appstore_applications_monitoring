@@ -30,6 +30,7 @@
   --nav-active-text: #ffffff;
   --nav-hover: #262d4f;
   --nav-muted: #a7b5ca;
+  --brand-tagline: #22d3ee;
   --scrollbar-track: var(--soft);
   --scrollbar-thumb: color-mix(in srgb, var(--accent-text) 85%, var(--surface));
   --scrollbar-thumb-hover: var(--accent-text);
@@ -125,6 +126,7 @@ input[type="color"]::-webkit-color-swatch {
   --nav-active-text: var(--ink);
   --nav-hover: var(--hover);
   --nav-muted: var(--muted);
+  --brand-tagline: var(--accent-text);
 }
 ::selection {
   background: var(--accent-soft);
@@ -167,14 +169,16 @@ aside,
 .brand {
   color: var(--nav-text);
 }
-.brand small,
 .nav-label,
 .side-note,
 .side-note p {
   color: var(--nav-muted);
 }
-.mark {
-  color: var(--nav-text);
+.brand strong {
+  color: var(--nav-active-text);
+}
+.brand small {
+  color: var(--brand-tagline);
 }
 nav a {
   color: var(--nav-text);
@@ -469,10 +473,8 @@ dialog::backdrop {
 }
 [data-navigation="top"] .brand {
   padding: 0;
-  font-size: 20px;
   flex-shrink: 0;
 }
-[data-navigation="top"] .brand small,
 [data-navigation="top"] .nav-label,
 [data-navigation="top"] .side-note {
   display: none;

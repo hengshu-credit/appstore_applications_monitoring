@@ -53,7 +53,7 @@ def create_app(cfg):
         db.close()
         yield
 
-    app = FastAPI(title="App Observatory API", version="0.4.0", lifespan=lifespan,
+    app = FastAPI(title="衡枢·观星 API", version="0.4.0", lifespan=lifespan,
                   docs_url=None, redoc_url=None, openapi_url=None)
 
     @app.middleware("http")

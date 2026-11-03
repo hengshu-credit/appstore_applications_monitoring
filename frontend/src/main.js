@@ -71,7 +71,6 @@ try {
   }
 } catch {}
 const marketControls = initMarketControls();
-$(".brand .mark").innerHTML = icon("brand");
 function saveMarket() {
   marketControls.sync();
   selectors.syncCountry();

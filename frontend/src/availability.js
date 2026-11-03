@@ -85,7 +85,7 @@ export function createAvailabilityPage(ctx) {
           )}`,
         )}${panel(
           "状态事件",
-          `<p class="sub">最近最多${r.limit}条。首次验证是观星观察起点；重新出现和地区不可用均保留历史证据。</p>${table(
+          `<p class="sub">最近最多${r.limit}条。首次验证是衡枢·观星观察起点；重新出现和地区不可用均保留历史证据。</p>${table(
             ["应用", "事件", "观察时间"],
             r.events.map((e) => [
               appLink(

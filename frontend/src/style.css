@@ -108,25 +108,35 @@ aside {
 .brand {
   display: flex;
   align-items: center;
-  gap: 12px;
-  color: #fff;
-  font-size: 25px;
-  font-weight: 700;
-  padding: 0 10px 32px;
+  gap: 10px;
+  padding: 0 0 28px;
 }
 .brand:hover {
   text-decoration: none;
 }
+.brand-logo {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+.brand-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  white-space: nowrap;
+}
+.brand strong {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+}
 .brand small {
   display: block;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 500;
-  letter-spacing: 1.8px;
-  color: #9aafc1;
-}
-.mark {
-  font-size: 36px;
-  color: #5ed0c0;
+  line-height: 18px;
 }
 .nav-label {
   font-size: 10px;
@@ -587,6 +597,20 @@ dialog button {
   .shell {
     margin-left: 190px;
   }
+  .brand {
+    gap: 8px;
+  }
+  .brand-logo {
+    flex-basis: 32px;
+    width: 32px;
+    height: 32px;
+  }
+  .brand strong {
+    font-size: 16px;
+  }
+  .brand small {
+    font-size: 11px;
+  }
   header,
   main {
     padding: 22px;
@@ -609,12 +633,7 @@ dialog button {
   }
   .brand {
     padding: 0;
-    font-size: 20px;
   }
-  .brand .mark {
-    font-size: 28px;
-  }
-  .brand small,
   .nav-label,
   .side-note {
     display: none;

@@ -169,3 +169,13 @@ button.appicon-refresh.link .ui-icon {
     font-size: 18px;
   }
 }
+@media (max-width: 700px) {
+  header .market {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  header .store-field,
+  header .language-field,
+  header .market .country-field {
+    width: 100%;
+  }
+}
