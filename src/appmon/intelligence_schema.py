@@ -2,6 +2,10 @@
 from .db import APP_KEY, REGION
 
 TABLES = {
+    'availability_daily': '''store VARCHAR(16) CHARACTER SET ascii NOT NULL,
+        country CHAR(2) CHARACTER SET ascii NOT NULL, language VARCHAR(16) CHARACTER SET ascii NOT NULL,
+        day BIGINT NOT NULL, observed_at DOUBLE NOT NULL, counts LONGTEXT NOT NULL,
+        PRIMARY KEY(store,country,language,day)''',
     'collection_logs': '''id BIGINT AUTO_INCREMENT PRIMARY KEY,
         resource VARCHAR(24) CHARACTER SET ascii NOT NULL,
         target_key VARCHAR(64) CHARACTER SET ascii NOT NULL,

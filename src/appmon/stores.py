@@ -99,7 +99,9 @@ class Client:
                        "released": "releaseDate", "bundle_id": "bundleId", "url": "trackViewUrl",
                        "icon": "artworkUrl512", "screenshots": "screenshotUrls",
                        "release_notes": "releaseNotes", "languages": "languageCodesISO2A",
-                       "category_id": "primaryGenreId", "genre_ids": "genreIds", "genres": "genres"}
+                       "category_id": "primaryGenreId", "genre_ids": "genreIds", "genres": "genres",
+                       "size_bytes": "fileSizeBytes", "minimum_os": "minimumOsVersion", "age_rating": "contentAdvisoryRating",
+                       "seller": "sellerName", "developer_url": "sellerUrl", "devices": "supportedDevices"}
         else:
             from appgoblin_play_scraper.features.app import parse_dom
             r = self.get(store, "https://play.google.com/store/apps/details",

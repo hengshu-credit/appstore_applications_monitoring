@@ -10,6 +10,10 @@ import { icon } from "./icons.js";
 import { createTaskLogViewer } from "./task-logs.js";
 import { initMarketControls } from "./market-controls.js";
 import "./workspace.css";
+import "./monitoring.css";
+import { monitoringChart, bindMonitoringCharts } from "./monitoring-charts.js";
+import { createAppInsights } from "./app-insights.js";
+import { createAvailabilityPage } from "./availability.js";
 import { initTheme } from "./theme.js";
 initTheme();
 const $ = (s, root = document) => root.querySelector(s);
@@ -84,6 +88,7 @@ let accessToken = "",
 const nav = [
   ["overview", "◈", "监控概览"],
   ["events", "▥", "事件中心"],
+  ["availability", "↕", "上下架观察"],
   ["apps", "▦", "应用库"],
   ["watchlist", "◎", "重点监控"],
   ["charts", "↗", "榜单中心"],
@@ -213,28 +218,7 @@ function controlButtons(resource, row) {
   return `<div class="actions"><button class="secondary small" data-control="${resource}" data-id="${row.id}" data-action="${row.enabled ? "pause" : "resume"}">${row.enabled ? "暂停" : "恢复"}</button>${resource === "rules" ? "" : `<button class="secondary small" data-control="${resource}" data-id="${row.id}" data-action="refresh">安排刷新</button>`}</div>`;
 }
 function chart(points, invert = false, formatAt = stamp) {
-  if (!points.some((p) => p.value != null))
-    return empty("暂无可绘制的历史", "至少需要一个成功观察时间点。");
-  const w = 800,
-    h = 190,
-    pad = 35,
-    values = points.filter((p) => p.value != null).map((p) => p.value),
-    lo = invert ? 1 : Math.min(...values),
-    hi = Math.max(lo + 1, ...values);
-  const x = (i) => pad + ((w - 2 * pad) * i) / Math.max(1, points.length - 1),
-    y = (v) =>
-      25 +
-      (h - 55) * (invert ? (v - lo) / (hi - lo) : 1 - (v - lo) / (hi - lo));
-  let segments = [],
-    current = [];
-  points.forEach((p, i) => {
-    if (p.value == null) {
-      if (current.length) segments.push(current);
-      current = [];
-    } else current.push([x(i), y(p.value), p]);
-  });
-  if (current.length) segments.push(current);
-  return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="观察历史趋势">${[lo, hi].map((v) => `<line class="gridline" x1="${pad}" x2="${w - pad}" y1="${y(v)}" y2="${y(v)}"/><text x="0" y="${y(v) + 4}">${esc(v)}</text>`).join("")}${segments.map((s) => `<polyline points="${s.map((p) => p.slice(0, 2).join(",")).join(" ")}"/>${s.map(([xx, yy, p]) => `<circle cx="${xx}" cy="${yy}" r="3"><title>${esc(formatAt(p.at))}：${esc(p.value)}</title></circle>`).join("")}`).join("")}<text x="${pad}" y="${h - 3}">${esc(formatAt(points[0].at))}</text><text text-anchor="end" x="${w - pad}" y="${h - 3}">${esc(formatAt(points.at(-1).at))}</text></svg>`;
+  return monitoringChart(points, invert, formatAt);
 }
 function bars(rows) {
   const max = Math.max(1, ...rows.map((r) => Number(r.count)));
@@ -242,7 +226,7 @@ function bars(rows) {
     rows
       .map(
         (r) =>
-          `<div class="barrow"><span>${esc(r.label || r.rating || "未知")}</span><svg class="bar-chart" width="100%" height="10" viewBox="0 0 100 10" preserveAspectRatio="none"><rect width="100" height="10" class="bar-track"/><rect width="${(Number(r.count) / max) * 100}" height="10" class="bar-value"/></svg><span>${num(r.count)}</span></div>`,
+          `<div class="barrow" tabindex="0"><span class="bar-tooltip" role="tooltip">${esc(r.label || r.rating || "未知")}：${num(r.count)}</span><span>${esc(r.label || r.rating || "未知")}</span><svg class="bar-chart" width="100%" height="10" viewBox="0 0 100 10" preserveAspectRatio="none"><rect width="100" height="10" class="bar-track"/><rect width="${(Number(r.count) / max) * 100}" height="10" class="bar-value"/></svg><span>${num(r.count)}</span></div>`,
       )
       .join("") || empty()
   );
@@ -323,11 +307,26 @@ async function overview(rev) {
         $("#pool-caption").textContent = "精确统计暂不可用，请刷新重试";
     });
 }
+const appInsights = createAppInsights({
+  api,
+  esc,
+  stamp,
+  num,
+  panel,
+  table,
+  chart,
+  bars,
+  metric,
+  market,
+  toast,
+  qs,
+});
+bindMonitoringCharts();
 async function applications(rev, filters = {}) {
   const data = await api("/apps?" + qs({ ...market(), ...filters }));
   if (
     !mount(
-      `<p class="lead">搜索已知应用池，按当前市场查看在架状态与商店资料。历史种子未验证前不会标为在架。</p><div class="application-layout">${selectors.categorySidebar(market().store, filters.category)}<section class="panel"><form id="app-search" class="toolbar">${field("应用名称 / 精确 ID", "q", filters.q || "", "text", 'class="wide"')}${selectors.categoryField(market().store, filters.category || "", "pool-category")}${field("开发者（精确名称）", "developer", filters.developer || "")}${select(
+      `<div id="store-discovery"></div><p class="lead">搜索已知应用池，按当前市场查看在架状态与商店资料。历史种子未验证前不会标为在架。</p><div class="application-layout">${selectors.categorySidebar(market().store, filters.category)}<section class="panel"><form id="app-search" class="toolbar">${field("应用名称 / 精确 ID", "q", filters.q || "", "text", 'class="wide"')}${selectors.categoryField(market().store, filters.category || "", "pool-category")}${field("开发者（精确名称）", "developer", filters.developer || "")}${select(
         "状态",
         "state",
         [
@@ -374,6 +373,7 @@ async function applications(rev, filters = {}) {
     )
   )
     return;
+  appInsights.discovery();
   $("[name=state]", $("#app-search")).value = filters.state || "";
   $("[name=pricing]", $("#app-search")).value = filters.pricing || "";
   const picked = () =>
@@ -433,7 +433,7 @@ async function appDetail(store, id, rev = ++revision) {
   const p = data.listing?.payload || {};
   if (
     !mount(
-      `<div class="panel-heading"><div>${appLink(store, id, p.name || data.app.name, p.icon)}<p class="sub">${esc(store)} · ${esc(m.country.toUpperCase())} · ${esc(m.language)} · ${esc(p.developer || "开发者待采集")}</p></div><div class="actions"><button id="collect-app-now">立即采集全部公开信息</button><button id="quick-watch" class="secondary">管理采集配置</button><button class="secondary" id="open-aso-workbench">ASO 工作台</button></div></div><div class="callout">最近成功：${esc(stamp(data.listing?.last_success))} · ${data.listing ? esc(data.listing.state) : "未采集"}${data.job?.last_error ? " · 最近失败：" + esc(data.job.last_error) : ""}</div><div id="app-collection-progress"></div><div class="cards">${metric("商店评分", p.rating, "来自最近一次商店观察")}${metric("评分数", p.ratings, "累计公开评分数量")}${metric("版本快照", data.snapshots.length, "显示最近最多100次变更")}${metric("覆盖关键词", data.keywords.coverage.length, "仅限本系统已跟踪词库")}</div><div class="grid2">${panel("当前商店资料", `<h3>${esc(p.name || "等待采集")}</h3><p>版本 ${esc(p.version || "—")} · ${esc(data.app.category_name || p.category || "—")}</p><p>${esc(p.summary || "")}</p><details><summary>描述与版本说明</summary><div class="review-text">${esc(p.description || "暂无描述")}</div><h3 class="spacer">版本说明</h3><div class="review-text">${esc(p.release_notes || "暂无版本说明")}</div></details>${safeURL(p.url) ? `<a href="${safeURL(p.url)}" target="_blank" rel="noopener">查看商店原页 ↗</a>` : ""}`)}${panel("评分变化", chart([...data.snapshots].reverse().map((r) => ({ at: r.observed_at, value: r.payload?.rating }))))}</div><div id="app-market-matrix"></div>${panel("素材与版本历史", `<label>选择历史快照<select id="snapshot-choice">${data.snapshots.length ? "" : '<option value="">暂无已保存的快照</option>'}${data.snapshots.map((r, i) => `<option value="${i}">${esc(stamp(r.observed_at))} · ${esc(r.payload?.version || "")}</option>`).join("")}</select></label><div id="snapshot-view"></div>`)}${panel(
+      `<div class="panel-heading"><div>${appLink(store, id, p.name || data.app.name, p.icon)}<p class="sub">${esc(store)} · ${esc(m.country.toUpperCase())} · ${esc(m.language)} · ${esc(p.developer || "开发者待采集")}</p></div><div class="actions"><button id="collect-app-now">立即采集全部公开信息</button><button id="quick-watch" class="secondary">管理采集配置</button><button class="secondary" id="open-aso-workbench">ASO 工作台</button></div></div><div class="callout">最近成功：${esc(stamp(data.listing?.last_success))} · ${data.listing ? esc(data.listing.state) : "未采集"}${data.job?.last_error ? " · 最近失败：" + esc(data.job.last_error) : ""}</div><div id="app-collection-progress"></div><div class="cards">${metric("商店评分", p.rating, "来自最近一次商店观察")}${metric("评分数", p.ratings, "累计公开评分数量")}${metric("版本快照", data.snapshots.length, "显示最近最多100次变更")}${metric("历史命中过的关键词", data.keywords.coverage.length, "包含当前未命中词；有效覆盖见下方监控")}</div><div class="grid2">${panel("当前商店资料", `<h3>${esc(p.name || "等待采集")}</h3><p>版本 ${esc(p.version || "—")} · ${esc(data.app.category_name || p.category || "—")}</p><p>${esc(p.summary || "")}</p><details><summary>描述与版本说明</summary><div class="review-text">${esc(p.description || "暂无描述")}</div><h3 class="spacer">版本说明</h3><div class="review-text">${esc(p.release_notes || "暂无版本说明")}</div></details>${safeURL(p.url) ? `<a href="${safeURL(p.url)}" target="_blank" rel="noopener">查看商店原页 ↗</a>` : ""}`)}${panel("评分变化", chart([...data.snapshots].reverse().map((r) => ({ at: r.observed_at, value: r.payload?.rating }))))}</div>${appInsights.facts(p, data.app)}<div id="monitoring-trends"></div><div id="app-market-matrix"></div>${panel("素材与版本历史", `<label>选择历史快照<select id="snapshot-choice">${data.snapshots.length ? "" : '<option value="">暂无已保存的快照</option>'}${data.snapshots.map((r, i) => `<option value="${i}">${esc(stamp(r.observed_at))} · ${esc(r.payload?.version || "")}</option>`).join("")}</select></label><div id="snapshot-view"></div>`)}${panel(
         "关键词覆盖",
         table(
           ["关键词", "最近位置", "变化", "数据时间", "状态"],
@@ -469,6 +469,7 @@ async function appDetail(store, id, rev = ++revision) {
     )
   )
     return;
+  appInsights.monitoring(m);
   researchPages.marketMatrix(store, id, rev).catch((e) => toast(e.message));
   const progressState = {
     running: "采集中",
@@ -1178,7 +1179,25 @@ const researchPages = createResearchPages({
     location.hash = "collection";
   },
 });
+const availabilityPage = createAvailabilityPage({
+  api,
+  market,
+  qs,
+  mount,
+  panel,
+  metric,
+  table,
+  chart,
+  bars,
+  esc,
+  stamp,
+  num,
+  appLink,
+  toast,
+  nextRevision: () => ++revision,
+});
 const routes = {
+  availability: availabilityPage,
   overview,
   events: researchPages.events,
   aso: researchPages.aso,

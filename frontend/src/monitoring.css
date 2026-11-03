@@ -1,0 +1,94 @@
+.interactive-plot {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.grid2 > .panel { min-width: 0; }
+.interactive-plot .chart {
+  min-width: 440px;
+  height: auto;
+}
+.plot-hit {
+  fill: transparent;
+  stroke: none;
+  pointer-events: all;
+  cursor: crosshair;
+}
+.plot-tip {
+  display: none;
+  pointer-events: none;
+}
+.plot-tip rect {
+  fill: var(--surface);
+  stroke: var(--line);
+}
+.plot-tip text {
+  fill: var(--ink);
+  font-size: 13px;
+}
+.plot-guide {
+  stroke: var(--chart-accent);
+  stroke-dasharray: 4 4;
+}
+.plot-point:hover .plot-tip,
+.plot-point:focus .plot-tip,
+.plot-point.selected .plot-tip {
+  display: block;
+}
+.chart:has(.plot-point:hover) .plot-point:not(:hover) .plot-tip {
+  display: none;
+}
+.chart:has(.plot-point:focus) .plot-point:not(:focus):not(:hover) .plot-tip {
+  display: none;
+}
+.plot-point:focus {
+  outline: none;
+}
+.plot-point:focus circle,
+.plot-point:hover circle {
+  stroke: var(--ink);
+  stroke-width: 2px;
+}
+.barrow {
+  position: relative;
+}
+.bar-tooltip {
+  display: none;
+  position: absolute;
+  left: 10%;
+  bottom: 100%;
+  z-index: 5;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 8px 12px;
+  box-shadow: 0 4px 12px var(--shadow);
+}
+.barrow:hover .bar-tooltip,
+.barrow:focus .bar-tooltip {
+  display: block;
+}
+.detail-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+.detail-facts dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+.detail-facts dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+.detail-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin: 18px 0;
+}
+.monitoring-summary .cards {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+#monitoring-trends select {
+  max-width: 100%;
+}

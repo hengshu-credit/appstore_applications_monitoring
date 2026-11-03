@@ -23,6 +23,8 @@ from . import aso, review_desk, insights, collection
 from . import collection_tasks, pipelines
 from . import task_logs
 from . import charts, app_collection
+from . import app_discovery, app_metrics, availability
+from .stores import FetchError
 from datetime import date, datetime, timezone
 from . import keywords, intelligence as intel, analytics, alerts, exports
 
@@ -90,6 +92,10 @@ def create_app(cfg):
     @app.exception_handler(ValueError)
     async def invalid(request, exc):
         return JSONResponse({"detail": str(exc)}, status_code=400)
+
+    @app.exception_handler(FetchError)
+    async def store_error(request, exc):
+        return JSONResponse({"detail": "商店请求失败，未将失败判定为下架：" + str(exc)}, status_code=502)
 
     @app.exception_handler(pymysql.MySQLError)
     async def database_error(request, exc):
@@ -206,6 +212,22 @@ def create_app(cfg):
             row['category_name'] = catalog.BY_ID.get(row['store'], {}).get(row['category_id'], {}).get('name')
         return {"items": rows, "next": {"after_store": rows[-1]["store"], "after_id": rows[-1]["app_id"]} if more else None,
                 "country": country, "language": language}
+
+    @api.post('/discovery/search')
+    def search_store(value:dict=Body(...),db=DB):
+        return app_discovery.search(db,cfg,value)
+
+    @api.get('/availability')
+    def listing_availability(store:str,country:str='us',language:str='en',days:int=30,db=DB):
+        return availability.report(db,dict(store=store,country=country,language=language,days=days))
+
+    @api.post('/discovery/import')
+    def import_store_app(value:dict=Body(...),db=DB):
+        return app_discovery.import_app(db,cfg,value)
+
+    @api.get('/apps/{store}/{app_id}/metrics')
+    def app_monitoring(store:str,app_id:str,country:str='us',language:str='en',days:int=30,db=DB):
+        return app_metrics.report(db,dict(store=store,app_id=app_id,country=country,language=language,days=days))
 
     @api.get("/apps/{store}/{app_id}")
     def app_detail(store: str, app_id: str, country: str = "us", language: str = "en", db=DB):

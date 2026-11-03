@@ -70,6 +70,12 @@ async function wrappedModule(name, exports) {
 const newModules = (
   await Promise.all([
     wrappedModule("icons.js", "icon,storeLogo"),
+    wrappedModule(
+      "monitoring-charts.js",
+      "monitoringChart,bindMonitoringCharts",
+    ),
+    wrappedModule("app-insights.js", "createAppInsights"),
+    wrappedModule("availability.js", "createAvailabilityPage"),
     wrappedModule("market-controls.js", "initMarketControls"),
     wrappedModule("task-logs.js", "createTaskLogViewer"),
     wrappedModule("collection-center.js", "createCollectionCenter"),
@@ -180,8 +186,9 @@ test("navigation queries the API and escapes upstream application content", asyn
     );
     assert.equal(window.document.querySelector("img[onerror]"), null);
     assert.ok(calls.some((c) => c.path.startsWith("/api/apps?")));
-    assert.equal(window.document.querySelectorAll("nav a").length, 16);
-    assert.equal(window.document.querySelectorAll("nav a .ui-icon").length, 16);
+    assert.equal(window.document.querySelectorAll("nav a").length, 17);
+    assert.equal(window.document.querySelectorAll("nav a .ui-icon").length, 17);
+    assert.ok(window.document.querySelector('a[href="#availability"]'));
   } finally {
     await window.happyDOM.close();
   }

@@ -18,6 +18,8 @@ def run_once(cfg, db, limit=5):
               "observations": work_observations(cfg, db, limit),
               "keywords": work_keywords(cfg, db, limit), "alerts": evaluate(db)}
     result["export"] = work_export(cfg, db)
+    from .availability import record_daily
+    result["availability_markets"] = record_daily(db)
     db.execute("INSERT INTO schedules VALUES('console-heartbeat',%s) AS incoming ON DUPLICATE KEY UPDATE next_at=incoming.next_at", (time.time(),))
     return result
 
