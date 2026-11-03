@@ -89,7 +89,8 @@ class TaskLogTest(MySQLTestCase):
         with patch.dict(os.environ,{'APPMON_API_TOKEN':token}):client=TestClient(create_app(self.cfg))
         path=f'/api/research/collection/logs/keywords/{identifier}'
         self.assertEqual(client.get(path).status_code,401)
-        headers={'Authorization':'Bearer '+token}
+        self.login_admin(client)
+        headers={}
         self.assertEqual(client.get(path,headers=headers).json()['items'][0]['message'],'Started')
         self.assertEqual(client.get(path+'?after_id=1&before_id=2',headers=headers).status_code,400)
         self.assertEqual(client.get('/api/research/collection/logs/files/1',headers=headers).status_code,400)

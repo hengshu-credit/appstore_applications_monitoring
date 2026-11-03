@@ -60,7 +60,7 @@ flowchart LR
 
 ## 独立容器部署
 
-在 `.env` 设置私密的 `APPMON_API_TOKEN`（至少32字符）；绑定非回环 API 时程序会强制检查。`APPMON_ALLOWED_HOSTS` 为允许访问的前端域名列表，逗号分隔，不含端口。默认仅 localhost/127.0.0.1。前端与 API 默认端口分别5173、8765，均只绑定宿主机回环地址。
+首次访问注册超级管理员，后续使用账号密码登录。HTTPS 部署设置 `APPMON_COOKIE_SECURE=true`。`APPMON_ALLOWED_HOSTS` 为允许访问的前端域名列表，逗号分隔，不含端口。默认仅 localhost/127.0.0.1。前端与 API 默认端口分别5173、8765，均只绑定宿主机回环地址。
 
 ```powershell
 docker compose -f compose.yaml --env-file .env --profile console config --quiet
@@ -71,7 +71,7 @@ docker compose -f compose.yaml --env-file .env --profile console stop web consol
 
 上述命令不启动全池 monitor，沿用原项目名、MySQL端口和持久化目录。需要HTTPS时由现有反向代理接入前端，不在本项目修改宿主机证书策略。容器中访问宿主机代理时使用容器可达地址，不使用127.0.0.1。
 
-前端第一次访问受保护服务时输入令牌，换取8小时HTTP-only会话。非浏览器客户端传 `Authorization: Bearer ...`。令牌不存入前端构建或localStorage。生产静态服务和Python API各自设置CSP；API校验Host、Origin、请求来源和5MB请求体上限。
+账户会话为 8 小时 HttpOnly Cookie，修改请求附带会话绑定 CSRF 值。支持外部注册、恢复码找回、账密修改、普通用户与会员权限配置，详见 [账户与权限](accounts-and-permissions.md)。生产静态服务和Python API各自设置CSP；API校验Host、Origin、请求来源和5MB请求体上限。
 
 ## API
 

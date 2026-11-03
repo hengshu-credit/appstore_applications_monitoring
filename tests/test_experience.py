@@ -57,7 +57,7 @@ class ExperienceTest(MySQLTestCase):
         self.assertFalse(ready['pending']);self.assertIn('/api/icons/',ready['url'])
         self.assertEqual(collection_tasks.list_tasks(self.db,kind='icons')['items'][0]['task_state'],'scheduled')
         self.assertEqual(task_logs.read_logs(self.db,'icons',str(identifier))['items'][-1]['event'],'ok')
-        with patch.dict(os.environ,{'APPMON_API_TOKEN':''}):client=TestClient(create_app(self.cfg))
+        with patch.dict(os.environ,{'APPMON_API_TOKEN':''}):client=self.login_admin(TestClient(create_app(self.cfg)))
         r=client.get(ready['url']);self.assertEqual(r.status_code,200);self.assertEqual(r.content,PNG)
         self.assertEqual(r.headers['content-type'],'image/png')
         collection_tasks.control_tasks(self.db,{'tasks':[{'resource':'icons','id':identifier}],'action':'pause'})
@@ -80,7 +80,7 @@ class ExperienceTest(MySQLTestCase):
         last=task_logs.read_logs(self.db,'keywords',str(a[0]))['items'][-1]
         self.assertEqual(last['details']['timeout_seconds'],30)
         self.assertIn('search',last['details']['stack']);self.assertNotIn('secret-value',json.dumps(last))
-        with patch.dict(os.environ,{'APPMON_API_TOKEN':''}):client=TestClient(create_app(self.cfg))
+        with patch.dict(os.environ,{'APPMON_API_TOKEN':''}):client=self.login_admin(TestClient(create_app(self.cfg)))
         for endpoint in ('keywords','targets','watchlist','overview','daily','market','alerts','ads','availability','research/events','research/reviews','research/developers','research/comparisons'):
             response=client.get('/api/'+endpoint+'?store=all&country=us&language=auto')
             self.assertEqual(response.status_code,200,(endpoint,response.text))

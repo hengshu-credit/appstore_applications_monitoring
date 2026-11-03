@@ -119,6 +119,7 @@ class DiscoveryTest(MySQLTestCase):
 
     def test_http_validation_and_new_routes(self):
         with patch.dict('os.environ',{'APPMON_API_TOKEN':'test-discovery-token'}), TestClient(create_app(self.cfg),headers={'Authorization':'Bearer test-discovery-token'}) as client:
+            self.login_admin(client)
             for route in ('coverage','candidates','signals'):
                 response=client.get('/api/discovery/keywords/'+route,params={'store':'google','country':'us','language':'en'})
                 self.assertEqual(response.status_code,200,response.text)

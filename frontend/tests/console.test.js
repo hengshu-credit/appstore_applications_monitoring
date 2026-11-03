@@ -6,6 +6,7 @@ import { Window } from "happy-dom";
 const html = (
   await readFile(new URL("../index.html", import.meta.url), "utf8")
 ).replace(/<script[^>]*><\/script>/g, "");
+const accountSource = (await readFile(new URL("../src/accounts.js", import.meta.url), "utf8")).replace(/^export /gm, "");
 const themeSource = (
   await readFile(new URL("../src/theme.js", import.meta.url), "utf8")
 ).replace(/^export /gm, "");
@@ -185,6 +186,8 @@ async function setup(responder) {
   const calls = [];
   window.fetch = async (path, options = {}) => {
     calls.push({ path, options });
+    if (path === '/api/auth/config') return {ok:true, status:200, json:async () => ({initialization_required:false, registration_enabled:true})};
+    if (path === '/api/auth/me') return {ok:true, status:200, json:async () => ({user:{id:1,username:'admin',role:'admin',effective_role:'admin',permissions:[]},csrf_token:'test-csrf'})};
     let data =
       path === "/api/catalog"
         ? catalogFixture
@@ -219,7 +222,7 @@ async function setup(responder) {
     return { ok: true, status: 200, json: async () => data };
   };
   window.eval(
-    themeSource +
+    accountSource + "\n" + themeSource +
       "\n" +
       selectorSource +
       "\n" +
@@ -261,8 +264,8 @@ test("navigation queries the API and escapes upstream application content", asyn
     );
     assert.equal(window.document.querySelector("img[onerror]"), null);
     assert.ok(calls.some((c) => c.path.startsWith("/api/apps?")));
-    assert.equal(window.document.querySelectorAll("nav a").length, 18);
-    assert.equal(window.document.querySelectorAll("nav a .ui-icon").length, 18);
+    assert.equal(window.document.querySelectorAll("nav a").length, 20);
+    assert.equal(window.document.querySelectorAll("nav a .ui-icon").length, 20);
     assert.ok(window.document.querySelector('a[href="#availability"]'));
   } finally {
     await window.happyDOM.close();

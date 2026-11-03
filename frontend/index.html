@@ -18,7 +18,7 @@
     />
     <script type="module" src="/src/main.js"></script>
   </head>
-  <body>
+  <body class="account-locked">
     <aside>
       <a class="brand" href="#overview" aria-label="衡枢·观星，返回监控概览">
         <img
@@ -135,19 +135,6 @@
       </footer>
     </div>
     <div id="toast" role="status"></div>
-    <dialog id="login">
-      <form id="login-form">
-        <h2>连接工作台</h2>
-        <p>此服务已启用访问保护，请输入部署时设置的访问令牌。</p>
-        <label
-          >访问令牌<input
-            name="token"
-            type="password"
-            required
-            autocomplete="off" /></label
-        ><button type="submit">连接</button>
-        <p id="login-error" role="alert"></p>
-      </form>
-    </dialog>
+    <dialog id="login" aria-label="账户登录"></dialog>
   </body>
 </html>

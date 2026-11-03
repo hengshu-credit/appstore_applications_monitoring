@@ -171,8 +171,7 @@ class IntelligenceTest(MySQLTestCase):
         with patch.dict(os.environ, {"APPMON_API_TOKEN": "test-token-for-the-independent-console"}):
             client = TestClient(create_app(self.cfg))
         self.assertEqual(client.get('/api/overview').status_code, 401)
-        auth = {"Authorization": "Bearer test-token-for-the-independent-console"}
-        self.assertEqual(client.post('/api/session', json={}, headers=auth).status_code, 200)
+        self.login_admin(client)
         self.assertEqual(client.get('/api/overview').status_code, 200)
         self.assertEqual(client.post('/api/watchlist', json={}, headers={"Origin": "https://evil.example"}).status_code, 403)
         self.assertEqual(client.get('/api/overview', headers={"Host": "evil.example"}).status_code, 403)

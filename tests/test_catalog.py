@@ -53,7 +53,7 @@ class CatalogDatabaseTest(MySQLTestCase):
         apple=category_counts(self.db,'apple')
         self.assertEqual((apple['total'],apple['counts']['6015'],apple['counts']['6014'],apple['unknown'],apple['apps']),(8,3,2,2,4))
         with patch.dict(os.environ,{'APPMON_API_TOKEN':''}):
-            client=TestClient(create_app(self.cfg))
+            client=self.login_admin(TestClient(create_app(self.cfg)))
         result=client.get('/api/apps?store=apple&category=6015').json()
         self.assertEqual({r['app_id'] for r in result['items']},{'101','102','103'})
         self.assertTrue(all(r['category_name']=='财务' for r in result['items']))

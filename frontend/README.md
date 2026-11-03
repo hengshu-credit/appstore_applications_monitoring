@@ -40,5 +40,5 @@ npm run preview
 
 - 上游内容经过 HTML 转义；外部链接只接受 HTTP(S)，新窗口设置 noopener。
 - 数据未采集、失败、过期、观察范围内未出现分别展示；不使用伪造数据填补空白。
-- 访问令牌仅用于换取 HTTP-only、SameSite=Strict 的 8 小时会话，不写入浏览器持久存储；API 也支持 Bearer token。
+- 使用账号密码及 HttpOnly、SameSite=Strict 的 8 小时会话登录，修改请求校验 CSRF。首次注册超管，支持外部注册、恢复码找回、普通用户和会员权限；详见 [账户与权限](../docs/accounts-and-permissions.md)。
 - 单元测试使用 Happy DOM 验证表单、导航、上游 HTML 注入、错误恢复及主题预览/取消/保存。真实浏览器检查另行记录，不把模拟 DOM 测试当作截图验收。

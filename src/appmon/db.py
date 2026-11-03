@@ -141,6 +141,8 @@ def connect(cfg, *, initialize=True, allow_migration=False):
                     with db.named_lock(name):
                         if not db.execute(f"SHOW INDEX FROM {table} WHERE Key_name=%s",(name,)).fetchone():
                             db.execute(f'ALTER TABLE {table} ADD INDEX {name}({columns})')
+            from .auth import initialize as initialize_auth
+            initialize_auth(db)
         if not allow_migration:
             running = db.execute("SELECT 1 FROM migration_progress WHERE status!='verified' LIMIT 1").fetchone()
             if running:
@@ -158,6 +160,8 @@ from .asset_schema import TABLES as ASSET_TABLES
 TABLES.update(ASSET_TABLES)
 from .discovery_schema import tables as discovery_tables
 TABLES.update(discovery_tables(APP_KEY, REGION))
+from .auth_schema import TABLES as AUTH_TABLES
+TABLES.update(AUTH_TABLES)
 
 
 def add_apps(db, rows, source, now=None):

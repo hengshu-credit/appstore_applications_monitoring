@@ -30,8 +30,6 @@ def run_once(cfg, db, limit=5, include_icons=True):
 def serve(cfg, host, port):
     import uvicorn
     from .web import create_app
-    if host not in ("localhost", "127.0.0.1", "::1") and len(os.environ.get("APPMON_API_TOKEN", "")) < 32:
-        raise ValueError("Set APPMON_API_TOKEN to at least 32 characters before binding remotely")
     uvicorn.run(create_app(cfg), host=host, port=port, proxy_headers=False)
 
 

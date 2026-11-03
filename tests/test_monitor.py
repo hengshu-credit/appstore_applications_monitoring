@@ -45,6 +45,19 @@ class MySQLTestCase(unittest.TestCase):
         self.db = connect(self.cfg, allow_migration=True)
         for table in TABLES:
             self.db.execute(f'TRUNCATE TABLE `{table}`')
+        from appmon.auth import initialize
+        initialize(self.db)
+
+    def login_admin(self, client):
+        from appmon.auth import initialize
+        initialize(self.db)
+        credentials = {'username': 'test-admin', 'password': 'test-password-1234'}
+        result = client.post('/api/auth/initialize', json=credentials)
+        self.assertIn(result.status_code, (200, 409), result.text)
+        result = client.post('/api/auth/login', json=credentials)
+        self.assertEqual(result.status_code, 200, result.text)
+        client.headers['X-CSRF-Token'] = result.json()['csrf_token']
+        return client
 
     def tearDown(self):
         self.db.close()

@@ -175,7 +175,7 @@ class WorkbenchTest(MySQLTestCase):
     def test_api_advanced_filters_exclude_unknown_and_workbench_endpoints(self):
         m=self.seed_listing('123');self.seed_listing('456',rating=2,price=5,updated='2020-01-01T00:00:00Z')
         add_apps(self.db,[('apple','789','Unknown',None)],'fixture')
-        with patch.dict(os.environ,{'APPMON_API_TOKEN':''}):client=TestClient(create_app(self.cfg))
+        with patch.dict(os.environ,{'APPMON_API_TOKEN':''}):client=self.login_admin(TestClient(create_app(self.cfg)))
         rows=client.get('/api/apps?store=apple&min_rating=4&pricing=free&updated_since=2026-01-01').json()['items']
         self.assertEqual([r['app_id'] for r in rows],['123'])
         self.assertEqual(client.get('/research/aso').status_code,404)

@@ -4,9 +4,6 @@ import io
 import json
 import os
 import re
-import secrets
-import hashlib
-import hmac
 import time
 import threading
 from contextlib import asynccontextmanager
@@ -24,6 +21,7 @@ from . import collection_tasks, pipelines
 from . import task_logs, locales, scoped_views, app_icons
 from . import charts, app_collection
 from . import growth, keyword_discovery, keyword_reports
+from . import auth
 from . import global_charts
 from . import apple_popularity
 from . import app_discovery, app_metrics, availability
@@ -33,20 +31,9 @@ from . import keywords, intelligence as intel, analytics, alerts, exports
 
 
 def create_app(cfg):
-    token = os.environ.get("APPMON_API_TOKEN", "")
-    session_key = secrets.token_bytes(32)
     pool_cache = {}
     pool_lock = threading.Lock()
     category_cache = {}
-    def signed_session(stamp):
-        return hmac.new(session_key, stamp.encode(), hashlib.sha256).hexdigest()
-
-    def valid_session(value):
-        try:
-            stamp, signature = value.split('.', 1)
-            return 0 <= time.time() - int(stamp) < 8 * 3600 and secrets.compare_digest(signature, signed_session(stamp))
-        except (ValueError, AttributeError):
-            return False
     @asynccontextmanager
     async def lifespan(app):
         db = connect(cfg)
@@ -78,13 +65,6 @@ def create_app(cfg):
                 if len(body) > 5_000_000:
                     return JSONResponse({"detail": "Payload too large"}, status_code=413)
             request._body = bytes(body)
-        if request.url.path.startswith("/api/"):
-            if token:
-                supplied = request.headers.get("authorization", "")
-                if not secrets.compare_digest(supplied, "Bearer " + token) and not valid_session(request.cookies.get("appmon_session", "")):
-                    return JSONResponse({"detail": "请提供访问令牌"}, status_code=401)
-            elif request.client and request.client.host not in ("127.0.0.1", "::1", "testclient"):
-                return JSONResponse({"detail": "A token is required for remote access"}, status_code=403)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -112,7 +92,11 @@ def create_app(cfg):
             db.close()
 
     DB = Depends(database)
-    api = APIRouter(prefix="/api")
+    def permission_guard(request: Request, db=DB):
+        auth.authorize(db, request)
+
+    app.include_router(auth.router(database))
+    api = APIRouter(prefix="/api", dependencies=[Depends(permission_guard)])
 
     @api.post('/icons/resolve')
     def resolve_icons(value:dict=Body(...),db=DB):
@@ -132,14 +116,6 @@ def create_app(cfg):
         path=app_icons.cached_path(cfg,row) if row else None
         if path is None:raise HTTPException(404,'图标正在采集或尚不可用')
         return FileResponse(path,media_type=row['mime'])
-
-    @api.post("/session")
-    def browser_session(request: Request):
-        stamp = str(int(time.time()))
-        response = JSONResponse({"authenticated": True})
-        response.set_cookie("appmon_session", stamp + '.' + signed_session(stamp), httponly=True,
-                            samesite="strict", secure=request.url.scheme == "https", max_age=8 * 3600)
-        return response
 
     @api.get("/openapi.json")
     def schema():

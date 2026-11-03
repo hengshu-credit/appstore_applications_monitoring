@@ -1,4 +1,5 @@
 "use strict";
+import { createAccounts, routeResource } from "./accounts.js";
 import "./style.css";
 import "./theme.css";
 import "./fonts.css";
@@ -18,6 +19,7 @@ import { initMarketControls } from "./market-controls.js";
 import "./workspace.css";
 import "./monitoring.css";
 import "./experience.css";
+import "./accounts.css";
 import { monitoringChart, bindMonitoringCharts } from "./monitoring-charts.js";
 import { createAppInsights } from "./app-insights.js";
 import { createAvailabilityPage } from "./availability.js";
@@ -113,8 +115,8 @@ const kindLabel = (v) =>
     keyword_targets: "关键词采集",
     observation_targets: "榜单、评论与推荐采集",
   })[v] || v;
-let accessToken = "",
-  revision = 0;
+let revision = 0;
+const accounts = createAccounts({ esc, toast, onReady: render });
 const nav = [
   ["overview", "◈", "监控概览"],
   ["events", "▥", "事件中心"],
@@ -134,6 +136,8 @@ const nav = [
   ["ads", "◇", "广告观察"],
   ["alerts", "◉", "告警与日报"],
   ["exports", "↓", "数据导出"],
+  ["account", "◎", "我的账户"],
+  ["administration", "◎", "账户与权限"],
 ];
 $("#navigation").innerHTML = nav
   .map(
@@ -174,13 +178,15 @@ async function api(path, body, method) {
     method: method || (body === undefined ? "GET" : "POST"),
     headers: {
       ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-      ...(accessToken ? { Authorization: "Bearer " + accessToken } : {}),
+      ...accounts.headers(),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   if (response.status === 401) {
-    if (!$("#login").open) $("#login").showModal();
-    throw new Error("需要访问令牌");
+    revision++;
+    $("#content").replaceChildren();
+    accounts.show();
+    throw new Error("请登录账户");
   }
   if (!response.ok) {
     let data;
@@ -1452,6 +1458,29 @@ const routes = {
   exports: exportPage,
 };
 async function render() {
+  if (!accounts.user) return;
+  try { await accounts.refresh(); } catch { accounts.show(); return; }
+  const resource = routeResource((location.hash.slice(1) || "overview").split("?")[0]);
+  clearTimeout(appProgressTimer);
+  $("#task-logs")?.close();
+  $("#collection-editor")?.remove();
+  $("#research-dialog")?.close();
+  document.querySelectorAll('[data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === resource));
+  if (!accounts.can(resource)) {
+    ++revision;
+    $("#page-title").textContent = '暂无访问权限';
+    $("#content").innerHTML = '<div class="empty"><h2>暂无访问权限</h2><p>请联系管理员开通此功能，或从左侧选择已授权页面。</p><a href="#account">我的账户</a></div>';
+    return;
+  }
+  if (resource === 'account' || resource === 'administration') {
+    ++revision;
+    $("#page-title").textContent = resource === 'account' ? '我的账户' : '账户与权限';
+    const accountRoot = document.createElement('div');
+    $("#content").replaceChildren(accountRoot);
+    try { await accounts[resource === 'account' ? 'account' : 'management'](accountRoot); }
+    catch (error) { toast(error.message); }
+    return;
+  }
   clearTimeout(appProgressTimer);
   $("#task-logs")?.close();
   $("#collection-editor")?.remove();
@@ -1568,20 +1597,6 @@ document.addEventListener("click", async (event) => {
     toast(e.message);
   }
 });
-bindForm("#login-form", async (data, form) => {
-  accessToken = data.token;
-  try {
-    await api("/session", {});
-    $("#login").close();
-    form.reset();
-    accessToken = "";
-    await render();
-  } catch (e) {
-    $("#login-error").textContent = e.message;
-    accessToken = "";
-  }
-});
-$("#login").addEventListener("cancel", (event) => event.preventDefault());
 $("#refresh-page").addEventListener("click", render);
 ["global-store", "global-country", "global-language"].forEach((id) =>
   $("#" + id).addEventListener("change", () => {
@@ -1644,4 +1659,4 @@ document.addEventListener(
   true,
 );
 window.addEventListener("hashchange", render);
-render();
+accounts.start().then((ready) => { if (ready) render(); });

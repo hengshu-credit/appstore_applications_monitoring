@@ -43,7 +43,9 @@ def migrate(cfg, source_path, *, batch_size=5000, report_path=None):
             raise ValueError("Migration source differs from the recorded source")
         if not previous:
             if any(target.execute(f"SELECT 1 FROM `{name}` LIMIT 1").fetchone()
-                   for name in TABLES if name != "migration_progress"):
+                   # These two tables contain installation defaults even before
+                   # any user or business data exists; they are never migrated.
+                   for name in TABLES if name not in ("migration_progress", "auth_settings", "auth_roles")):
                 raise ValueError("Initial migration requires empty destination tables; existing data is never overwritten")
             with target:
                 target.executemany("INSERT INTO migration_progress(source_sha256,table_name) VALUES(%s,%s)",
