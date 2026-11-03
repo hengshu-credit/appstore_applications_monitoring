@@ -57,3 +57,17 @@
     max-width: none;
   }
 }
+
+.global-compare-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.global-compare-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(240px, 1fr);
+  gap: 14px;
+}
+.global-compare-grid .global-chart {
+  min-width: 240px;
+}

@@ -1,5 +1,6 @@
 """Store charts and explicitly labeled, locally derived ranking views."""
 import json
+import time
 from datetime import datetime, timezone
 
 DEFINITIONS = [
@@ -34,16 +35,19 @@ def _snapshot(db,store,country,language,category,collection,cache,as_of=None,com
     if key in cache:return cache[key]
     categories=['','APPLICATION'] if store=='google' and category in ('','APPLICATION') else [category]
     marks=','.join('%s' for _ in categories)
+    join='r.id=t.latest_success_id'; prefix=[]
+    if as_of is not None:
+        join="r.id=(SELECT h.id FROM observation_runs h WHERE h.target_id=t.id AND h.outcome='ok' AND h.observed_at<=%s ORDER BY h.observed_at DESC,h.id DESC LIMIT 1)"
+        prefix=[as_of]
     target=db.execute(f'''SELECT t.*,r.observed_at FROM observation_targets t LEFT JOIN observation_runs r
-        ON r.id=t.latest_success_id WHERE t.kind='chart' AND t.store=%s AND t.country=%s AND t.language=%s
+        ON {join} WHERE t.kind='chart' AND t.store=%s AND t.country=%s AND t.language=%s
         AND t.collection=%s AND t.category IN ({marks}) ORDER BY r.observed_at DESC,t.id DESC LIMIT 1''',
-        (store,country,language,collection,*categories)).fetchone()
+        (*prefix,store,country,language,collection,*categories)).fetchone()
     if not target:cache[key]=(None,None,None,[],{});return cache[key]
     target.pop('token',None)
     current=db.execute('SELECT * FROM observation_runs WHERE id=%s',(target['latest_success_id'],)).fetchone() if target['latest_success_id'] else None
     previous=db.execute('SELECT * FROM observation_runs WHERE id=%s',(target['previous_success_id'],)).fetchone() if target['previous_success_id'] else None
     if as_of is not None or compare_days:
-        import time
         boundary=as_of if as_of is not None else time.time()
         current=db.execute("SELECT * FROM observation_runs WHERE target_id=%s AND outcome='ok' AND observed_at<=%s ORDER BY observed_at DESC,id DESC LIMIT 1",(target['id'],boundary)).fetchone()
         if current:
@@ -86,10 +90,11 @@ def view(db,store,country,language,collection='top-free',category='',cache=None,
                 'latest_success':None,'previous_success':None,'items':[],'reason':'该商店公开新应用榜仅支持总榜，不能作为分类榜',
                 'unknown_release_count':0,'base_returned_count':0,'unsupported':True}
     target,current,previous,items,old=_snapshot(db,store,country,language,category,spec['base_collection'],cache,as_of,compare_days)
-    rows=list(items);unknown=0;reason=''
+    rows=list(items);unknown=0;reason=''; ready=True
     if collection=='trending' and spec['mode']=='derived':
         rows=sorted((r for r in rows if r['change'] is not None and r['change']>0),key=lambda r:(-r['change'],r['position'],r['app_id']))
-        if not previous or not old:reason='至少需要同一基榜两次可比较的成功快照；新入榜不计作已知升幅'
+        if not previous or not old:
+            reason='至少需要同一基榜两次可比较的成功快照；新入榜不计作已知升幅';ready=False
     elif spec['mode']=='derived' and collection.startswith('new-') and current and rows:
         marks=','.join('%s' for _ in rows)
         if as_of is not None:
@@ -115,10 +120,14 @@ def view(db,store,country,language,collection='top-free',category='',cache=None,
     current_ids={r['app_id'] for r in items}
     exited=[{'app_id':identifier,'previous_position':position} for identifier,position in old.items()
             if identifier not in current_ids and current and position<=current['returned_count']]
+    boundary=as_of if as_of is not None else time.time()
+    quality='missing' if not current else 'insufficient_history' if not ready else 'historical' if as_of is not None else (
+        'paused' if not target['enabled'] else 'failed' if target['failures'] else
+        'stale' if boundary-current['observed_at']>target['refresh_hours']*3600 else 'partial' if unknown else 'fresh')
     return {'definition':spec,'store':store,'country':country,'language':language,'category':category,'target':target,
             'latest_success':current,'previous_success':previous,'items':rows,'reason':reason,
             'unknown_release_count':unknown,'base_returned_count':len(items),'exited_items':exited,
-            'comparison_available':compatible,'compare_days':compare_days,
+            'comparison_available':compatible,'compare_days':compare_days,'quality':quality,'ready':bool(current and ready),
             'history':db.execute("SELECT id,observed_at,returned_count FROM observation_runs WHERE target_id=%s AND outcome='ok' ORDER BY observed_at DESC,id DESC LIMIT 100",(target['id'],)).fetchall() if target else []}
 
 

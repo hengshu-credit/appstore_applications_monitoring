@@ -65,6 +65,8 @@ services:
     environment:
       APPMON_API_TOKEN: ${APPMON_API_TOKEN:-}
       APPMON_ALLOWED_HOSTS: ${APPMON_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      APPLE_ADS_ACCESS_TOKEN: ${APPLE_ADS_ACCESS_TOKEN:-}
+      APPLE_ADS_AD_ACCOUNT_ID: ${APPLE_ADS_AD_ACCOUNT_ID:-}
   console:
     extends:
       service: monitor

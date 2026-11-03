@@ -92,13 +92,34 @@ def import_frequency(db,value):
         'license':'CC BY-SA 4.0','attribution':'FrequencyWords by hermitdave; OpenSubtitles 2018','source_period':'2018 / '+FREQUENCY_SHA})
 
 
-def candidates(db,m,q='',offset=0):
+def candidates(db,m,q='',offset=0,grouped=True):
     if not 0<=offset<=1000000: raise ValueError('分页偏移无效')
     where='store=%s AND country=%s AND language=%s';args=[m[k] for k in ('store','country','language')]
-    if q: where+=' AND keyword LIKE %s';args.append('%'+q+'%')
-    total=db.execute('SELECT count(*) n FROM keyword_candidates WHERE '+where,args).fetchone()['n']
-    rows=db.execute('SELECT * FROM keyword_candidates WHERE '+where+' ORDER BY id DESC LIMIT 100 OFFSET %s',(*args,offset)).fetchall()
-    return {'items':rows,'total':total,'offset':offset,'limit':100}
+    if q: where+=' AND LOCATE(LOWER(%s),LOWER(keyword))>0';args.append(q)
+    totals=db.execute('SELECT count(*) records,count(DISTINCT keyword) terms FROM keyword_candidates WHERE '+where,args).fetchone()
+    if grouped:
+        grouped_sql='SELECT MIN(id) id,count(*) source_count FROM keyword_candidates WHERE '+where+' GROUP BY keyword'
+        rows=db.execute('SELECT c.*,g.source_count,t.id tracked_id,t.enabled tracked_enabled FROM ('+grouped_sql+
+            ') g JOIN keyword_candidates c ON c.id=g.id LEFT JOIN keyword_targets t ON t.store=c.store AND t.country=c.country AND t.language=c.language AND t.keyword=c.keyword ORDER BY c.keyword,c.id LIMIT 100 OFFSET %s',(*args,offset)).fetchall()
+    else:
+        rows=db.execute('SELECT *,1 source_count FROM keyword_candidates WHERE '+where+' ORDER BY id DESC LIMIT 100 OFFSET %s',(*args,offset)).fetchall()
+    versions={r['digest']:r['observed_at'] for r in db.execute('SELECT digest,observed_at FROM keyword_reports WHERE store=%s AND country=%s AND language=%s',tuple(m[k] for k in ('store','country','language'))).fetchall()}
+    for row in rows:row['report_observed_at']=versions.get(row['source_period'])
+    return {'items':rows,'total':totals['terms'] if grouped else totals['records'],'source_records':totals['records'],'grouped':grouped,'offset':offset,'limit':100}
+
+
+def candidate_sources(db,identifier):
+    candidate=db.execute('SELECT * FROM keyword_candidates WHERE id=%s',(identifier,)).fetchone()
+    if not candidate:raise ValueError('候选词不存在')
+    rows=db.execute('SELECT * FROM keyword_candidates WHERE store=%s AND country=%s AND language=%s AND keyword=%s ORDER BY id LIMIT 100',
+        tuple(candidate[k] for k in ('store','country','language','keyword'))).fetchall()
+    reports=db.execute('SELECT app_id,digest,observed_at FROM keyword_reports WHERE store=%s AND country=%s AND language=%s',
+        tuple(candidate[k] for k in ('store','country','language'))).fetchall()
+    evidence={(r['digest'],'点点数据 / '+r['app_id']):r for r in reports}
+    for row in rows:
+        report=evidence.get((row['source_period'],row['attribution']),{})
+        row['source_app_id']=report.get('app_id');row['report_observed_at']=report.get('observed_at')
+    return {'keyword':candidate['keyword'],'items':rows,'limit':100}
 
 
 def track(db,value):
@@ -106,39 +127,57 @@ def track(db,value):
     if not isinstance(ids,list) or not 1<=len(ids)<=2000 or any(type(v) is not int or v<=0 for v in ids): raise ValueError('选择1–2000个候选词')
     rows=db.execute('SELECT * FROM keyword_candidates WHERE id IN ('+','.join('%s' for _ in ids)+')',ids).fetchall()
     if len(rows)!=len(set(ids)): raise ValueError('候选词不存在')
-    prepared=[validate_target(r|{'depth':value.get('depth',100),'refresh_hours':value.get('refresh_hours',24)}) for r in rows]
-    # Existing paused targets and their settings stay intact.
-    new=[]; existing=0
-    for t in prepared:
-        if db.execute('SELECT id FROM keyword_targets WHERE store=%s AND country=%s AND language=%s AND keyword=%s',
-                      tuple(t[k] for k in ('store','country','language','keyword'))).fetchone(): existing+=1
-        else:new.append(t)
-    return add_targets(db,new)|{'existing':existing}
+    prepared={}
+    for row in rows:
+        t=validate_target(row|{'depth':value.get('depth',100),'refresh_hours':value.get('refresh_hours',24)})
+        prepared[tuple(t[k] for k in ('store','country','language','keyword'))]=t
+    created=[];existing=0
+    with db:
+        for identity,t in sorted(prepared.items()):
+            result=db.execute('''INSERT INTO keyword_targets(store,country,language,keyword,depth,refresh_hours)
+                VALUES(%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)''',(*identity,t['depth'],t['refresh_hours']))
+            if result.rowcount==1:created.append(result.lastrowid)
+            else:existing+=1
+    return {'targets':len(created),'ids':created,'existing':existing,'unique_targets':len(prepared),'selected_sources':len(rows)}
 
 
 def fresh_sql():
     return "t.enabled=1 AND t.failures=0 AND r.outcome='ok' AND r.requested_depth=t.depth AND r.observed_at+t.refresh_hours*3600>%s"
 
 
-def coverage(db,m,app_id=''):
+def coverage(db,m,app_id='',app_offset=0,keyword_offset=0,app_keyword_offset=0,q='',limit=100):
+    if any(type(v) is not int or not 0<=v<=1000000 for v in (app_offset,keyword_offset,app_keyword_offset)) or not 1<=limit<=200:
+        raise ValueError('分页参数无效')
     now=time.time();args=tuple(m[k] for k in ('store','country','language'))
     scope='t.store=%s AND t.country=%s AND t.language=%s'
     base=' FROM keyword_targets t LEFT JOIN keyword_runs r ON r.id=t.latest_success_id WHERE '+scope
     stats=db.execute('SELECT count(*) tracked,COALESCE(SUM('+fresh_sql()+'),0) fresh'+base,(now,*args)).fetchone()
     join=' FROM keyword_targets t JOIN keyword_runs r ON r.id=t.latest_success_id JOIN keyword_ranks k ON k.run_id=r.id WHERE '+scope+' AND '+fresh_sql()
+    app_total=db.execute('SELECT count(DISTINCT k.app_id) total'+join,(*args,now)).fetchone()['total']
     apps=db.execute('''SELECT k.app_id,MAX(k.name) name,count(*) covered,SUM(k.position<=3) top3,
         SUM(k.position<=10) top10,SUM(k.position<=50) top50,SUM(k.position<=100) top100,MIN(k.position) best'''+join+
-        ' GROUP BY k.app_id ORDER BY covered DESC,top10 DESC,k.app_id LIMIT 200',(*args,now)).fetchall()
+        ' GROUP BY k.app_id ORDER BY covered DESC,top10 DESC,k.app_id LIMIT %s OFFSET %s',(*args,now,limit,app_offset)).fetchall()
+    missing=[r['app_id'] for r in apps if not r['name']]
+    if missing:
+        names={r['app_id']:r['name'] for r in db.execute('SELECT app_id,name FROM apps WHERE store=%s AND app_id IN ('+','.join('%s' for _ in missing)+')',(m['store'],*missing)).fetchall()}
+        for row in apps:
+            if not row['name']:row['name']=names.get(row['app_id'])
+    term_filter=' AND LOCATE(LOWER(%s),LOWER(t.keyword))>0' if q else ''
+    term_args=(*args,q) if q else args
+    term_total=db.execute('SELECT count(*) total'+base+term_filter,term_args).fetchone()['total']
     terms=db.execute('''SELECT t.id,t.keyword,t.depth,r.observed_at,r.returned_count,r.source,
-        CASE WHEN '''+fresh_sql()+''' THEN 1 ELSE 0 END fresh,t.last_error'''+base+' ORDER BY t.keyword LIMIT 500',(now,*args)).fetchall()
+        CASE WHEN '''+fresh_sql()+''' THEN 1 ELSE 0 END fresh,t.last_error'''+base+term_filter+' ORDER BY t.keyword,t.id LIMIT %s OFFSET %s',(now,*term_args,limit,keyword_offset)).fetchall()
     app_terms=[]
     if app_id:
         app_terms=db.execute('''SELECT t.id,t.keyword,k.position,r.observed_at,r.returned_count,r.source,'''+fresh_sql()+''' fresh
             FROM keyword_targets t LEFT JOIN keyword_runs r ON r.id=t.latest_success_id
-            LEFT JOIN keyword_ranks k ON k.run_id=r.id AND k.app_id=%s WHERE '''+scope+
-            ' ORDER BY k.position IS NULL,k.position,t.keyword LIMIT 1000',(now,app_id,*args)).fetchall()
-    return {'stats':stats,'apps':apps,'keywords':terms,'app_keywords':app_terms,'limits':{'apps':200,'keywords':500,'app_keywords':1000},
-            'note':'覆盖分母是本市场已跟踪词库；仅最新成功、未过期、深度一致且未暂停的结果计入覆盖。不同词库的覆盖数不可直接比较；未命中不代表商店没有收录。'}
+            LEFT JOIN keyword_ranks k ON k.run_id=r.id AND k.app_id=%s WHERE '''+scope+term_filter+
+            ' ORDER BY k.position IS NULL,k.position,t.keyword,t.id LIMIT %s OFFSET %s',(now,app_id,*term_args,limit,app_keyword_offset)).fetchall()
+    page=lambda total,offset:{'total':total,'offset':offset,'limit':limit,'has_more':offset+limit<total}
+    return {'stats':stats,'apps':apps,'keywords':terms,'app_keywords':app_terms,
+            'pages':{'apps':page(app_total,app_offset),'keywords':page(term_total,keyword_offset),'app_keywords':page(term_total if app_id else 0,app_keyword_offset)},
+            'limits':{'apps':limit,'keywords':limit,'app_keywords':limit},
+            'note':'覆盖分母是本市场已跟踪词库；仅最新成功、未过期、深度一致且未暂停的结果计入覆盖。关键词筛选只影响词表，不改变覆盖榜。未命中不代表商店没有收录。'}
 
 
 def market_matrix(db,store,app_id=''):
@@ -154,19 +193,23 @@ def market_matrix(db,store,app_id=''):
 
 
 def import_signals(db,value):
+    if value.get('observed_at') is None:raise ValueError('必须提供数据来源的观察时间')
     m=validate_target(value|{'keyword':'validation'}); at=cutoff(value.get('observed_at'))
     kind=value.get('kind');source=value.get('source');unit=value.get('score_unit');link=url(value.get('source_url'))
     if kind not in ('hot_search','search_popularity'):raise ValueError('仅支持有来源的热搜榜或搜索热度快照')
     if not all(isinstance(v,str) and 0<len(v)<=128 for v in (source,unit)):raise ValueError('必须注明来源及分数口径')
     rows=value.get('items')
     if not isinstance(rows,list) or not 1<=len(rows)<=2000:raise ValueError('每次快照需1–2000个词')
-    prepared=[];seen=set()
+    prepared=[];seen=set();positions=set()
     for i,r in enumerate(rows,1):
-        term=validate_target(m|{'keyword':r.get('keyword')})['keyword'];score=r.get('score')
+        if not isinstance(r,dict):raise ValueError('词条必须是对象')
+        term=validate_target(m|{'keyword':r.get('keyword')})['keyword'];score=r.get('score');position=r.get('position',i)
+        if type(position) is not int or not 1<=position<=1000000 or position in positions:raise ValueError('来源排名必须为不重复的正整数')
+        positions.add(position)
         if term in seen: raise ValueError('同一榜单不能有重复关键词')
         seen.add(term)
         if score is not None and (type(score) not in (int,float) or not math.isfinite(score)):raise ValueError('分数必须为有限数值或空')
-        prepared.append((term,i,score))
+        prepared.append((term,position,score))
     digest=hashlib.sha256(dump([m,at,kind,source,unit,link,prepared]).encode()).hexdigest()
     with db:
         old=db.execute('SELECT id FROM keyword_signal_runs WHERE fingerprint=%s',(digest,)).fetchone()
@@ -185,3 +228,12 @@ def signals(db,m,run_id=None):
     selected=next((r for r in runs if r['id']==run_id),None) if run_id else (runs[0] if runs else None)
     items=db.execute('SELECT * FROM keyword_signals WHERE run_id=%s ORDER BY position',(selected['id'],)).fetchall() if selected else []
     return {'runs':runs,'selected':selected,'items':items,'note':'外部来源快照；保留原始顺序与分数口径，不合并不同来源。无数据表示尚未接入热搜来源。'}
+
+
+def promote_signals(db,run_id):
+    run=db.execute('SELECT * FROM keyword_signal_runs WHERE id=%s',(run_id,)).fetchone()
+    if not run:raise ValueError('来源快照不存在')
+    rows=db.execute('SELECT keyword FROM keyword_signals WHERE run_id=%s ORDER BY position',(run_id,)).fetchall()
+    return import_candidates(db,{'markets':[run],'words':[r['keyword'] for r in rows],'source':run['source'],
+        'source_url':run['source_url'],'license':'来源授权范围内使用','attribution':run['source'],
+        'source_period':str(run['observed_at'])})

@@ -34,4 +34,7 @@ def tables(app_key, region):
         'keyword_signals': '''run_id BIGINT NOT NULL, keyword VARCHAR(255) NOT NULL,
             position INT NOT NULL, score DOUBLE, PRIMARY KEY(run_id,keyword),
             UNIQUE KEY signal_position(run_id,position)''',
+        'keyword_source_fetches': '''id BIGINT AUTO_INCREMENT PRIMARY KEY,run_id BIGINT NOT NULL,
+            provider VARCHAR(64) NOT NULL,observed_at DOUBLE NOT NULL,raw_path TEXT NOT NULL,metadata LONGTEXT NOT NULL,
+            INDEX source_fetch_run(run_id,id)''',
     }

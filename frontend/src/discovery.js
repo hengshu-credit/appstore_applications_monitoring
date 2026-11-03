@@ -110,6 +110,8 @@ export function createDiscoveryPages(ctx) {
     }
     const s = chartsState,
       definitions = selectors.chartDefinitions(m.store);
+    if (s.as_of && s.as_of > new Date().toLocaleDateString("sv-SE"))
+      throw Error("观察日期不能晚于今天");
     const at = s.as_of
       ? Math.min(Date.parse(s.as_of + "T23:59:59") / 1000, Date.now() / 1000)
       : null;
@@ -164,6 +166,8 @@ export function createDiscoveryPages(ctx) {
             "累计评分数",
             "窗口增量",
             "环比前窗口",
+            "基线观察时间",
+            "实际跨度（天）",
             "状态",
             "观察时间",
           ];
@@ -189,13 +193,15 @@ export function createDiscoveryPages(ctx) {
             num(r.ratings),
             num(r.delta),
             r.growth_pct == null ? "—" : num(r.growth_pct) + "%",
+            stamp(r.baseline_at),
+            num(r.actual_days),
             esc(status[r.status]),
             stamp(r.observed_at),
           ],
     );
     const notes =
       s.mode === "store"
-        ? `${d.definition.mode === "derived" ? "本站派生：" : "商店直接榜单："}${d.definition.note || ""}。当前快照：${stamp(d.latest_success?.observed_at)}；比较快照：${stamp(d.previous_success?.observed_at)}。${d.comparison_available ? "" : "暂无可比较快照。"}${d.reason || ""}`
+        ? `${d.definition.mode === "derived" ? "本站派生：" : "商店直接榜单："}${d.definition.note || ""}。${{ missing: "尚未采集", paused: "采集已暂停", failed: "最近采集失败，显示保留快照", stale: "快照已过期", insufficient_history: "缺少可比较历史", partial: "部分应用信息缺失", fresh: "有效快照", historical: "历史快照" }[d.quality] || ""}。当前快照：${stamp(d.latest_success?.observed_at)}；比较快照：${stamp(d.previous_success?.observed_at)}。${d.comparison_available ? "" : "暂无可比较快照。"}${d.reason || ""}`
         : d.reason;
     if (
       !mount(
@@ -332,6 +338,8 @@ export function createDiscoveryPages(ctx) {
           "指标",
           "增量",
           "增长率",
+          "基线观察时间",
+          "实际跨度（天）",
           "观察时间",
           "口径",
         ],
@@ -346,6 +354,8 @@ export function createDiscoveryPages(ctx) {
           s.mode === "growth" ? s.metric : s.collection,
           r.delta,
           r.growth_pct,
+          r.baseline_at,
+          r.actual_days,
           r.observed_at || d.latest_success?.observed_at,
           notes,
         ]),
@@ -353,33 +363,63 @@ export function createDiscoveryPages(ctx) {
     );
   }
 
+  let keywordMarket = "";
+  let coverageOffsets = { apps: 0, keywords: 0, app_keywords: 0 };
+  const pager = (kind, page, rows) => {
+    const p = page || {
+      total: rows.length,
+      offset: 0,
+      limit: 100,
+      has_more: false,
+    };
+    return `<div class="toolbar"><button type="button" class="secondary" data-coverage-page="${kind}" data-offset="${Math.max(0, p.offset - p.limit)}" ${p.offset ? "" : "disabled"}>上一页</button><span>共 ${p.total} 条 · 每页 ${p.limit} 条 · 当前 ${p.total ? Math.min(p.offset + 1, p.total) : 0}–${Math.min(p.offset + rows.length, p.total)}</span><button type="button" class="secondary" data-coverage-page="${kind}" data-offset="${p.offset + p.limit}" ${p.has_more ? "" : "disabled"}>下一页</button></div>`;
+  };
   async function keywords(rev) {
     const m = single();
     if (!m) return;
+    const signature = [m.store, m.country, m.language].join("/");
+    if (signature !== keywordMarket) {
+      if (keywordMarket && keywordMarket.split("/")[0] !== m.store)
+        appQuery = "";
+      keywordMarket = signature;
+      candidateOffset = 0;
+      reportOffset = 0;
+      reportId = "";
+      signalId = "";
+      coverageOffsets = { apps: 0, keywords: 0, app_keywords: 0 };
+    }
     let content = "",
       data;
     if (keywordTab === "coverage") {
       data = await api(
-        "/discovery/keywords/coverage?" + query({ ...m, app_id: appQuery }),
+        "/discovery/keywords/coverage?" +
+          query({
+            ...m,
+            app_id: appQuery,
+            q: keywordQuery,
+            app_offset: coverageOffsets.apps,
+            keyword_offset: coverageOffsets.keywords,
+            app_keyword_offset: coverageOffsets.app_keywords,
+          }),
       );
-      content = `<div class="cards">${metric("跟踪词数", data.stats.tracked, "本市场词库规模")}${metric("有效词数", data.stats.fresh, "最新成功、未过期、深度一致")}</div><p class="callout">${esc(data.note)}</p><form id="coverage-app-form" class="toolbar">${field("查看应用ID的关键词", "app_id", appQuery)}<button type="submit">查看</button></form>${
-        appQuery
-          ? panel(
-              "应用关键词",
-              table(
-                ["关键词", "位置", "有效", "来源", "时间"],
-                data.app_keywords.map((r) => [
-                  `<button class="link" data-keyword="${r.id}">${esc(r.keyword)}</button>`,
-                  r.position,
-                  r.fresh ? "有效" : "待更新",
-                  esc(r.source),
-                  stamp(r.observed_at),
-                ]),
-              ),
-            )
-          : ""
-      }${panel(
-        "应用关键词覆盖榜（当前词库，最多200个）",
+      content = `<div class="cards">${metric("跟踪词数", data.stats.tracked, "本市场词库规模")}${metric("有效词数", data.stats.fresh, "最新成功、未过期、深度一致")}</div><p class="callout">${esc(data.note)}</p><form id="coverage-app-form" class="toolbar">${field("查看应用ID的关键词", "app_id", appQuery)}${field("筛选词表关键词", "q", keywordQuery)}<button type="submit">查看</button></form>`;
+      if (appQuery)
+        content += panel(
+          "应用关键词",
+          table(
+            ["关键词", "位置", "有效", "来源", "时间"],
+            data.app_keywords.map((r) => [
+              `<button class="link" data-keyword="${r.id}">${esc(r.keyword)}</button>`,
+              r.position,
+              r.fresh ? "有效" : "待更新",
+              esc(r.source),
+              stamp(r.observed_at),
+            ]),
+          ) +
+            pager("app_keywords", data.pages?.app_keywords, data.app_keywords),
+        );
+      content += panel(
+        "应用关键词覆盖榜（当前词库）",
         table(
           ["应用", "覆盖词数", "Top 3", "Top 10", "Top 50", "Top 100"],
           data.apps.map((r) => [
@@ -390,9 +430,10 @@ export function createDiscoveryPages(ctx) {
             r.top50,
             r.top100,
           ]),
-        ),
-      )}${panel(
-        "市场关键词搜索排名（最多500个词）",
+        ) + pager("apps", data.pages?.apps, data.apps),
+      );
+      content += panel(
+        "市场关键词搜索排名",
         table(
           ["关键词", "返回结果数", "采集深度", "数据状态", "时间"],
           data.keywords.map((r) => [
@@ -402,8 +443,8 @@ export function createDiscoveryPages(ctx) {
             r.fresh ? "有效" : esc(r.last_error || "等待更新"),
             stamp(r.observed_at),
           ]),
-        ),
-      )}`;
+        ) + pager("keywords", data.pages?.keywords, data.keywords),
+      );
     } else if (keywordTab === "candidates") {
       data = await api(
         "/discovery/keywords/candidates?" +
@@ -415,15 +456,18 @@ export function createDiscoveryPages(ctx) {
         "language",
         sources.frequency_languages.map((v) => [v, v]),
         m.language,
-      )}${field("目标国家（逗号分隔）", "countries", m.country)}${field("词数上限", "limit", 500, "number", 'min="1" max="5000"')}<button type="submit">下载 FrequencyWords 候选词</button></form><p class="sub">OpenSubtitles 2018，CC BY-SA 4.0。语料词频不代表搜索量；导入后先筛选，未自动采集。</p></details><form id="candidate-search" class="toolbar">${field("筛选词", "q", keywordQuery)}<button type="submit">筛选</button></form><div class="toolbar"><button id="candidate-all" class="secondary">选择本页</button><button id="candidate-track">追踪所选词</button><span>共 ${data.total} 条，每页100条</span><button id="candidate-prev" class="secondary" ${candidateOffset ? "" : "disabled"}>上一页</button><button id="candidate-next" class="secondary" ${candidateOffset + 100 < data.total ? "" : "disabled"}>下一页</button></div>${table(
-        ["选择", "关键词", "语料词频", "来源", "期间", "许可"],
+      )}${field("目标国家（逗号分隔）", "countries", m.country)}${field("词数上限", "limit", 500, "number", 'min="1" max="5000"')}<button type="submit">下载 FrequencyWords 候选词</button></form><p class="sub">OpenSubtitles 2018，CC BY-SA 4.0。语料词频不代表搜索量；导入后先筛选，未自动采集。</p></details><form id="candidate-search" class="toolbar">${field("筛选词", "q", keywordQuery)}<button type="submit">筛选</button></form><div class="toolbar"><button id="candidate-all" class="secondary">选择本页</button><button id="candidate-track">追踪所选词</button><span>共 ${data.total} 个词、${data.source_records ?? data.total} 条来源记录，每页100词</span><button id="candidate-prev" class="secondary" ${candidateOffset ? "" : "disabled"}>上一页</button><button id="candidate-next" class="secondary" ${candidateOffset + 100 < data.total ? "" : "disabled"}>下一页</button></div>${table(
+        ["选择", "关键词", "语料词频", "来源", "期间", "许可", "追踪状态"],
         data.items.map((r) => [
           pick("id", r.id),
           esc(r.keyword),
           num(r.corpus_frequency),
-          esc(r.source),
-          esc(r.source_period),
+          `<button type="button" class="link" data-candidate-sources="${r.id}">${esc(r.source)}${r.source_count > 1 ? ` 等 ${r.source_count} 个来源` : ""}</button>`,
+          r.report_observed_at
+            ? stamp(r.report_observed_at)
+            : esc(r.source_period),
           esc(r.license_name),
+          r.tracked_id ? (r.tracked_enabled ? "已追踪" : "已暂停") : "未追踪",
         ]),
       )}`;
     } else if (keywordTab === "reports") {
@@ -433,7 +477,7 @@ export function createDiscoveryPages(ctx) {
         reportId = reports.length ? String(reports[0].id) : "";
       data = reportId
         ? await api(
-            `/discovery/reports/${reportId}?` +
+            `/discovery/reports/${reportId}${reportSheet === "__rejections__" ? "/rejections" : ""}?` +
               query({
                 sheet: reportSheet,
                 offset: reportOffset,
@@ -454,9 +498,10 @@ export function createDiscoveryPages(ctx) {
           ["ASO关键词", "ASO关键词"],
           ["ASA竞价词", "ASA竞价词"],
           ["谷歌付费关键词", "谷歌付费关键词"],
+          ["__rejections__", "不可追踪记录（原文）"],
         ],
         reportSheet,
-      )}${field("筛选词", "q", keywordQuery)}<button type="submit">查看</button></form>${report ? `<p class="sub">来源：${esc(report.source)} · 关键词报告日期：${stamp(report.observed_at)} · 原文件包含 ${report.summary.map((s) => esc(s.sheet) + " " + s.rows + "行").join("；")}</p>` : ""}<div class="toolbar"><button id="report-all" class="secondary">选择本页</button><button id="report-promote">所选词加入候选词库</button><button id="report-prev" class="secondary" ${reportOffset ? "" : "disabled"}>上一页</button><button id="report-next" class="secondary" ${reportOffset + 100 < data.total ? "" : "disabled"}>下一页</button><span>${data.total} 行，每页100行</span></div>${table(
+      )}${field("筛选词", "q", keywordQuery)}<button type="submit">查看</button></form>${report ? `<p class="sub">来源：${esc(report.source)} · 关键词报告日期：${stamp(report.observed_at)} · 原文件包含 ${report.summary.map((s) => esc(s.sheet) + " " + s.rows + "行").join("；")}</p>` : ""}<div class="toolbar"><button id="report-all" class="secondary">选择本页</button><button id="report-promote" ${reportSheet === "__rejections__" ? "disabled" : ""}>所选词加入候选词库</button><button id="report-prev" class="secondary" ${reportOffset ? "" : "disabled"}>上一页</button><button id="report-next" class="secondary" ${reportOffset + 100 < data.total ? "" : "disabled"}>下一页</button><span>${data.total} 行，每页100行</span></div>${table(
         ["选择", "关键词", "报告排名", "搜索指数", "流行度", "原始信息"],
         data.items.map((r) => [
           pick("source_row", r.source_row),
@@ -464,7 +509,7 @@ export function createDiscoveryPages(ctx) {
           r.position,
           num(r.search_index),
           num(r.popularity),
-          `<details><summary>详细字段</summary>${table(
+          `<details><summary>详细字段</summary>${r.reason ? `<p>${esc(r.reason)}</p>` : ""}${table(
             ["字段", "值"],
             r.payload.headers.map((h, i) => [
               esc(h || "未命名列"),
@@ -478,15 +523,54 @@ export function createDiscoveryPages(ctx) {
         "/discovery/keywords/signals?" +
           query({ ...m, run_id: signalId || null }),
       );
-      content = `<p class="callout">${esc(data.note)} 点点报告中的搜索指数属于单应用词表指标，不自动转为全市场热搜榜。</p><form id="signal-select" class="toolbar">${select(
-        "来源快照",
-        "run_id",
-        data.runs.map((r) => [r.id, r.source + " / " + stamp(r.observed_at)]),
-        data.selected?.id,
-      )}<button type="submit">查看</button></form>${data.selected ? `<p>${esc(data.selected.source)} · ${esc(data.selected.score_unit)} · ${stamp(data.selected.observed_at)}</p>` : ""}${table(
-        ["来源排名", "关键词", "来源分数"],
-        data.items.map((r) => [r.position, esc(r.keyword), num(r.score)]),
-      )}<details><summary>导入有来源的热搜或搜索热度快照</summary><form id="signal-import"><label>JSON：source、source_url、kind、observed_at、score_unit、items（keyword、score）<textarea name="json" rows="6" required></textarea></label><button type="submit">导入快照</button></form></details>`;
+      const provider = await api("/discovery/keywords/apple-popularity");
+      const official =
+        m.store === "apple"
+          ? `<section class="panel"><h2>Apple官方周/月搜索热度</h2><p class="sub">${esc(provider.note)} 授权配置：${provider.configured ? "已配置，查询时验证权限" : "待配置"}</p><form id="apple-popularity-form" class="toolbar">${select(
+              "统计分类",
+              "genre",
+              provider.genres.map((g) => [
+                g,
+                {
+                  BUSINESS: "商务",
+                  EDUCATION: "教育",
+                  ENTERTAINMENT: "娱乐",
+                  FINANCE: "财务",
+                  FOOD_DRINK: "美食佳饮",
+                  GAMES: "游戏",
+                  HEALTH_FITNESS: "健康健身",
+                  LIFESTYLE: "生活",
+                  NEW_PUBLICATION: "新闻出版",
+                  PHOTO_VIDEO: "摄影与视频",
+                  PRODUCTIVITY_UTILITIES: "效率与工具",
+                  SHOPPING: "购物",
+                  SOCIAL_NETWORKING: "社交",
+                  SPORTS: "体育",
+                  TRAVEL: "旅行",
+                }[g] || g,
+              ]),
+              "PRODUCTIVITY_UTILITIES",
+            )}${select(
+              "周期",
+              "period",
+              [
+                ["weekly", "周（日–六）"],
+                ["monthly", "自然月"],
+              ],
+              "weekly",
+            )}${field("周期开始（UTC）", "start", provider.default_start, "date")}${field("最多条数", "limit", 200, "number", 'min="1" max="2000"')}<button type="submit" ${provider.configured ? "" : "disabled"}>查询并保存热度</button></form><details><summary>导入已取得的Apple API响应</summary><form id="apple-popularity-import"><label>响应JSON（result.rows）<textarea name="response" rows="4" required></textarea></label><button type="submit">按上方统计范围导入</button></form></details><p id="apple-popularity-result" role="status"></p></section>`
+          : "";
+      content =
+        official +
+        `<p class="callout">${esc(data.note)} 点点报告中的搜索指数属于单应用词表指标，不自动转为全市场热搜榜。</p><form id="signal-select" class="toolbar">${select(
+          "来源快照",
+          "run_id",
+          data.runs.map((r) => [r.id, r.source + " / " + stamp(r.observed_at)]),
+          data.selected?.id,
+        )}<button type="submit">查看</button></form>${data.selected ? `<p>${esc(data.selected.source)} · ${esc(data.selected.score_unit)} · ${stamp(data.selected.observed_at)}</p><button id="signal-promote" class="secondary">本快照关键词加入候选库</button>` : ""}${table(
+          ["来源排名", "关键词", "来源分数"],
+          data.items.map((r) => [r.position, esc(r.keyword), num(r.score)]),
+        )}<details><summary>导入有来源的热搜或搜索热度快照</summary><form id="signal-import"><label>JSON：source、source_url、kind、observed_at、score_unit、items（keyword、score）<textarea name="json" rows="6" required></textarea></label><button type="submit">导入快照</button></form></details>`;
     } else {
       data = await api(
         "/discovery/keywords/markets?" +
@@ -538,6 +622,8 @@ export function createDiscoveryPages(ctx) {
     );
     bindForm("#coverage-app-form", async (v) => {
       appQuery = v.app_id;
+      keywordQuery = v.q ?? keywordQuery;
+      coverageOffsets = { apps: 0, keywords: 0, app_keywords: 0 };
       if (rev === currentRevision()) await keywords(nextRevision());
     });
     bindForm("#manual-words", async (v) => {
@@ -569,6 +655,45 @@ export function createDiscoveryPages(ctx) {
       candidateOffset = 0;
       if (rev === currentRevision()) await keywords(nextRevision());
     });
+    document.querySelectorAll("[data-coverage-page]").forEach((button) =>
+      button.addEventListener("click", () => {
+        coverageOffsets[button.dataset.coveragePage] = Number(
+          button.dataset.offset,
+        );
+        keywords(nextRevision()).catch((e) => toast(e.message));
+      }),
+    );
+    document.querySelectorAll("[data-candidate-sources]").forEach((button) =>
+      button.addEventListener("click", async () => {
+        try {
+          const r = await api(
+            `/discovery/keywords/candidates/${button.dataset.candidateSources}/sources`,
+          );
+          if (rev !== currentRevision()) return;
+          let dialog = $("#candidate-sources-dialog");
+          if (!dialog) {
+            dialog = document.createElement("dialog");
+            dialog.id = "candidate-sources-dialog";
+            document.querySelector("#content").append(dialog);
+          }
+          dialog.innerHTML = `<h2>${esc(r.keyword)} 的来源</h2><p class="sub">最多显示${r.limit}条来源；报告日期与追踪语言分别保留。</p>${table(
+            ["来源", "应用ID / 署名", "日期 / 语料期", "许可"],
+            r.items.map((row) => [
+              esc(row.source),
+              esc(row.source_app_id || row.attribution),
+              row.report_observed_at
+                ? stamp(row.report_observed_at)
+                : esc(row.source_period),
+              esc(row.license_name),
+            ]),
+          )}<button id="candidate-sources-close">关闭</button>`;
+          $("#candidate-sources-close").onclick = () => dialog.close();
+          dialog.showModal();
+        } catch (e) {
+          toast(e.message);
+        }
+      }),
+    );
     act("#candidate-all", () =>
       document
         .querySelectorAll('[data-pick="id"]')
@@ -578,7 +703,7 @@ export function createDiscoveryPages(ctx) {
       const r = await api("/discovery/keywords/track", {
         ids: selection(data.items, "id").map((r) => r.id),
       });
-      toast(`新增追踪 ${r.targets} 个，已有 ${r.existing} 个；后台将持续采集`);
+      toast(`新增追踪 ${r.targets} 个，已有 ${r.existing} 个（保留原配置）`);
     });
     act("#candidate-prev", async () => {
       candidateOffset = Math.max(0, candidateOffset - 100);
@@ -634,7 +759,9 @@ export function createDiscoveryPages(ctx) {
         filename: file.name,
         content_base64: content,
       };
+      if (rev !== currentRevision()) return;
       const preview = await api("/discovery/reports/preview", payload);
+      if (rev !== currentRevision() || !$("#report-preview")) return;
       $("#report-preview").innerHTML = panel(
         "导入预览",
         `<p>${esc(preview.note)}</p><p>识别市场：${esc(preview.inferred.country || "未识别")}，商店：${esc(preview.inferred.store || "未识别")}；将导入到 ${esc(m.country)} / ${esc(m.language)}，应用 ${esc(v.app_id)}</p>${table(
@@ -649,6 +776,43 @@ export function createDiscoveryPages(ctx) {
         toast(result.duplicate ? "此报告已导入" : "报告已导入");
         if (rev === currentRevision()) await keywords(nextRevision());
       });
+    });
+    const popularitySpec = () => {
+      const f = $("#apple-popularity-form");
+      return {
+        ...m,
+        genre: f.elements.genre.value,
+        period: f.elements.period.value,
+        start: f.elements.start.value,
+        limit: Number(f.elements.limit.value),
+      };
+    };
+    const popularityDone = async (result) => {
+      signalId = String(result.id);
+      toast(
+        `已保存 ${result.returned} 条${result.possibly_truncated ? "，达到查询上限，非完整榜单" : ""}`,
+      );
+      if (rev === currentRevision()) await keywords(nextRevision());
+    };
+    bindForm("#apple-popularity-form", async () =>
+      popularityDone(
+        await api("/discovery/keywords/apple-popularity", popularitySpec()),
+      ),
+    );
+    bindForm("#apple-popularity-import", async (v) =>
+      popularityDone(
+        await api("/discovery/keywords/apple-popularity/import", {
+          ...popularitySpec(),
+          response: JSON.parse(v.response),
+        }),
+      ),
+    );
+    act("#signal-promote", async () => {
+      await api(
+        `/discovery/keywords/signals/${data.selected.id}/candidates`,
+        {},
+      );
+      toast("来源词已加入候选库，尚未启动追踪");
     });
     bindForm("#signal-select", async (v) => {
       signalId = v.run_id;

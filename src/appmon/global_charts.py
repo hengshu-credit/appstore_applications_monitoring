@@ -1,5 +1,6 @@
 """Country-by-country store charts on one page; no synthetic worldwide ranking."""
 import time
+import hashlib
 from . import charts, catalog, locales
 from .db import dump
 from .growth import cutoff
@@ -35,13 +36,14 @@ def report(db,store,selection='',collection='top-free,top-paid,top-grossing',cat
         for kind in types:
             data=charts.view(db,store,c['code'],language,kind,category,cache,as_of=at if as_of is not None else None)
             current=data['latest_success'];target=data['target']
-            is_fresh=bool(current and target and at-current['observed_at']<=target['refresh_hours']*3600)
+            is_fresh=bool(current and target and data.get('ready',True) and at-current['observed_at']<=target['refresh_hours']*3600)
             if as_of is None:is_fresh=is_fresh and not target['failures'] and bool(target['enabled']) if target else False
             observed+=int(current is not None);fresh+=int(is_fresh)
             boards.append({'collection':kind,'definition':data['definition'],'items':data['items'][:depth],
                 'observed_at':current['observed_at'] if current else None,'source':current['source'] if current else None,
                 'returned_count':data['base_returned_count'],'fresh':is_fresh,'target_id':target['id'] if target else None,
                 'reason':data['reason'],'unsupported':data.get('unsupported',False),
+                'quality':data.get('quality','unsupported'),'lease_until':target['lease_until'] if target else None,
                 'last_error':target['last_error'] if target and as_of is None else None})
         result.append({'country':c['code'],'name':c['name'],'language':language,'boards':boards})
     return {'store':store,'countries':result,'selected_codes':[c['code'] for c in selected],'total_countries':len(selected),'offset':offset,'page_size':page_size,
@@ -64,7 +66,7 @@ def preview(value):
             if category and not spec['category_supported']:
                 unsupported.append({'country':c['code'],'collection':kind});continue
             key=(c['code'],spec['base_collection'])
-            actions[key]={'kind':'chart','value':{'kind':'chart','store':store,'country':c['code'],
+            actions[key]={'kind':'chart','preserve_existing':True,'value':{'kind':'chart','store':store,'country':c['code'],
                 'language':locales.language_for(store,c['code']),'collection':spec['base_collection'],'category':category,'depth':depth,'refresh_hours':interval}}
     return {'actions':list(actions.values()),'total':len(actions),'countries':len(selected),'unsupported':unsupported,
             'note':'创建周期采集配置，完成入队不代表所有国家已采集成功。已有目标的暂停状态、深度和周期保留。'}
@@ -73,13 +75,15 @@ def preview(value):
 def create_plan(db,value):
     plan=preview(value)
     if not plan['actions']:raise ValueError('所选组合没有可采集的基榜')
-    # Use the existing resumable plan executor and preserve existing target settings.
-    for action in plan['actions']:
-        v=action['value'];row=db.execute("SELECT depth,refresh_hours FROM observation_targets WHERE kind='chart' AND store=%s AND country=%s AND language=%s AND collection=%s AND category=%s",tuple(v[k] for k in ('store','country','language','collection','category'))).fetchone()
-        if row:v.update(row)
+    # Preserve at execution time, including settings edited after this preview.
+    canonical=dump({'actions':sorted(plan['actions'],key=lambda a:dump(a['value']))})
+    lock='global-plan:'+hashlib.sha256(canonical.encode()).hexdigest()[:40]
     now=time.time()
-    with db:
-        db.execute('INSERT INTO collection_plans(name,specification,actions,total,created_at,updated_at) VALUES(%s,%s,%s,%s,%s,%s)',
-                   ('全球榜单 / '+value['store'],dump(value),dump(plan['actions']),plan['total'],now,now))
-        identifier=db.cursor.lastrowid
+    with db.named_lock(lock):
+        with db:
+            old=db.execute("SELECT id,total,status FROM collection_plans WHERE name=%s AND specification=%s AND status IN ('queued','running') ORDER BY id DESC LIMIT 1",('全球榜单 / '+value['store'],canonical)).fetchone()
+            if old:return old|{'reused':True,'note':plan['note']}
+            db.execute('INSERT INTO collection_plans(name,specification,actions,total,created_at,updated_at) VALUES(%s,%s,%s,%s,%s,%s)',
+                       ('全球榜单 / '+value['store'],canonical,dump(plan['actions']),plan['total'],now,now))
+            identifier=db.cursor.lastrowid
     return {'id':identifier,'total':plan['total'],'status':'queued','note':plan['note']}

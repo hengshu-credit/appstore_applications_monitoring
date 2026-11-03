@@ -50,7 +50,7 @@ def watch(db, value):
     return m | {"group_name": group, "refresh_hours": interval}
 
 
-def add_observation_target(db, value):
+def add_observation_target(db, value, preserve_existing=False):
     kind = value.get("kind")
     if kind not in ("chart", "reviews", "featured"):
         raise ValueError("kind must be chart, reviews or featured")
@@ -80,9 +80,10 @@ def add_observation_target(db, value):
     interval = hours(value.get("refresh_hours", 24))
     identity = (kind, m["store"], m["app_id"], m["country"], m["language"], collection, category)
     with db:
+        update='id=observation_targets.id' if preserve_existing else 'depth=incoming.depth,refresh_hours=incoming.refresh_hours'
         db.execute('''INSERT INTO observation_targets(kind,store,app_id,country,language,collection,category,depth,refresh_hours)
             VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) AS incoming
-            ON DUPLICATE KEY UPDATE depth=incoming.depth,refresh_hours=incoming.refresh_hours''',
+            ON DUPLICATE KEY UPDATE '''+update,
                    (*identity, depth, interval))
         row = db.execute('''SELECT id FROM observation_targets WHERE kind=%s AND store=%s AND app_id=%s
             AND country=%s AND language=%s AND collection=%s AND category=%s''', identity).fetchone()

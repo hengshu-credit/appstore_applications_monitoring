@@ -25,6 +25,7 @@ from . import task_logs, locales, scoped_views, app_icons
 from . import charts, app_collection
 from . import growth, keyword_discovery, keyword_reports
 from . import global_charts
+from . import apple_popularity
 from . import app_discovery, app_metrics, availability
 from .stores import FetchError
 from datetime import date, datetime, timezone
@@ -255,9 +256,9 @@ def create_app(cfg):
     def keyword_sources():return keyword_discovery.source_catalog()
 
     @api.get('/discovery/keywords/coverage')
-    def keyword_coverage(store:str,country:str='us',language:str='en',app_id:str='',db=DB):
+    def keyword_coverage(store:str,country:str='us',language:str='en',app_id:str='',app_offset:int=0,keyword_offset:int=0,app_keyword_offset:int=0,q:str=Query('',max_length=255),limit:int=100,db=DB):
         m=intel.market(dict(store=store,country=country,language=language,app_id=app_id),require_app=bool(app_id))
-        return keyword_discovery.coverage(db,m,app_id)
+        return keyword_discovery.coverage(db,m,app_id,app_offset,keyword_offset,app_keyword_offset,q,limit)
 
     @api.get('/discovery/keywords/markets')
     def keyword_markets(store:str,app_id:str='',db=DB):
@@ -273,6 +274,9 @@ def create_app(cfg):
     @api.post('/discovery/keywords/candidates')
     def candidate_import(value:dict=Body(...),db=DB):return keyword_discovery.import_candidates(db,value)
 
+    @api.get('/discovery/keywords/candidates/{identifier}/sources')
+    def candidate_source_list(identifier:int,db=DB):return keyword_discovery.candidate_sources(db,identifier)
+
     @api.post('/discovery/keywords/frequency')
     def frequency_import(value:dict=Body(...),db=DB):return keyword_discovery.import_frequency(db,value)
 
@@ -285,6 +289,18 @@ def create_app(cfg):
 
     @api.post('/discovery/keywords/signals')
     def signal_import(value:dict=Body(...),db=DB):return keyword_discovery.import_signals(db,value)
+
+    @api.post('/discovery/keywords/signals/{identifier}/candidates')
+    def signal_candidates(identifier:int,db=DB):return keyword_discovery.promote_signals(db,identifier)
+
+    @api.get('/discovery/keywords/apple-popularity')
+    def popularity_configuration():return apple_popularity.configuration()
+
+    @api.post('/discovery/keywords/apple-popularity')
+    def popularity_fetch(value:dict=Body(...),db=DB):return apple_popularity.fetch(cfg,db,value)
+
+    @api.post('/discovery/keywords/apple-popularity/import')
+    def popularity_import(value:dict=Body(...),db=DB):return apple_popularity.ingest(cfg,db,value,value.get('response'))
 
     @api.post('/discovery/reports/preview')
     def report_preview(value:dict=Body(...)):return keyword_reports.preview(value)
@@ -303,6 +319,9 @@ def create_app(cfg):
     @api.get('/discovery/reports/{identifier}')
     def report_rows(identifier:int,sheet:str='ASO关键词',q:str=Query('',max_length=255),offset:int=0,db=DB):
         return keyword_reports.report_rows(db,identifier,sheet,q,offset)
+
+    @api.get('/discovery/reports/{identifier}/rejections')
+    def report_rejections(identifier:int,offset:int=0,db=DB):return keyword_reports.rejections(db,identifier,offset)
 
     @api.post('/discovery/reports/promote')
     def report_promote(value:dict=Body(...),db=DB):return keyword_reports.promote(db,value)

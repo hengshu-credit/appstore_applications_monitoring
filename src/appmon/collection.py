@@ -100,7 +100,7 @@ def work_plans(db, limit=20):
                         schedule_action(db,action)
                     elif action['kind']=='details':watch(db,action['value'])
                     elif action['kind']=='keywords':add_targets(db,[action['value']])
-                    else:add_observation_target(db,action['value'])
+                    else:add_observation_target(db,action['value'],preserve_existing=action.get('preserve_existing',False))
                     completed+=1;processed+=1
                     db.execute("UPDATE collection_plans SET completed=%s,updated_at=%s WHERE id=%s",(completed,time.time(),row['id']))
                     emit(db,'plans',row['id'],'progress',f'已配置 {completed}/{len(actions)} 个目标；类型 {action["kind"]}')

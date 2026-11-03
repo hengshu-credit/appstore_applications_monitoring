@@ -4,9 +4,11 @@ import binascii
 import hashlib
 import io
 import json
+import os
 import posixpath
 import re
 import time
+import uuid
 import zipfile
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -125,7 +127,11 @@ def import_report(cfg,db,value):
             s['imported_keyword_rows']=sum(r[0]==s['sheet'] for r in prepared)
     folder=Path(cfg['data_dir'])/'keyword_reports';folder.mkdir(exist_ok=True,parents=True)
     dest=folder/(parsed['digest']+'.xlsx')
-    if not dest.exists():dest.write_bytes(raw)
+    if not dest.exists() or hashlib.sha256(dest.read_bytes()).hexdigest()!=parsed['digest']:
+        temporary=folder/(parsed['digest']+'.'+uuid.uuid4().hex+'.part')
+        try:
+            temporary.write_bytes(raw);os.replace(temporary,dest)
+        finally:temporary.unlink(missing_ok=True)
     filename=Path(str(value.get('filename','report.xlsx'))).name[:255]
     with db.named_lock('keyword-report:'+parsed['digest'][:40]):
         with db:
@@ -155,6 +161,7 @@ def summary(db,m):
     base=''' FROM keyword_report_rows k JOIN keyword_reports r ON r.id=k.report_id
         WHERE r.store=%s AND r.country=%s AND r.language=%s'''
     counts=db.execute('SELECT count(*) records,count(DISTINCT k.keyword) unique_keywords,count(DISTINCT r.id) reports,count(DISTINCT r.app_id) apps'+base,args).fetchone()
+    counts.update(db.execute('SELECT count(*) reports,count(DISTINCT app_id) apps FROM keyword_reports WHERE store=%s AND country=%s AND language=%s',args).fetchone())
     sheets=db.execute('SELECT k.sheet,count(*) records,count(DISTINCT k.keyword) unique_keywords'+base+' GROUP BY k.sheet',args).fetchall()
     shared=db.execute('''SELECT count(*) n FROM (SELECT k.keyword'''+base+' GROUP BY k.keyword HAVING count(DISTINCT k.sheet)>1) x',args).fetchone()['n']
     cross=db.execute('''SELECT count(*) n FROM (SELECT k.keyword'''+base+' GROUP BY k.keyword HAVING count(DISTINCT r.app_id)>1) x',args).fetchone()['n']
@@ -167,10 +174,19 @@ def summary(db,m):
 def report_rows(db,identifier,sheet='ASO关键词',q='',offset=0):
     if sheet not in SHEETS or not 0<=offset<=100000:raise ValueError('工作表或分页参数无效')
     where='report_id=%s AND sheet=%s';args=[identifier,sheet]
-    if q:where+=' AND keyword LIKE %s';args.append('%'+q+'%')
+    if q:where+=' AND LOCATE(LOWER(%s),LOWER(keyword))>0';args.append(q)
     total=db.execute('SELECT count(*) n FROM keyword_report_rows WHERE '+where,args).fetchone()['n']
     rows=db.execute('SELECT * FROM keyword_report_rows WHERE '+where+' ORDER BY source_row LIMIT 100 OFFSET %s',(*args,offset)).fetchall()
     for r in rows:r['payload']=json.loads(r['payload'])
+    return {'items':rows,'total':total,'offset':offset,'limit':100}
+
+
+def rejections(db,identifier,offset=0):
+    if not 0<=offset<=100000:raise ValueError('分页参数无效')
+    total=db.execute('SELECT count(*) n FROM keyword_report_rejections WHERE report_id=%s',(identifier,)).fetchone()['n']
+    rows=db.execute('SELECT * FROM keyword_report_rejections WHERE report_id=%s ORDER BY sheet,source_row LIMIT 100 OFFSET %s',(identifier,offset)).fetchall()
+    for r in rows:
+        r['payload']=json.loads(r['payload']);r['keyword']=str((r['payload'].get('values') or [''])[0])
     return {'items':rows,'total':total,'offset':offset,'limit':100}
 
 

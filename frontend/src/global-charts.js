@@ -23,6 +23,7 @@ export function createGlobalCharts(ctx) {
       category: "",
       as_of: "",
       depth: "10",
+      layout: "countries",
     },
     offset = 0,
     lastStore = "";
@@ -30,6 +31,38 @@ export function createGlobalCharts(ctx) {
     new URLSearchParams(
       Object.entries(o).filter(([, v]) => v !== "" && v != null),
     ).toString();
+  const defaults = { ...filters };
+  const restore = (store) => {
+    try {
+      const all = JSON.parse(
+        localStorage.getItem("appmon-global-chart-filters") || "{}",
+      );
+      const v = all[store];
+      if (
+        v &&
+        ["countries", "collections", "category", "as_of", "depth"].every(
+          (k) => typeof v[k] === "string",
+        )
+      )
+        return {
+          ...defaults,
+          ...v,
+          layout: ["countries", "compare"].includes(v.layout)
+            ? v.layout
+            : "countries",
+        };
+    } catch {}
+    return { ...defaults };
+  };
+  const persist = (store) => {
+    try {
+      const all = JSON.parse(
+        localStorage.getItem("appmon-global-chart-filters") || "{}",
+      );
+      all[store] = filters;
+      localStorage.setItem("appmon-global-chart-filters", JSON.stringify(all));
+    } catch {}
+  };
   return async function render(rev) {
     const store = market().store;
     if (store === "all") {
@@ -40,10 +73,12 @@ export function createGlobalCharts(ctx) {
       return;
     }
     if (lastStore !== store) {
-      filters.category = "";
+      filters = restore(store);
       offset = 0;
       lastStore = store;
     }
+    if (filters.as_of && filters.as_of > new Date().toLocaleDateString("sv-SE"))
+      throw Error("观察日期不能晚于今天");
     const at = filters.as_of
       ? Math.min(
           Date.parse(filters.as_of + "T23:59:59") / 1000,
@@ -62,7 +97,7 @@ export function createGlobalCharts(ctx) {
           `<section class="panel global-country"><div class="panel-heading"><h2>${esc(c.name)} <span class="sub">${esc(c.country.toUpperCase())}</span></h2><span class="sub">${esc(c.language)}</span></div><div class="global-lists">${c.boards
             .map(
               (b) =>
-                `<section class="global-chart"><h3>${esc(b.definition.name)}${b.definition.mode === "derived" ? "（派生）" : ""}</h3><p class="smallprint">${b.unsupported ? "此组合不支持" : b.fresh ? "有效观察" : b.observed_at ? "历史数据待更新" : "尚未采集"} · ${stamp(b.observed_at)}<br>返回 ${b.returned_count} 条${b.last_error ? " · " + esc(b.last_error) : ""}</p>${b.reason ? `<p class="smallprint">${esc(b.reason)}</p>` : ""}${table(
+                `<section class="global-chart"><h3>${esc(b.definition.name)}${b.definition.mode === "derived" ? "（派生）" : ""}</h3><p class="smallprint">${b.unsupported ? "此组合不支持" : b.quality === "insufficient_history" ? "历史不足，暂不能生成派生榜" : b.fresh ? "有效观察" : b.lease_until > Date.now() / 1000 ? "采集中" : b.observed_at ? "历史数据待更新" : "尚未采集"} · ${stamp(b.observed_at)}<br>返回 ${b.returned_count} 条${b.last_error ? " · " + esc(b.last_error) : ""}</p>${b.reason ? `<p class="smallprint">${esc(b.reason)}</p>` : ""}${table(
                   ["名次", "应用"],
                   b.items.map((r) => [
                     r.position,
@@ -80,6 +115,34 @@ export function createGlobalCharts(ctx) {
             .join("")}</div></section>`,
       )
       .join("");
+    const comparisons = [...types]
+      .map((kind) => {
+        const definition = definitions.find((d) => d.id === kind);
+        return panel(
+          esc(definition?.name || kind),
+          `<div class="global-compare-scroll"><div class="global-compare-grid">${data.countries
+            .map((c) => {
+              const board = c.boards.find((b) => b.collection === kind);
+              if (!board) return "";
+              return `<section class="global-chart"><h3>${esc(c.name)} (${esc(c.country.toUpperCase())})</h3><p class="smallprint">${board.fresh ? "有效观察" : board.reason || "待更新"} · ${stamp(board.observed_at)}</p>${table(
+                ["名次", "应用"],
+                board.items.map((r) => [
+                  r.position,
+                  appLink(
+                    store,
+                    r.app_id,
+                    r.name,
+                    r.icon,
+                    c.country,
+                    c.language,
+                  ),
+                ]),
+              )}</section>`;
+            })
+            .join("")}</div></div>`,
+        );
+      })
+      .join("");
     if (
       !mount(
         `<p class="lead">在同一页面并列查看各国免费、付费、畅销及其他榜单。</p><form id="global-chart-form" class="toolbar"><details class="global-country-picker"><summary>选择国家 / 地区（${data.total_countries}）</summary><input id="global-country-search" type="search" placeholder="搜索国家、英文或代码" aria-label="搜索全球榜单国家"><div class="actions"><button type="button" id="global-country-all" class="secondary">全选</button><button type="button" id="global-country-clear" class="secondary">清空</button></div><div class="global-country-options">${data.available_countries.map((c) => `<label data-country-option="${esc((c.name + " " + c.english + " " + c.code).toLowerCase())}"><input type="checkbox" name="country" value="${esc(c.code)}" ${selected.has(c.code) ? "checked" : ""}>${esc(c.name)} (${esc(c.code.toUpperCase())})</label>`).join("")}</div></details><details><summary>榜单类型（${types.size}）</summary>${definitions.map((d) => `<label><input type="checkbox" name="collection" value="${d.id}" ${types.has(d.id) ? "checked" : ""}>${esc(d.name)}</label>`).join("")}</details>${selectors.categoryField(store, filters.category, "global-category", "chart")}${field("观察日期（本地时区）", "as_of", filters.as_of, "date")}${select(
@@ -91,7 +154,15 @@ export function createGlobalCharts(ctx) {
             [50, "Top 50"],
           ],
           filters.depth,
-        )}<button type="submit">查看各国榜单</button><button type="button" id="global-configure" class="secondary">配置所选范围采集</button></form><div id="global-plan-preview"></div><p class="callout">${esc(data.note)} 本页有效 ${data.fresh_boards} / ${data.requested_boards} 个榜单，已有观察 ${data.observed_boards} 个。</p><div class="toolbar"><button id="global-prev" class="secondary" ${offset ? "" : "disabled"}>上一组国家</button><span>第 ${offset + 1}–${Math.min(offset + data.countries.length, data.total_countries)} 个 / 共 ${data.total_countries} 个国家；每页${data.page_size}个</span><button id="global-next" class="secondary" ${data.has_more ? "" : "disabled"}>下一组国家</button><a class="button secondary" href="#collection">查看采集进度</a></div><div class="global-board-grid">${cards}</div>`,
+        )}${select(
+          "布局",
+          "layout",
+          [
+            ["countries", "按国家分组"],
+            ["compare", "按榜种横向对比"],
+          ],
+          filters.layout,
+        )}<button type="submit">查看各国榜单</button><button type="button" id="global-configure" class="secondary">配置所选范围采集</button></form><div id="global-plan-preview"></div><p class="callout">${esc(data.note)} 本页有效 ${data.fresh_boards} / ${data.requested_boards} 个榜单，已有观察 ${data.observed_boards} 个。</p><div class="toolbar"><button id="global-prev" class="secondary" ${offset ? "" : "disabled"}>上一组国家</button><span>第 ${offset + 1}–${Math.min(offset + data.countries.length, data.total_countries)} 个 / 共 ${data.total_countries} 个国家；每页${data.page_size}个</span><button id="global-next" class="secondary" ${data.has_more ? "" : "disabled"}>下一组国家</button><a class="button secondary" href="#collection">查看采集进度</a></div>${filters.layout === "compare" ? comparisons : `<div class="global-board-grid">${cards}</div>`}`,
         rev,
       )
     )
@@ -107,17 +178,25 @@ export function createGlobalCharts(ctx) {
       if (!countries.length || !collections.length)
         throw Error("至少选择一个国家和一种榜单");
       return {
-        countries: countries.join(","),
+        countries: [
+          ...data.selected_codes.filter((c) => countries.includes(c)),
+          ...countries.filter((c) => !data.selected_codes.includes(c)),
+        ].join(","),
         collections: collections.join(","),
         category: $("#global-category").value,
         as_of: form.elements.as_of.value,
         depth: form.elements.depth.value,
+        layout: form.elements.layout.value,
       };
     };
     bindForm("#global-chart-form", async () => {
       filters = getFilters();
+      persist(store);
       offset = 0;
       await render(nextRevision());
+    });
+    $("#global-chart-form").addEventListener("change", () => {
+      $("#global-plan-preview").innerHTML = "";
     });
     $("#global-country-search").addEventListener("input", (e) => {
       const q = e.target.value.toLowerCase();
@@ -148,7 +227,7 @@ export function createGlobalCharts(ctx) {
         if (rev !== currentRevision()) return;
         $("#global-plan-preview").innerHTML = panel(
           "采集计划预览",
-          `<p>${preview.countries}个国家，${preview.total}个独立基榜目标，采集Top100，每24小时更新。${esc(preview.note)}${preview.unsupported.length ? ` 跳过 ${preview.unsupported.length} 个不支持的组合。` : ""}</p><button id="global-plan-confirm">确认创建采集计划</button>`,
+          `<p>${preview.countries}个国家，${preview.total}个独立基榜目标，新目标采集Top100，每24小时更新；已有目标保留原设置。${esc(preview.note)}${preview.unsupported.length ? ` 跳过 ${preview.unsupported.length} 个不支持的组合。` : ""}</p><button id="global-plan-confirm">确认创建采集计划</button>`,
         );
         $("#global-plan-confirm").onclick = async () => {
           const button = $("#global-plan-confirm");

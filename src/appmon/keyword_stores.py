@@ -45,6 +45,7 @@ def ordered_apps(store, apps):
         if app_id not in seen:
             seen.add(app_id)
             output.append({"app_id": app_id, "name": app.get("name")})
+            if isinstance(app.get('icon'),str) and app['icon']:output[-1]['icon']=app['icon']
     return output
 
 
@@ -97,7 +98,7 @@ def parse_google(text):
     return ordered_apps("google", apps)
 
 
-def parse_apple(data):
+def parse_apple(data,country=None):
     if not isinstance(data, dict) or not isinstance(data.get("bubbles"), list):
         raise FetchError("Apple native search schema changed")
     bubbles = data["bubbles"]
@@ -107,11 +108,18 @@ def parse_apple(data):
     if not isinstance(rows, list):
         raise FetchError("Apple native search results missing")
     apps = []
+    catalog=path(data,'storePlatformData','native-search-lockup-search') or {}
+    storefront=path(catalog,'meta','storefront','cc')
+    if country and storefront and str(storefront).lower()!=country.lower():raise FetchError('Apple returned a different storefront')
+    metadata=catalog.get('results',{}) if isinstance(catalog,dict) else {}
     for row in rows:
         app_id = row.get("id")
         if not isinstance(app_id, (str, int)) or isinstance(app_id, bool):
             raise FetchError("Apple native search app ID missing")
-        apps.append({"app_id": str(app_id), "name": row.get("name")})
+        detail=metadata.get(str(app_id),{}) if isinstance(metadata,dict) else {}
+        if detail.get('id') is not None and str(detail['id'])!=str(app_id):raise FetchError('Apple metadata identity mismatch')
+        apps.append({"app_id": str(app_id), "name": row.get("name") or detail.get('name'),
+                     'icon':path(detail,'artwork',0,'url')})
     return ordered_apps("apple", apps)
 
 
@@ -164,7 +172,7 @@ class KeywordClient(Client):
                 marker in response.text.lower() for marker in ("recaptcha", "unusual traffic")):
             raise FetchError("Search consent or challenge page")
         try:
-            apps = parse_apple(response.json()) if store == "apple" else parse_google(response.text)
+            apps = parse_apple(response.json(),target['country']) if store == "apple" else parse_google(response.text)
         except (ValueError, KeyError, TypeError, AttributeError) as e:
             raise FetchError(f"{store} search schema changed") from e
         return SearchResult(apps[:target["depth"]], response.content, SOURCES[store])

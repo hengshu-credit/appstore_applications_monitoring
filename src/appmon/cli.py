@@ -28,6 +28,10 @@ def main():
     console.add_argument("action", choices=["run", "daemon"])
     console.add_argument("--limit", type=int, default=5)
     sub.add_parser("init")
+    backfill=sub.add_parser('metrics-backfill',help='Replay retained metric snapshots without network requests')
+    backfill.add_argument('--after-id',type=int,default=0)
+    backfill.add_argument('--limit',type=int,default=500)
+    backfill.add_argument('--upper-id',type=int)
     sub.add_parser("sync-seed")
     imp = sub.add_parser("import")
     imp.add_argument("path")
@@ -77,6 +81,9 @@ def main():
                 result = execute_cli(args, cfg, db)
             except ValueError as exc:
                 parser.error(str(exc))
+        elif args.command == 'metrics-backfill':
+            from .growth import backfill
+            result=backfill(cfg,db,args.after_id,args.limit,args.upper_id)
         elif args.command == "init":
             result = {"database": cfg["mysql"]["database"], "storage": "mysql"}
         elif args.command == "sync-seed":

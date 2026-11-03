@@ -1,6 +1,9 @@
 """Fixed-window changes in observed cumulative counters, not download estimates."""
 import math
 import time
+import json
+import gzip
+from pathlib import Path
 from .catalog import listing_category, category_aliases
 from .charts import released_at
 
@@ -32,6 +35,34 @@ def cutoff(value=None):
     if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or not 0<value<=time.time()+300:
         raise ValueError('观察时间必须为有效过去时间')
     return value
+
+
+def backfill(cfg,db,after_id=0,limit=500,upper_id=None):
+    """Replay retained snapshots only; never interpolate absent dates or fetch the network."""
+    if type(after_id) is not int or after_id<0 or type(limit) is not int or not 1<=limit<=5000:raise ValueError('回放游标或批量大小无效')
+    upper_id=upper_id if upper_id is not None else db.execute('SELECT COALESCE(MAX(id),0) id FROM snapshots').fetchone()['id']
+    rows=db.execute('SELECT * FROM snapshots WHERE id>%s AND id<=%s ORDER BY id LIMIT %s',(after_id,upper_id,limit)).fetchall()
+    root=Path(cfg['data_dir']).resolve();written=0;issues=[];skipped=0
+    for row in rows:
+        try:
+            payload=json.loads(row['payload']);key=tuple(row[k] for k in ('store','app_id','country','language'));day=int(row['observed_at']//86400)*86400
+            existing=db.execute('SELECT observed_at FROM app_metrics_daily WHERE store=%s AND app_id=%s AND country=%s AND language=%s AND day=%s',(*key,day)).fetchone()
+            if existing and existing['observed_at']>=row['observed_at']:skipped+=1;continue
+            if row['store']=='google' and payload.get('installs_reported') is None:
+                try:
+                    raw=(root/row['raw_path']).resolve()
+                    if not raw.is_relative_to(root):raise ValueError('invalid path')
+                    with gzip.open(raw,'rb') as stream:body=stream.read(8_000_001)
+                    if len(body)>8_000_000:raise ValueError('response too large')
+                    from appgoblin_play_scraper.features.app import parse_dom
+                    parsed=parse_dom(body.decode('utf-8'),row['app_id'],'https://play.google.com/store/apps/details?id='+row['app_id'])
+                    payload['installs_reported']=counter(parsed.get('realInstalls'))
+                except Exception as exc:issues.append({'snapshot_id':row['id'],'stage':'raw_install_counter','error':type(exc).__name__})
+            with db:record(db,row,payload,row['observed_at'],row['raw_path'])
+            written+=1
+        except Exception as exc:issues.append({'snapshot_id':row['id'],'stage':'snapshot','error':type(exc).__name__})
+    cursor=rows[-1]['id'] if rows else after_id
+    return {'processed':len(rows),'written':written,'skipped_newer_or_equal':skipped,'issues':issues,'after_id':cursor,'upper_id':upper_id,'has_more':cursor<upper_id and bool(rows)}
 
 
 def report(db, store, country, language, days=7, metric='ratings', as_of=None, category='', q='', pricing='', monetization='', new_days=0, limit=200):

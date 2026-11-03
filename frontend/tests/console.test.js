@@ -1056,3 +1056,89 @@ test("global rankings show countries and multiple chart kinds together and previ
     await window.happyDOM.close();
   }
 });
+
+test("coverage pagination reaches later terms and resets after a market change", async () => {
+  const { window, calls } = await setup((path) => {
+    if (path.startsWith("/api/discovery/keywords/coverage?"))
+      return {
+        ...emptyCoverage,
+        pages: {
+          apps: { total: 0, offset: 0, limit: 100, has_more: false },
+          keywords: {
+            total: 250,
+            offset:
+              new URL(path, "http://localhost").searchParams.get(
+                "keyword_offset",
+              ) === "100"
+                ? 100
+                : 0,
+            limit: 100,
+            has_more: true,
+          },
+        },
+      };
+  });
+  try {
+    window.location.hash = "keywords";
+    await tick();
+    window.document
+      .querySelector('[data-coverage-page="keywords"][data-offset="100"]')
+      .click();
+    await tick();
+    assert.ok(calls.some((c) => c.path.includes("keyword_offset=100")));
+    const country = window.document.querySelector("#global-country");
+    country.value = "jp";
+    country.dispatchEvent(new window.Event("change"));
+    await tick();
+    const last = calls
+      .filter((c) => c.path.startsWith("/api/discovery/keywords/coverage?"))
+      .at(-1).path;
+    assert.ok(last.includes("country=jp"));
+    assert.ok(last.includes("keyword_offset=0"));
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("official popularity does not send a network query when credentials are unconfigured", async () => {
+  const { window, calls } = await setup((path) => {
+    if (path.startsWith("/api/discovery/keywords/coverage?"))
+      return emptyCoverage;
+    if (path.startsWith("/api/discovery/keywords/signals?"))
+      return { runs: [], items: [], selected: null, note: "来源快照" };
+    if (path === "/api/discovery/keywords/apple-popularity")
+      return {
+        configured: false,
+        genres: ["FINANCE"],
+        default_start: "2025-01-05",
+        note: "授权未配置",
+      };
+  });
+  try {
+    window.document.querySelector("#global-store").value = "apple";
+    window.location.hash = "keywords";
+    await tick();
+    window.document.querySelector('[data-keyword-tab="hot"]').click();
+    await tick();
+    assert.equal(
+      window.document.querySelector(
+        '#apple-popularity-form button[type="submit"]',
+      ).disabled,
+      true,
+    );
+    assert.match(
+      window.document.querySelector("#content").textContent,
+      /待配置/,
+    );
+    assert.equal(
+      calls.filter(
+        (c) =>
+          c.path === "/api/discovery/keywords/apple-popularity" &&
+          c.options.method === "POST",
+      ).length,
+      0,
+    );
+  } finally {
+    await window.happyDOM.close();
+  }
+});

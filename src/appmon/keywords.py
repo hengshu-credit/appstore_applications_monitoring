@@ -109,6 +109,9 @@ def save_search(db, cfg, target, result=None, error=None, now=None):
         if not error:
             add_apps(db, [(target["store"], a["app_id"], a["name"], None) for a in apps],
                      f"keyword:{target['id']}", now)
+            from .app_icons import remember
+            for app in apps:
+                if app.get('icon'):remember(db,target['store'],app['app_id'],target['country'],target['language'],app['icon'],app.get('name'))
             if apps:
                 db.executemany("INSERT INTO keyword_ranks(run_id,app_id,position,name) VALUES(%s,%s,%s,%s)",
                                [(run_id, a["app_id"], n, a["name"]) for n, a in enumerate(apps, 1)])
