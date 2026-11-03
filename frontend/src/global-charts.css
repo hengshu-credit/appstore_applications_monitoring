@@ -126,10 +126,16 @@
   min-width: 0;
 }
 .chart-detail-text {
-  display: block;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  line-height: 20px;
+  max-height: 40px;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .global-country-options {
   display: grid;
