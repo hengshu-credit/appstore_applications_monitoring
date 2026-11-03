@@ -92,6 +92,14 @@ dialog button {
   background: var(--brand-background);
   color: var(--on-brand);
 }
+@media (min-width: 751px) {
+  :root:not([data-navigation="top"]) #navigation {
+    margin-inline: -18px;
+  }
+  :root:not([data-navigation="top"]) #navigation a {
+    padding-inline: 32px;
+  }
+}
 .brand .mark .ui-icon {
   width: 32px;
   height: 32px;
