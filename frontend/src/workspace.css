@@ -337,6 +337,14 @@ th input[type="checkbox"] {
   margin: 0;
   align-items: flex-start;
 }
+.task-log-drawer button {
+  width: auto;
+  flex: 0 0 auto;
+}
+.task-log-drawer .picker-heading > div {
+  min-width: 0;
+  flex: 1;
+}
 .task-log-drawer .picker-heading p {
   margin-bottom: 0;
   overflow-wrap: anywhere;
