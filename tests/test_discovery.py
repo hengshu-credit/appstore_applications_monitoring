@@ -17,12 +17,13 @@ from appmon.web import create_app
 from test_monitor import MySQLTestCase
 
 
-def workbook_bytes():
+def workbook_bytes(extra_rows=None):
     stream=io.BytesIO()
     with zipfile.ZipFile(stream,'w') as z:
         z.writestr('xl/workbook.xml','<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="ASO关键词" sheetId="1" r:id="rId1"/></sheets></workbook>')
         z.writestr('xl/_rels/workbook.xml.rels','<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>')
         rows=[[0,'测试_关键词明细_中国_20261103对比20261102'],['关键词','排名','搜索指数','流行度'],['豆包',1,6924,97],['测试词','未覆盖',0,0]]
+        rows.extend(extra_rows or [])
         xml='<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'
         for n,row in enumerate(rows,1):
             xml+='<row>'
@@ -123,6 +124,15 @@ class DiscoveryTest(MySQLTestCase):
                 self.assertEqual(response.status_code,200,response.text)
             self.assertEqual(client.get('/api/discovery/growth?store=google&days=6').status_code,400)
             self.assertEqual(client.post('/api/discovery/reports/preview',json={'content_base64':'bad'}).status_code,400)
+
+    def test_report_placeholder_is_not_a_keyword_and_invalid_original_is_preserved(self):
+        value={'store':'apple','app_id':'123','country':'cn','language':'zh-cn',
+            'content_base64':base64.b64encode(workbook_bytes([['暂无数据'],['\u200bhidden',1,0,0]])).decode()}
+        result=kr.import_report(self.cfg,self.db,value)
+        self.assertEqual((result['rows'],result['rejected_rows']),(2,1))
+        self.assertEqual(self.db.execute('SELECT count(*) n FROM keyword_report_rejections').fetchone()['n'],1)
+        report=kr.summary(self.db,value)
+        self.assertEqual(report['counts']['unique_keywords'],2)
 
 
 class ChartHistoryTest(MySQLTestCase):

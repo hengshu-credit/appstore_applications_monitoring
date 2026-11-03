@@ -89,11 +89,14 @@ def add_observation_target(db, value):
     return row
 
 
-def claim_observation(db, lease_seconds, now=None):
+def claim_observation(db, lease_seconds, now=None, target_id=None, refresh=False):
     now = time.time() if now is None else now
+    if refresh and target_id is None:raise ValueError('立即采集需要指定榜单目标')
+    where='enabled=1 AND lease_until<=%s';args=[now]
+    if not refresh:where+=' AND due<=%s';args.append(now)
+    if target_id is not None:where+=' AND id=%s';args.append(target_id)
     with db:
-        row = db.execute('''SELECT * FROM observation_targets WHERE enabled=1 AND due<=%s
-            AND lease_until<=%s ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED''', (now, now)).fetchone()
+        row = db.execute('SELECT * FROM observation_targets WHERE '+where+' ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED',args).fetchone()
         if not row:
             return None
         row["token"] = uuid.uuid4().hex

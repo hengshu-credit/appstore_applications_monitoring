@@ -1,0 +1,59 @@
+.global-board-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 620px), 1fr));
+  gap: 16px;
+}
+.global-country {
+  min-width: 0;
+}
+.global-lists {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  gap: 10px;
+}
+.global-chart {
+  min-width: 0;
+  border-top: 1px solid var(--line);
+}
+.global-chart h3 {
+  margin: 12px 0 4px;
+}
+.global-chart .appcell {
+  min-width: 0;
+}
+.global-chart .appname {
+  max-width: 160px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.global-chart .appid {
+  display: none;
+}
+.global-chart .appicon-wrap {
+  flex-shrink: 0;
+}
+.global-chart td {
+  padding: 8px 4px;
+}
+.global-country-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.global-country-options [hidden] {
+  display: none;
+}
+.global-country-picker {
+  width: min(100%, 520px);
+}
+@media (max-width: 680px) {
+  .global-lists {
+    grid-template-columns: 1fr;
+  }
+  .global-chart .appname {
+    max-width: none;
+  }
+}

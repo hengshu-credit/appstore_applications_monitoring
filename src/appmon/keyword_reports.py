@@ -17,19 +17,20 @@ from .keywords import validate_target
 
 NS={'s':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
 REL='http://schemas.openxmlformats.org/officeDocument/2006/relationships'
-SHEETS=('ASO关键词','ASA竞价词')
+SHEETS=('ASO关键词','ASA竞价词','谷歌付费关键词')
+MAX_BYTES=3_500_000
 
 
 def decode(value):
     content=value.get('content_base64','')
-    if not isinstance(content,str) or not 0<len(content)<=4_500_000:raise ValueError('报告限3MB，需上传xlsx文件')
+    if not isinstance(content,str) or not 0<len(content)<=4_700_000:raise ValueError('报告限3.5MB，需上传xlsx文件')
     try: raw=base64.b64decode(content,validate=True)
     except (ValueError,binascii.Error) as exc:raise ValueError('报告编码无效') from exc
     return raw
 
 
 def parse(raw):
-    if len(raw)>3_300_000:raise ValueError('报告文件超过3MB')
+    if len(raw)>MAX_BYTES:raise ValueError('报告文件超过3.5MB')
     try:
         archive=zipfile.ZipFile(io.BytesIO(raw))
         if len(archive.infolist())>500 or sum(i.file_size for i in archive.infolist())>80_000_000:
@@ -68,14 +69,18 @@ def parse(raw):
             headers=rows[1] if len(rows)>1 else []
             summary.append({'sheet':name,'rows':max(0,len(rows)-2),'title':title,'headers':headers})
             if 'App Store' in title:inferred['store']='apple'
+            if 'Google Play' in title:inferred['store']='google'
             if name not in SHEETS:continue
             if not headers or headers[0]!='关键词':raise ValueError('无法识别关键词表头，未导入')
-            if '中国' in title:inferred['country']='cn'
+            from .catalog import CATALOG
+            country_matches=[c['code'] for c in CATALOG['countries'] if re.search('_'+re.escape(c['name'])+'区?_',title)]
+            if len(country_matches)==1:inferred['country']=country_matches[0]
             date=re.search(r'_(\d{8})对比',title)
             if date:
                 inferred['observed_at']=datetime.strptime(date[1],'%Y%m%d').replace(tzinfo=timezone(timedelta(hours=8))).timestamp()
             for number,values in enumerate(rows[2:],3):
                 if not values or not isinstance(values[0],str) or not values[0].strip():continue
+                if values[0].strip() in ('暂无数据','No data','No Data') and not any(v is not None and str(v).strip() for v in values[1:]):continue
                 # Keep duplicate/blank header positions intact in original values.
                 record=dict(zip((str(h or f'column_{i+1}') for i,h in enumerate(headers)),values))
                 rank=record.get('排名',record.get('搜索排名'))
@@ -84,7 +89,7 @@ def parse(raw):
                               'popularity':record.get('流行度'),'search_index':record.get('搜索指数'),
                               'original':{'headers':headers,'values':values}})
         archive.close()
-        if not items:raise ValueError('未发现ASO关键词或ASA竞价词工作表')
+        if not any(s['sheet'] in SHEETS for s in summary):raise ValueError('未发现支持的关键词工作表')
         return {'summary':summary,'inferred':inferred,'items':items,'digest':hashlib.sha256(raw).hexdigest()}
     except (zipfile.BadZipFile,KeyError,ET.ParseError,IndexError,TypeError) as exc:
         raise ValueError('不是可解析的xlsx报告') from exc
@@ -92,8 +97,12 @@ def parse(raw):
 
 def preview(value):
     parsed=parse(decode(value))
-    return {k:v for k,v in parsed.items() if k!='items'} | {'keyword_rows':len(parsed['items']),'sample':parsed['items'][:12],
-        'note':'仅导入ASO/ASA关键词；其他表和完整原文件保留。搜索指数、流行度、安装量等保留为第三方字段，不解释为实测下载或官方热搜。'}
+    rejected=0
+    for r in parsed['items']:
+        try:validate_target({'store':'google','country':'us','language':'en','keyword':r['keyword']})
+        except ValueError:rejected+=1
+    return {k:v for k,v in parsed.items() if k!='items'} | {'keyword_rows':len(parsed['items'])-rejected,'rejected_rows':rejected,'sample':parsed['items'][:12],
+        'note':f'导入自然/竞价关键词；{rejected}行不可追踪词单独保留原文，不进词库。其他表和完整原文件保留。来源指标不解释为实测下载或官方热搜。'}
 
 
 def import_report(cfg,db,value):
@@ -103,10 +112,17 @@ def import_report(cfg,db,value):
     at=inferred['observed_at']
     if at is None:raise ValueError('未识别报告关键词日期，需先适配此报告格式')
     if at>time.time()+86400:raise ValueError('报告日期在未来')
-    prepared=[]
+    prepared=[];rejected=[]
     for row in parsed['items']:
-        term=validate_target(m|{'keyword':row['keyword']})['keyword']
+        try:term=validate_target(m|{'keyword':row['keyword']})['keyword']
+        except ValueError:
+            rejected.append((row['sheet'],row['source_row'],'关键词含不可追踪字符或超过长度限制，原文保留',dump(row['original'])))
+            continue
         prepared.append((row['sheet'],row['source_row'],term,row['position'],row['popularity'],row['search_index'],dump(row['original'])))
+    for s in parsed['summary']:
+        if s['sheet'] in SHEETS:
+            s['rejected_rows']=sum(r[0]==s['sheet'] for r in rejected)
+            s['imported_keyword_rows']=sum(r[0]==s['sheet'] for r in prepared)
     folder=Path(cfg['data_dir'])/'keyword_reports';folder.mkdir(exist_ok=True,parents=True)
     dest=folder/(parsed['digest']+'.xlsx')
     if not dest.exists():dest.write_bytes(raw)
@@ -115,14 +131,15 @@ def import_report(cfg,db,value):
         with db:
             old=db.execute('SELECT id FROM keyword_reports WHERE store=%s AND app_id=%s AND country=%s AND language=%s AND digest=%s',
                 (m['store'],m['app_id'],m['country'],m['language'],parsed['digest'])).fetchone()
-            if old:return old|{'duplicate':True,'rows':len(prepared)}
+            if old:return old|{'duplicate':True,'rows':len(prepared),'rejected_rows':len(rejected)}
             db.execute('''INSERT INTO keyword_reports(store,app_id,country,language,digest,filename,source,observed_at,imported_at,raw_path,summary)
                 VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',(m['store'],m['app_id'],m['country'],m['language'],parsed['digest'],filename,
                  '点点应用报告',at,time.time(),dest.relative_to(cfg['data_dir']).as_posix(),dump(parsed['summary'])))
             identifier=db.cursor.lastrowid
             for start in range(0,len(prepared),1000):
                 db.executemany('INSERT INTO keyword_report_rows VALUES(%s,%s,%s,%s,%s,%s,%s,%s)',[(identifier,*r) for r in prepared[start:start+1000]])
-    return {'id':identifier,'rows':len(prepared),'duplicate':False,'queued':0}
+            if rejected:db.executemany('INSERT INTO keyword_report_rejections VALUES(%s,%s,%s,%s,%s)',[(identifier,*r) for r in rejected])
+    return {'id':identifier,'rows':len(prepared),'rejected_rows':len(rejected),'duplicate':False,'queued':0}
 
 
 def reports(db,m):
@@ -131,6 +148,20 @@ def reports(db,m):
     rows=db.execute('SELECT id,app_id,filename,source,observed_at,imported_at,summary FROM keyword_reports WHERE '+where+' ORDER BY id DESC LIMIT 100',args).fetchall()
     for row in rows:row['summary']=json.loads(row['summary'])
     return rows
+
+
+def summary(db,m):
+    args=tuple(m[k] for k in ('store','country','language'))
+    base=''' FROM keyword_report_rows k JOIN keyword_reports r ON r.id=k.report_id
+        WHERE r.store=%s AND r.country=%s AND r.language=%s'''
+    counts=db.execute('SELECT count(*) records,count(DISTINCT k.keyword) unique_keywords,count(DISTINCT r.id) reports,count(DISTINCT r.app_id) apps'+base,args).fetchone()
+    sheets=db.execute('SELECT k.sheet,count(*) records,count(DISTINCT k.keyword) unique_keywords'+base+' GROUP BY k.sheet',args).fetchall()
+    shared=db.execute('''SELECT count(*) n FROM (SELECT k.keyword'''+base+' GROUP BY k.keyword HAVING count(DISTINCT k.sheet)>1) x',args).fetchone()['n']
+    cross=db.execute('''SELECT count(*) n FROM (SELECT k.keyword'''+base+' GROUP BY k.keyword HAVING count(DISTINCT r.app_id)>1) x',args).fetchone()['n']
+    rejected=db.execute('''SELECT count(*) n FROM keyword_report_rejections k JOIN keyword_reports r ON r.id=k.report_id
+        WHERE r.store=%s AND r.country=%s AND r.language=%s''',args).fetchone()['n']
+    return {'counts':counts,'rejected_rows':rejected,'sheets':sheets,'shared_between_types':shared,'shared_between_apps':cross,
+            'note':'按当前商店、国家、追踪语言汇总全部已导入报告；相同文件按哈希幂等。词数按NFKC和空白规范化去重，保留不同应用/词表/日期来源。报告的追踪语言由导入时指定，不代表原报告已给出语言。'}
 
 
 def report_rows(db,identifier,sheet='ASO关键词',q='',offset=0):

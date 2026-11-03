@@ -428,6 +428,7 @@ export function createDiscoveryPages(ctx) {
       )}`;
     } else if (keywordTab === "reports") {
       const reports = await api("/discovery/reports?" + query(m));
+      const totals = await api("/discovery/report-summary?" + query(m));
       if (!reports.some((r) => String(r.id) === reportId))
         reportId = reports.length ? String(reports[0].id) : "";
       data = reportId
@@ -441,7 +442,7 @@ export function createDiscoveryPages(ctx) {
           )
         : { items: [], total: 0 };
       const report = reports.find((r) => String(r.id) === reportId);
-      content = `<details><summary>导入点点应用报告（xlsx）</summary><form id="report-upload" class="toolbar"><label>报告文件（最多3MB）<input name="file" type="file" accept=".xlsx" required></label>${field("应用商店ID", "app_id", "", "text", "required")}<button type="submit">预览报告</button></form><div id="report-preview"></div></details><p class="callout">第三方报告与观星实采排名分别保留。ASO自然搜索词、ASA竞价词独立展示；报告日期不等于每个关键词的更新时间。</p><form id="report-filter" class="toolbar">${select(
+      content = `<div class="cards">${metric("已导入报告", totals.counts.reports, "当前商店、市场、追踪语言")}${metric("关键词记录", totals.counts.records, "保留应用、词表和日期")}${metric("去重词数", totals.counts.unique_keywords, "NFKC与空白规范化")}${metric("多应用重合词", totals.shared_between_apps, "不同应用报告共享的关键词")}</div><p class="sub">${esc(totals.note)} ASO/竞价词表间重合 ${totals.shared_between_types} 词。另有 ${totals.rejected_rows || 0} 行不可追踪字符，原文已单独留存，不计入词库。</p><details><summary>导入点点应用报告（xlsx）</summary><form id="report-upload" class="toolbar"><label>报告文件（最多3.5MB）<input name="file" type="file" accept=".xlsx" required></label>${field("应用商店ID", "app_id", "", "text", "required")}<button type="submit">预览报告</button></form><div id="report-preview"></div></details><p class="callout">第三方报告与观星实采排名分别保留。ASO自然搜索词、ASA竞价词独立展示；报告日期不等于每个关键词的更新时间。</p><form id="report-filter" class="toolbar">${select(
         "已导入报告",
         "report_id",
         reports.map((r) => [r.id, r.app_id + " / " + r.filename]),
@@ -452,6 +453,7 @@ export function createDiscoveryPages(ctx) {
         [
           ["ASO关键词", "ASO关键词"],
           ["ASA竞价词", "ASA竞价词"],
+          ["谷歌付费关键词", "谷歌付费关键词"],
         ],
         reportSheet,
       )}${field("筛选词", "q", keywordQuery)}<button type="submit">查看</button></form>${report ? `<p class="sub">来源：${esc(report.source)} · 关键词报告日期：${stamp(report.observed_at)} · 原文件包含 ${report.summary.map((s) => esc(s.sheet) + " " + s.rows + "行").join("；")}</p>` : ""}<div class="toolbar"><button id="report-all" class="secondary">选择本页</button><button id="report-promote">所选词加入候选词库</button><button id="report-prev" class="secondary" ${reportOffset ? "" : "disabled"}>上一页</button><button id="report-next" class="secondary" ${reportOffset + 100 < data.total ? "" : "disabled"}>下一页</button><span>${data.total} 行，每页100行</span></div>${table(
@@ -618,8 +620,8 @@ export function createDiscoveryPages(ctx) {
     });
     bindForm("#report-upload", async (v, form) => {
       const file = form.querySelector('[type="file"]').files[0];
-      if (!file || file.size > 3300000)
-        throw Error("请选择不超过3MB的xlsx报告");
+      if (!file || file.size > 3500000)
+        throw Error("请选择不超过3.5MB的xlsx报告");
       const content = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(String(reader.result).split(",")[1]);

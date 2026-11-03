@@ -23,6 +23,8 @@ def tables(app_key, region):
         'keyword_report_rows': '''report_id BIGINT NOT NULL, sheet VARCHAR(64) NOT NULL, source_row INT NOT NULL,
             keyword VARCHAR(255) NOT NULL, position INT, popularity DOUBLE, search_index DOUBLE, payload LONGTEXT NOT NULL,
             PRIMARY KEY(report_id,sheet,source_row), INDEX report_keyword(keyword,report_id)''',
+        'keyword_report_rejections': '''report_id BIGINT NOT NULL, sheet VARCHAR(64) NOT NULL, source_row INT NOT NULL,
+            reason VARCHAR(255) NOT NULL, payload LONGTEXT NOT NULL, PRIMARY KEY(report_id,sheet,source_row)''',
         'keyword_signal_runs': '''id BIGINT AUTO_INCREMENT PRIMARY KEY,
             store VARCHAR(16) CHARACTER SET ascii NOT NULL, country CHAR(2) CHARACTER SET ascii NOT NULL,
             language VARCHAR(16) CHARACTER SET ascii NOT NULL, source VARCHAR(255) NOT NULL,

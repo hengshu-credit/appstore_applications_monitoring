@@ -299,9 +299,9 @@ def execute_cli(args, cfg, db):
     action = args.keyword_command
     if action == 'report-import':
         import base64
-        from .keyword_reports import import_report
+        from .keyword_reports import import_report, MAX_BYTES
         path=Path(args.path)
-        if path.stat().st_size>3_300_000:raise ValueError('报告限3MB')
+        if path.stat().st_size>MAX_BYTES:raise ValueError('报告限3.5MB')
         return import_report(cfg,db,vars(args)|{'filename':path.name,'content_base64':base64.b64encode(path.read_bytes()).decode()})
     if action == "add":
         return add_targets(db, [vars(args)])

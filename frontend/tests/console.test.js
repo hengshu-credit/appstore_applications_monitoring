@@ -82,6 +82,7 @@ const newModules = (
     ),
     wrappedModule("app-insights.js", "createAppInsights"),
     wrappedModule("discovery.js", "createDiscoveryPages"),
+    wrappedModule("global-charts.js", "createGlobalCharts"),
     wrappedModule("availability.js", "createAvailabilityPage"),
     wrappedModule(
       "market-scope.js",
@@ -206,6 +207,13 @@ async function setup(responder) {
       path.split("?")[0] === "/api/research/collection/activity"
     )
       data = { plans: [], heartbeat: null };
+    if (data === undefined && path.startsWith("/api/discovery/report-summary?"))
+      data = {
+        counts: { reports: 1, records: 1, unique_keywords: 1 },
+        shared_between_apps: 0,
+        shared_between_types: 0,
+        note: "测试汇总",
+      };
     if (data === undefined) throw new Error("Unmocked route " + path);
     return { ok: true, status: 200, json: async () => data };
   };
@@ -252,8 +260,8 @@ test("navigation queries the API and escapes upstream application content", asyn
     );
     assert.equal(window.document.querySelector("img[onerror]"), null);
     assert.ok(calls.some((c) => c.path.startsWith("/api/apps?")));
-    assert.equal(window.document.querySelectorAll("nav a").length, 17);
-    assert.equal(window.document.querySelectorAll("nav a .ui-icon").length, 17);
+    assert.equal(window.document.querySelectorAll("nav a").length, 18);
+    assert.equal(window.document.querySelectorAll("nav a .ui-icon").length, 18);
     assert.ok(window.document.querySelector('a[href="#availability"]'));
   } finally {
     await window.happyDOM.close();
@@ -967,6 +975,83 @@ test("external report rows preserve missing rank and source metrics when promote
       sheet: "ASO关键词",
       source_rows: [3],
     });
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("global rankings show countries and multiple chart kinds together and preview collection scope", async () => {
+  let plan;
+  const { window } = await setup((path, options) => {
+    if (path.startsWith("/api/charts/global?"))
+      return {
+        selected_codes: ["us", "jp"],
+        total_countries: 2,
+        page_size: 6,
+        has_more: false,
+        fresh_boards: 6,
+        requested_boards: 6,
+        observed_boards: 6,
+        note: "各国独立排名",
+        available_countries: [
+          { code: "us", name: "美国", english: "United States" },
+          { code: "jp", name: "日本", english: "Japan" },
+        ],
+        countries: [
+          {
+            country: "us",
+            name: "美国",
+            language: "en",
+            boards: ["top-free", "top-paid", "top-grossing"].map((id) => ({
+              collection: id,
+              definition: catalogFixture.charts.google.find((d) => d.id === id),
+              items: [
+                { app_id: "com.example.app", name: "US App", position: 1 },
+              ],
+              fresh: true,
+              observed_at: 10,
+              returned_count: 100,
+            })),
+          },
+          {
+            country: "jp",
+            name: "日本",
+            language: "ja",
+            boards: [
+              {
+                collection: "top-free",
+                definition: catalogFixture.charts.google[0],
+                items: [
+                  { app_id: "com.example.app", name: "JP App", position: 7 },
+                ],
+                fresh: true,
+                observed_at: 10,
+                returned_count: 100,
+              },
+            ],
+          },
+        ],
+      };
+    if (path === "/api/charts/global/preview") {
+      plan = JSON.parse(options.body);
+      return { countries: 2, total: 6, unsupported: [], note: "预览" };
+    }
+  });
+  try {
+    window.location.hash = "globalcharts";
+    await tick();
+    assert.equal(window.document.querySelectorAll(".global-country").length, 2);
+    assert.equal(window.document.querySelectorAll(".global-chart").length, 4);
+    assert.ok(
+      window.document.querySelector(
+        '[data-app="com.example.app"][data-country="jp"][data-language="ja"]',
+      ),
+    );
+    window.document.querySelector("#global-configure").click();
+    await tick();
+    assert.equal(plan.countries, "us,jp");
+    assert.equal(plan.collections, "top-free,top-paid,top-grossing");
+    assert.ok(window.document.querySelector("#global-plan-confirm"));
   } finally {
     await window.happyDOM.close();
   }

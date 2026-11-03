@@ -6,6 +6,8 @@ import "./selectors.css";
 import "./research.css";
 import { createResearchPages } from "./research.js";
 import { createDiscoveryPages } from "./discovery.js";
+import { createGlobalCharts } from "./global-charts.js";
+import "./global-charts.css";
 import { createSelectors } from "./selectors.js";
 import { effectiveLanguage } from "./market-scope.js";
 import { createAppIconManager } from "./app-icons.js";
@@ -120,6 +122,7 @@ const nav = [
   ["apps", "▦", "应用库"],
   ["watchlist", "◎", "重点监控"],
   ["charts", "↗", "榜单中心"],
+  ["globalcharts", "◎", "全球排行榜"],
   ["featured", "✦", "精品推荐"],
   ["keywords", "⌕", "关键词中心"],
   ["aso", "✎", "ASO 工作台"],
@@ -1393,6 +1396,24 @@ const discoveryPages = createDiscoveryPages({
   currentRevision: () => revision,
 });
 const routes = {
+  globalcharts: createGlobalCharts({
+    $,
+    api,
+    esc,
+    stamp,
+    panel,
+    table,
+    field,
+    select,
+    bindForm,
+    mount,
+    market,
+    toast,
+    selectors,
+    appLink,
+    nextRevision: () => ++revision,
+    currentRevision: () => revision,
+  }),
   availability: availabilityPage,
   overview,
   events: researchPages.events,

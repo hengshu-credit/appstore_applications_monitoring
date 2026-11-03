@@ -24,6 +24,7 @@ from . import collection_tasks, pipelines
 from . import task_logs, locales, scoped_views, app_icons
 from . import charts, app_collection
 from . import growth, keyword_discovery, keyword_reports
+from . import global_charts
 from . import app_discovery, app_metrics, availability
 from .stores import FetchError
 from datetime import date, datetime, timezone
@@ -240,6 +241,16 @@ def create_app(cfg):
         m=intel.market(dict(store=store,country=country,language=language),require_app=False)
         return growth.report(db,m['store'],m['country'],m['language'],days,metric,as_of,category,q,pricing,monetization,new_days)
 
+    @api.get('/charts/global')
+    def global_board(store:str,countries:str='',collections:str='top-free,top-paid,top-grossing',category:str='',as_of:float|None=None,depth:int=10,offset:int=0,db=DB):
+        return global_charts.report(db,store,countries,collections,category,as_of,depth,offset)
+
+    @api.post('/charts/global/preview')
+    def global_preview(value:dict=Body(...)):return global_charts.preview(value)
+
+    @api.post('/charts/global/plan')
+    def global_plan(value:dict=Body(...),db=DB):return global_charts.create_plan(db,value)
+
     @api.get('/discovery/keywords/sources')
     def keyword_sources():return keyword_discovery.source_catalog()
 
@@ -284,6 +295,10 @@ def create_app(cfg):
     @api.get('/discovery/reports')
     def imported_reports(store:str,country:str='us',language:str='en',app_id:str='',db=DB):
         return keyword_reports.reports(db,intel.market(dict(store=store,country=country,language=language,app_id=app_id),require_app=bool(app_id)))
+
+    @api.get('/discovery/report-summary')
+    def keyword_report_summary(store:str,country:str='us',language:str='en',db=DB):
+        return keyword_reports.summary(db,intel.market(dict(store=store,country=country,language=language),require_app=False))
 
     @api.get('/discovery/reports/{identifier}')
     def report_rows(identifier:int,sheet:str='ASO关键词',q:str=Query('',max_length=255),offset:int=0,db=DB):
