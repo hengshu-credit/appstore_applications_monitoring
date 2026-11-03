@@ -1,5 +1,7 @@
 # Google Play / Apple App Store 应用池监控
 
+新增榜单历史比较、每日公开指标与增长发现、多国家关键词覆盖榜、开源候选词库，以及点点应用报告的预览/导入/选词追踪。入口为“榜单中心”和“关键词中心”；详细数据口径、来源研究与报告实测见 [榜单增长与关键词发现](docs/discovery-and-keywords.md)。
+
 新增“上下架观察”、库外商店搜索入库、可悬停/键盘查看的监控图表和丰富的应用详情。指标来源、开源研究、点点/乐见参考及实现边界见 [观星监控研究与实现](docs/monitoring-design.md)。
 
 现已增加**独立前端项目 `frontend/` + Python HTTP API + 重点池采集 worker**。前端展示应用池、关键词、榜单、ASO 核查、竞品、评论、素材变更和告警；Python 负责抓取、调度、MySQL 存储及数据接口。主题参考天枢，支持预设/自定义、深浅色和布局配置，矩形组件统一直角。详见 [控制台使用与边界](docs/console.md)、[前端项目](frontend/README.md)、[开发规范](docs/frontend-guidelines.md)。

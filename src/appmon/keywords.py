@@ -269,6 +269,12 @@ def configure_cli(sub):
     add.add_argument("--refresh-hours", type=float, default=24)
     imp = commands.add_parser("import", help="Import a JSON array of keyword targets")
     imp.add_argument("path")
+    report = commands.add_parser('report-import', help='Import an authorized Diandian XLSX app report')
+    report.add_argument('path')
+    report.add_argument('--store',choices=['google','apple'],required=True)
+    report.add_argument('--app-id',required=True)
+    report.add_argument('--country',required=True)
+    report.add_argument('--language',required=True)
     commands.add_parser("list")
     run = commands.add_parser("run")
     run.add_argument("--limit", type=int, default=200)
@@ -291,6 +297,12 @@ def configure_cli(sub):
 def execute_cli(args, cfg, db):
     from pathlib import Path
     action = args.keyword_command
+    if action == 'report-import':
+        import base64
+        from .keyword_reports import import_report
+        path=Path(args.path)
+        if path.stat().st_size>3_300_000:raise ValueError('报告限3MB')
+        return import_report(cfg,db,vars(args)|{'filename':path.name,'content_base64':base64.b64encode(path.read_bytes()).decode()})
     if action == "add":
         return add_targets(db, [vars(args)])
     if action == "import":

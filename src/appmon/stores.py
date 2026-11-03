@@ -122,7 +122,9 @@ class Client:
             mapping = {"name": "title", "version": "version", "description": "description",
                        "developer": "developer", "developer_id": "developerId", "category": "genreId",
                        "price": "price", "currency": "currency", "rating": "score", "ratings": "ratings",
-                       "installs": "minInstalls", "updated": "updated", "released": "released", "url": "url",
+                       "installs": "minInstalls", "installs_reported": "realInstalls",
+                       "has_ads": "adSupported", "has_iap": "offersIAP",
+                       "updated": "updated", "released": "released", "url": "url",
                        "icon": "icon", "screenshots": "screenshots", "video": "video",
                        "release_notes": "recentChanges", "summary": "summary", "category_id": "genreId"}
         payload = {k: app.get(v) for k, v in mapping.items()}

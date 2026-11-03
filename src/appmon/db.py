@@ -156,6 +156,8 @@ from .intelligence_schema import TABLES as INTELLIGENCE_TABLES
 TABLES.update(INTELLIGENCE_TABLES)
 from .asset_schema import TABLES as ASSET_TABLES
 TABLES.update(ASSET_TABLES)
+from .discovery_schema import tables as discovery_tables
+TABLES.update(discovery_tables(APP_KEY, REGION))
 
 
 def add_apps(db, rows, source, now=None):

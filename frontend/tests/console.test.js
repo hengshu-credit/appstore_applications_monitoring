@@ -81,6 +81,7 @@ const newModules = (
       "monitoringChart,bindMonitoringCharts",
     ),
     wrappedModule("app-insights.js", "createAppInsights"),
+    wrappedModule("discovery.js", "createDiscoveryPages"),
     wrappedModule("availability.js", "createAvailabilityPage"),
     wrappedModule(
       "market-scope.js",
@@ -92,6 +93,13 @@ const newModules = (
     wrappedModule("collection-center.js", "createCollectionCenter"),
   ])
 ).join("\n");
+const emptyCoverage = {
+  stats: { tracked: 0, fresh: 0 },
+  apps: [],
+  keywords: [],
+  app_keywords: [],
+  note: "测试词库",
+};
 const overview = {
   counts: {
     watchlist: 1,
@@ -301,9 +309,9 @@ test("watchlist configuration moves to the center and sends explicit market and 
 test("failed API produces visible error and retry recovers", async () => {
   let broken = true;
   const { window } = await setup((path) => {
-    if (path.split("?")[0] === "/api/keywords") {
+    if (path.split("?")[0] === "/api/discovery/keywords/coverage") {
       if (broken) throw new Error("offline");
-      return [];
+      return emptyCoverage;
     }
   });
   try {
@@ -514,7 +522,8 @@ test("pending task controls block editing and cannot replace a newly selected pa
       return new Promise((resolve) => {
         release = resolve;
       });
-    if (path.split("?")[0] === "/api/keywords") return [];
+    if (path.split("?")[0] === "/api/discovery/keywords/coverage")
+      return emptyCoverage;
   });
   try {
     window.location.hash = "collection";
@@ -543,19 +552,20 @@ test("pending task controls block editing and cannot replace a newly selected pa
 
 test("ranking screen distinguishes failed latest attempt from preserved successful data", async () => {
   const { window } = await setup((path) =>
-    path.split("?")[0] === "/api/keywords"
-      ? [
-          {
-            id: 1,
-            keyword: "chat",
-            store: "apple",
-            country: "us",
-            language: "en",
-            depth: 50,
-            refresh_hours: 24,
-            enabled: 1,
-          },
-        ]
+    path.split("?")[0] === "/api/discovery/keywords/coverage"
+      ? {
+          ...emptyCoverage,
+          stats: { tracked: 1, fresh: 0 },
+          keywords: [
+            {
+              id: 1,
+              keyword: "chat",
+              depth: 50,
+              last_error: "HTTP 429",
+              fresh: false,
+            },
+          ],
+        }
       : path === "/api/keywords/1"
         ? {
             target: {
@@ -852,6 +862,111 @@ test("app selection creates a same-market competitor set with no assumed ownersh
           m.store === "google" && m.country === "us" && m.role === "competitor",
       ),
     );
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("candidate selection creates only selected tracking targets and retains market context", async () => {
+  let submitted;
+  const { window } = await setup((path, options) => {
+    if (path.startsWith("/api/discovery/keywords/coverage?"))
+      return emptyCoverage;
+    if (path.startsWith("/api/discovery/keywords/candidates?"))
+      return {
+        total: 2,
+        items: [
+          {
+            id: 11,
+            keyword: "<script>bad</script>",
+            source: "manual",
+            license_name: "user",
+          },
+          { id: 12, keyword: "chat", source: "manual", license_name: "user" },
+        ],
+      };
+    if (path === "/api/discovery/keywords/sources")
+      return { frequency_languages: ["en"], note: "候选词不是热搜" };
+    if (path === "/api/discovery/keywords/track") {
+      submitted = JSON.parse(options.body);
+      return { targets: 1, existing: 0 };
+    }
+  });
+  try {
+    window.location.hash = "keywords";
+    await tick();
+    window.document.querySelector('[data-keyword-tab="candidates"]').click();
+    await tick();
+    assert.equal(window.document.querySelectorAll("#content script").length, 0);
+    window.document.querySelector('[data-pick="id"][value="12"]').checked =
+      true;
+    window.document.querySelector("#candidate-track").click();
+    await tick();
+    assert.deepEqual(submitted.ids, [12]);
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("external report rows preserve missing rank and source metrics when promoted", async () => {
+  let submitted;
+  const { window } = await setup((path, options) => {
+    if (path.startsWith("/api/discovery/keywords/coverage?"))
+      return emptyCoverage;
+    if (path.startsWith("/api/discovery/reports?"))
+      return [
+        {
+          id: 7,
+          app_id: "123",
+          filename: "report.xlsx",
+          source: "点点",
+          observed_at: 1,
+          summary: [{ sheet: "ASO关键词", rows: 1 }],
+        },
+      ];
+    if (path.startsWith("/api/discovery/reports/7?"))
+      return {
+        total: 1,
+        items: [
+          {
+            source_row: 3,
+            keyword: "term",
+            position: null,
+            search_index: 0,
+            popularity: 5,
+            payload: {
+              headers: ["关键词", "排名"],
+              values: ["term", "未覆盖"],
+            },
+          },
+        ],
+      };
+    if (path === "/api/discovery/reports/promote") {
+      submitted = JSON.parse(options.body);
+      return { processed: 1 };
+    }
+  });
+  try {
+    window.location.hash = "keywords";
+    await tick();
+    window.document.querySelector('[data-keyword-tab="reports"]').click();
+    await tick();
+    assert.match(
+      window.document.querySelector("#content").textContent,
+      /第三方报告/,
+    );
+    assert.match(
+      window.document.querySelector("#content").textContent,
+      /未覆盖/,
+    );
+    window.document.querySelector('[data-pick="source_row"]').checked = true;
+    window.document.querySelector("#report-promote").click();
+    await tick();
+    assert.deepEqual(submitted, {
+      report_id: 7,
+      sheet: "ASO关键词",
+      source_rows: [3],
+    });
   } finally {
     await window.happyDOM.close();
   }

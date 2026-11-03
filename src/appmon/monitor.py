@@ -52,6 +52,8 @@ def save_result(db, cfg, job, result=None, error=None, now=None):
             payload = previous["payload"] if previous else None
             digest = previous["digest"] if previous else None
             if outcome == "ok":
+                from .growth import record
+                record(db, job, result.payload, now, raw_path)
                 from .app_icons import remember
                 remember(db,job['store'],job['app_id'],job['country'],job['language'],result.payload.get('icon'),result.payload.get('name'))
                 new_payload = dump(result.payload)

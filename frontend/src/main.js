@@ -5,6 +5,7 @@ import "./fonts.css";
 import "./selectors.css";
 import "./research.css";
 import { createResearchPages } from "./research.js";
+import { createDiscoveryPages } from "./discovery.js";
 import { createSelectors } from "./selectors.js";
 import { effectiveLanguage } from "./market-scope.js";
 import { createAppIconManager } from "./app-icons.js";
@@ -490,7 +491,7 @@ async function appDetail(store, id, rev = ++revision) {
   const p = data.listing?.payload || {};
   if (
     !mount(
-      `<div class="panel-heading"><div>${appLink(store, id, p.name || data.app.name, p.icon)}<p class="sub">${esc(store)} · ${esc(m.country.toUpperCase())} · ${esc(m.language)} · ${esc(p.developer || "开发者待采集")}</p></div><div class="actions"><button id="collect-app-now">立即采集全部公开信息</button><button id="quick-watch" class="secondary">管理采集配置</button><button class="secondary" id="open-aso-workbench">ASO 工作台</button></div></div><div class="callout">最近成功：${esc(stamp(data.listing?.last_success))} · ${data.listing ? esc(data.listing.state) : "未采集"}${data.job?.last_error ? " · 最近失败：" + esc(data.job.last_error) : ""}</div><div id="app-collection-progress"></div><div class="cards">${metric("商店评分", p.rating, "来自最近一次商店观察")}${metric("评分数", p.ratings, "累计公开评分数量")}${metric("版本快照", data.snapshots.length, "显示最近最多100次变更")}${metric("历史命中过的关键词", data.keywords.coverage.length, "包含当前未命中词；有效覆盖见下方监控")}</div><div class="grid2">${panel("当前商店资料", `<h3>${esc(p.name || "等待采集")}</h3><p>版本 ${esc(p.version || "—")} · ${esc(data.app.category_name || p.category || "—")}</p><p>${esc(p.summary || "")}</p><details><summary>描述与版本说明</summary><div class="review-text">${esc(p.description || "暂无描述")}</div><h3 class="spacer">版本说明</h3><div class="review-text">${esc(p.release_notes || "暂无版本说明")}</div></details>${safeURL(p.url) ? `<a href="${safeURL(p.url)}" target="_blank" rel="noopener">查看商店原页 ↗</a>` : ""}`)}${panel("评分变化", chart([...data.snapshots].reverse().map((r) => ({ at: r.observed_at, value: r.payload?.rating }))))}</div>${appInsights.facts(p, data.app)}<div id="monitoring-trends"></div><div id="app-market-matrix"></div>${panel("素材与版本历史", `<label>选择历史快照<select id="snapshot-choice">${data.snapshots.length ? "" : '<option value="">暂无已保存的快照</option>'}${data.snapshots.map((r, i) => `<option value="${i}">${esc(stamp(r.observed_at))} · ${esc(r.payload?.version || "")}</option>`).join("")}</select></label><div id="snapshot-view"></div>`)}${panel(
+      `<div class="panel-heading"><div>${appLink(store, id, p.name || data.app.name, p.icon)}<p class="sub">${esc(store)} · ${esc(m.country.toUpperCase())} · ${esc(m.language)} · ${esc(p.developer || "开发者待采集")}</p></div><div class="actions"><button id="collect-app-now">立即采集全部公开信息</button><button id="quick-watch" class="secondary">管理采集配置</button><button class="secondary" id="open-aso-workbench">ASO 工作台</button></div></div><div class="callout">最近成功：${esc(stamp(data.listing?.last_success))} · ${data.listing ? esc(data.listing.state) : "未采集"}${data.job?.last_error ? " · 最近失败：" + esc(data.job.last_error) : ""}</div><div id="app-collection-progress"></div><div class="cards">${metric("商店评分", p.rating, "来自最近一次商店观察")}${metric("评分数", p.ratings, "累计公开评分数量")}${metric("版本快照", data.snapshots.length, "显示最近最多100次变更")}${metric("历史命中过的关键词", data.keywords.coverage.length, "包含当前未命中词；有效覆盖见下方监控")}</div><div class="grid2">${panel("当前商店资料", `<h3>${esc(p.name || "等待采集")}</h3><p>版本 ${esc(p.version || "—")} · ${esc(data.app.category_name || p.category || "—")}</p><p>${esc(p.summary || "")}</p><details><summary>描述与版本说明</summary><div class="review-text">${esc(p.description || "暂无描述")}</div><h3 class="spacer">版本说明</h3><div class="review-text">${esc(p.release_notes || "暂无版本说明")}</div></details>${safeURL(p.url) ? `<a href="${safeURL(p.url)}" target="_blank" rel="noopener">查看商店原页 ↗</a>` : ""}`)}${panel("评分变化", chart([...data.snapshots].reverse().map((r) => ({ at: r.observed_at, value: r.payload?.rating }))))}</div>${appInsights.facts(p, data.app)}<div id="monitoring-trends"></div><div id="app-market-matrix"></div><div id="app-keyword-markets"></div>${panel("素材与版本历史", `<label>选择历史快照<select id="snapshot-choice">${data.snapshots.length ? "" : '<option value="">暂无已保存的快照</option>'}${data.snapshots.map((r, i) => `<option value="${i}">${esc(stamp(r.observed_at))} · ${esc(r.payload?.version || "")}</option>`).join("")}</select></label><div id="snapshot-view"></div>`)}${panel(
         "关键词覆盖",
         table(
           ["关键词", "最近位置", "变化", "数据时间", "状态"],
@@ -667,6 +668,30 @@ async function appDetail(store, id, rev = ++revision) {
           "",
         )}</div><details><summary>与前一快照的字段差异</summary>${jsonBlock(changes)}</details>`;
   };
+  Promise.all([
+    api("/discovery/keywords/markets?" + qs({ store, app_id: id })),
+    api("/discovery/reports?" + qs(m)),
+  ])
+    .then(([coverage, reports]) => {
+      if (rev !== revision) return;
+      $("#app-keyword-markets").innerHTML = panel(
+        "关键词市场覆盖",
+        `<p class="sub">${esc(coverage.note)}</p>${table(
+          ["国家", "语言", "已跟踪词", "有效词", "应用覆盖词", "Top10"],
+          coverage.items.map((r) => [
+            esc(r.country),
+            esc(r.language),
+            r.tracked,
+            r.fresh,
+            r.covered,
+            r.top10,
+          ]),
+        )}<p class="sub">当前市场已导入第三方报告 ${reports.length} 份。报告词表与以上实采覆盖独立展示。</p><a class="button secondary" href="#keywords">进入关键词中心查看报告与词库</a>`,
+      );
+    })
+    .catch((e) => {
+      if (rev === revision) $("#app-keyword-markets").textContent = e.message;
+    });
   renderSnapshot();
   $("#snapshot-choice").addEventListener("change", renderSnapshot);
   $("#quick-watch").addEventListener("click", () => {
@@ -1347,6 +1372,26 @@ const availabilityPage = createAvailabilityPage({
   toast,
   nextRevision: () => ++revision,
 });
+const discoveryPages = createDiscoveryPages({
+  $,
+  api,
+  esc,
+  stamp,
+  num,
+  panel,
+  table,
+  metric,
+  field,
+  select,
+  bindForm,
+  mount,
+  market,
+  toast,
+  selectors,
+  appLink,
+  nextRevision: () => ++revision,
+  currentRevision: () => revision,
+});
 const routes = {
   availability: availabilityPage,
   overview,
@@ -1356,9 +1401,11 @@ const routes = {
   collection: researchPages.collectionCenter,
   apps: applications,
   watchlist,
-  charts: chartPage,
+  charts: (rev) =>
+    market().store === "all" ? chartPage(rev) : discoveryPages.charts(rev),
   featured: (r) => observations(r, "featured"),
-  keywords: keywordPage,
+  keywords: (rev) =>
+    market().store === "all" ? keywordPage(rev) : discoveryPages.keywords(rev),
   compare: comparison,
   reviews: reviewPage,
   market: marketPage,

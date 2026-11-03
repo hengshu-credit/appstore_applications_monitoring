@@ -23,6 +23,7 @@ from . import aso, review_desk, insights, collection
 from . import collection_tasks, pipelines
 from . import task_logs, locales, scoped_views, app_icons
 from . import charts, app_collection
+from . import growth, keyword_discovery, keyword_reports
 from . import app_discovery, app_metrics, availability
 from .stores import FetchError
 from datetime import date, datetime, timezone
@@ -228,10 +229,68 @@ def create_app(cfg):
         return app_collection.latest(db,m)
 
     @api.get('/charts/view')
-    def chart_view(store:str,country:str='us',language:str='en',collection:str='top-free',category:str='',db=DB):
+    def chart_view(store:str,country:str='us',language:str='en',collection:str='top-free',category:str='',as_of:float|None=None,compare_days:int=0,db=DB):
         m=intel.market(dict(store=store,country=country,language=language),require_app=False)
         if category:catalog.category_aliases(store,category)
-        return charts.view(db,m['store'],m['country'],m['language'],collection,category)
+        return charts.view(db,m['store'],m['country'],m['language'],collection,category,as_of=as_of,compare_days=compare_days)
+
+    @api.get('/discovery/growth')
+    def growth_view(store:str,country:str='us',language:str='en',days:int=7,metric:str='ratings',as_of:float|None=None,
+                    category:str='',q:str=Query('',max_length=255),pricing:str='',monetization:str='',new_days:int=0,db=DB):
+        m=intel.market(dict(store=store,country=country,language=language),require_app=False)
+        return growth.report(db,m['store'],m['country'],m['language'],days,metric,as_of,category,q,pricing,monetization,new_days)
+
+    @api.get('/discovery/keywords/sources')
+    def keyword_sources():return keyword_discovery.source_catalog()
+
+    @api.get('/discovery/keywords/coverage')
+    def keyword_coverage(store:str,country:str='us',language:str='en',app_id:str='',db=DB):
+        m=intel.market(dict(store=store,country=country,language=language,app_id=app_id),require_app=bool(app_id))
+        return keyword_discovery.coverage(db,m,app_id)
+
+    @api.get('/discovery/keywords/markets')
+    def keyword_markets(store:str,app_id:str='',db=DB):
+        if store not in ('google','apple'):raise ValueError('请选择一个商店')
+        if app_id and not valid_id(store,app_id):raise ValueError('应用ID无效')
+        return keyword_discovery.market_matrix(db,store,app_id)
+
+    @api.get('/discovery/keywords/candidates')
+    def keyword_candidates(store:str,country:str='us',language:str='en',q:str=Query('',max_length=255),offset:int=0,db=DB):
+        m=intel.market(dict(store=store,country=country,language=language),require_app=False)
+        return keyword_discovery.candidates(db,m,q,offset)
+
+    @api.post('/discovery/keywords/candidates')
+    def candidate_import(value:dict=Body(...),db=DB):return keyword_discovery.import_candidates(db,value)
+
+    @api.post('/discovery/keywords/frequency')
+    def frequency_import(value:dict=Body(...),db=DB):return keyword_discovery.import_frequency(db,value)
+
+    @api.post('/discovery/keywords/track')
+    def candidate_track(value:dict=Body(...),db=DB):return keyword_discovery.track(db,value)
+
+    @api.get('/discovery/keywords/signals')
+    def keyword_signals(store:str,country:str='us',language:str='en',run_id:int|None=None,db=DB):
+        return keyword_discovery.signals(db,intel.market(dict(store=store,country=country,language=language),require_app=False),run_id)
+
+    @api.post('/discovery/keywords/signals')
+    def signal_import(value:dict=Body(...),db=DB):return keyword_discovery.import_signals(db,value)
+
+    @api.post('/discovery/reports/preview')
+    def report_preview(value:dict=Body(...)):return keyword_reports.preview(value)
+
+    @api.post('/discovery/reports/import')
+    def report_import(value:dict=Body(...),db=DB):return keyword_reports.import_report(cfg,db,value)
+
+    @api.get('/discovery/reports')
+    def imported_reports(store:str,country:str='us',language:str='en',app_id:str='',db=DB):
+        return keyword_reports.reports(db,intel.market(dict(store=store,country=country,language=language,app_id=app_id),require_app=bool(app_id)))
+
+    @api.get('/discovery/reports/{identifier}')
+    def report_rows(identifier:int,sheet:str='ASO关键词',q:str=Query('',max_length=255),offset:int=0,db=DB):
+        return keyword_reports.report_rows(db,identifier,sheet,q,offset)
+
+    @api.post('/discovery/reports/promote')
+    def report_promote(value:dict=Body(...),db=DB):return keyword_reports.promote(db,value)
 
     @api.get("/watchlist")
     def watchlist(store:str="all",country:str="",language:str="",db=DB):
