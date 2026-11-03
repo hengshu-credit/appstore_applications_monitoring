@@ -30,6 +30,61 @@
   --nav-active-text: #ffffff;
   --nav-hover: #262d4f;
   --nav-muted: #a7b5ca;
+  --scrollbar-track: var(--soft);
+  --scrollbar-thumb: color-mix(in srgb, var(--accent-text) 85%, var(--surface));
+  --scrollbar-thumb-hover: var(--accent-text);
+}
+aside {
+  --scrollbar-track: var(--nav);
+  --scrollbar-thumb: color-mix(in srgb, var(--nav-text) 75%, var(--nav));
+  --scrollbar-thumb-hover: var(--nav-text);
+}
+/* Native standard properties provide themed colors where WebKit geometry is unavailable. */
+* {
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  scrollbar-width: thin;
+}
+@supports selector(::-webkit-scrollbar) {
+  /* Non-auto standard values override these pseudo-elements in Chromium. */
+  * {
+    scrollbar-color: auto;
+    scrollbar-width: auto;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+    border-radius: 0;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: var(--scrollbar-track);
+    border-radius: 0;
+  }
+  ::-webkit-scrollbar-thumb {
+    min-width: 28px;
+    min-height: 28px;
+    background: var(--scrollbar-thumb);
+    border: 2px solid var(--scrollbar-track);
+    border-radius: 0;
+  }
+  ::-webkit-scrollbar-thumb:hover,
+  ::-webkit-scrollbar-thumb:active {
+    background: var(--scrollbar-thumb-hover);
+    border-radius: 0;
+  }
+  ::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+}
+@media (forced-colors: active) {
+  :root,
+  aside {
+    --scrollbar-track: Canvas;
+    --scrollbar-thumb: CanvasText;
+    --scrollbar-thumb-hover: Highlight;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   *,
