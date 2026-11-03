@@ -183,7 +183,7 @@ def work_watchlist(cfg, db, limit=10, client=None):
     for _ in range(limit):
         now = time.time()
         with db:
-            job = db.execute('''SELECT j.*,w.refresh_hours FROM jobs j JOIN watchlist w
+            job = db.execute('''SELECT j.*,w.id watch_id,w.refresh_hours FROM jobs j JOIN watchlist w
                 USING(store,app_id,country,language) WHERE w.enabled=1 AND j.due<=%s AND j.lease_until<=%s
                 ORDER BY j.due LIMIT 1 FOR UPDATE SKIP LOCKED''', (now, now)).fetchone()
             if not job:
@@ -193,15 +193,20 @@ def work_watchlist(cfg, db, limit=10, client=None):
                        (job["token"], now + cfg["lease_seconds"], job["store"], job["app_id"], job["country"], job["language"]))
         disk_check(cfg["data_dir"], cfg["min_free_gb"])
         local_cfg = cfg | {"refresh_hours": job["refresh_hours"]}
-        try:
-            result = client.fetch(job)
-        except FetchError as exc:
-            accepted = save_result(db, local_cfg, job, error=exc)
-            outcome = "error"
-        else:
-            accepted = save_result(db, local_cfg, job, result=result)
-            outcome = "ok"
-        count[outcome if accepted else "stale"] += 1
+        from .task_logs import execution
+        with execution(db,client,'watchlist',job['watch_id'],f"{job['store']} / {job['app_id']} / {job['country']}") as task_log:
+            try:
+                result = client.fetch(job)
+            except FetchError as exc:
+                accepted = save_result(db, local_cfg, job, error=exc)
+                outcome = "error"
+                detail = str(exc) + "；已安排退避重试"
+            else:
+                accepted = save_result(db, local_cfg, job, result=result)
+                outcome = result.outcome
+                detail = "地区状态与版本观察已处理"
+            task_log.finish(outcome,accepted,detail)
+        count[("error" if outcome=="error" else "ok") if accepted else "stale"] += 1
         count["processed"] += 1
     return count
 
@@ -215,15 +220,20 @@ def work_observations(cfg, db, limit=10, client=None):
         target = claim_observation(db, max(cfg["lease_seconds"], 900))
         if not target:
             break
-        try:
-            result = client.fetch_observation(target)
-        except (FetchError, ValueError, KeyError, TypeError, IndexError) as exc:
-            error = exc if isinstance(exc, FetchError) else FetchError(f"Parser error: {type(exc).__name__}")
-            accepted = save_observation(db, cfg, target, error=error)
-            outcome = "error"
-        else:
-            accepted = save_observation(db, cfg, target, result=result)
-            outcome = "ok"
+        from .task_logs import execution
+        with execution(db,client,'targets',target['id'],f"{target['kind']} / {target['store']} / {target['country']} / {target['app_id']}") as task_log:
+            try:
+                result = client.fetch_observation(target)
+            except (FetchError, ValueError, KeyError, TypeError, IndexError) as exc:
+                error = exc if isinstance(exc, FetchError) else FetchError(f"Parser error: {type(exc).__name__}")
+                accepted = save_observation(db, cfg, target, error=error)
+                outcome = "error"
+                detail = str(error) + "；已安排退避重试"
+            else:
+                accepted = save_observation(db, cfg, target, result=result)
+                outcome = "ok"
+                detail = f"返回记录 {len(result.items)} 条"
+            task_log.finish(outcome,accepted,detail)
         count["processed"] += 1
         count[outcome if accepted else "stale"] += 1
     return count

@@ -983,6 +983,7 @@ const routes = {
   exports: exportPage,
 };
 async function render() {
+  $("#task-logs")?.close();
   $("#collection-editor")?.remove();
   $("#research-dialog")?.close();
   const name = (location.hash.slice(1) || "overview").split("?")[0],

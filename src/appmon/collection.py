@@ -5,6 +5,7 @@ from .db import dump
 from .intelligence import market, hours, text, watch, add_observation_target
 from .keywords import validate_target, add_targets
 from .catalog import BY_ID
+from .task_logs import emit
 
 SOURCES = [
     {'id':'details','name':'应用详情与版本','source':'Apple lookup / Google Play详情','method':'public','cadence':'重点池默认24小时，可配置',
@@ -70,9 +71,12 @@ def create_plan(db, value):
     result=preview_plan(value)
     name=text(value.get('name','采集计划'))
     now=time.time()
-    db.execute('INSERT INTO collection_plans(name,specification,actions,total,created_at,updated_at) VALUES(%s,%s,%s,%s,%s,%s)',
-               (name,dump(value),dump(result['actions']),result['total'],now,now))
-    return {'id':db.cursor.lastrowid,'total':result['total'],'status':'queued'}
+    with db:
+        db.execute('INSERT INTO collection_plans(name,specification,actions,total,created_at,updated_at) VALUES(%s,%s,%s,%s,%s,%s)',
+                   (name,dump(value),dump(result['actions']),result['total'],now,now))
+        identifier=db.cursor.lastrowid
+        emit(db,'plans',identifier,'queued',f'采集计划已创建，待配置 {result["total"]} 个目标')
+    return {'id':identifier,'total':result['total'],'status':'queued'}
 
 
 def work_plans(db, limit=20):
@@ -85,6 +89,7 @@ def work_plans(db, limit=20):
             actions=json.loads(row['actions']);completed=row['completed']
             db.execute("UPDATE collection_plans SET status='running',updated_at=%s WHERE id=%s",(time.time(),row['id']))
             processed=0
+            emit(db,'plans',row['id'],'started',f'开始配置目标，从 {completed}/{len(actions)} 继续')
             try:
                 for action in actions[completed:completed+limit]:
                     if action['kind']=='details':watch(db,action['value'])
@@ -92,11 +97,14 @@ def work_plans(db, limit=20):
                     else:add_observation_target(db,action['value'])
                     completed+=1;processed+=1
                     db.execute("UPDATE collection_plans SET completed=%s,updated_at=%s WHERE id=%s",(completed,time.time(),row['id']))
+                    emit(db,'plans',row['id'],'progress',f'已配置 {completed}/{len(actions)} 个目标；类型 {action["kind"]}')
                 status='complete' if completed==len(actions) else 'running'
                 db.execute('UPDATE collection_plans SET status=%s,error=NULL WHERE id=%s',(status,row['id']))
+                emit(db,'plans',row['id'],status,'计划目标已全部配置' if status=='complete' else '本批次已完成，等待下一批')
                 return {'processed':processed,'error':0,'id':row['id'],'status':status}
             except Exception as exc:
                 db.execute("UPDATE collection_plans SET status='error',error=%s,updated_at=%s WHERE id=%s",(type(exc).__name__,time.time(),row['id']))
+                emit(db,'plans',row['id'],'error','配置失败：'+type(exc).__name__+'；可从断点重试','error')
                 return {'processed':processed,'error':1,'id':row['id']}
     except RuntimeError as exc:
         if str(exc)=='Another process is already importing this dataset':return {'processed':0,'error':0}

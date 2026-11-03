@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from urllib.parse import unquote_plus
+from urllib.parse import unquote_plus, urlsplit
 
 import requests
 
@@ -33,13 +33,22 @@ class Client:
         if cfg.get("tls_maximum_version") == "1.2":
             self.session.mount("https://", TLS12Adapter())
         self.session.headers["User-Agent"] = "Mozilla/5.0 (compatible; AppPoolMonitor/0.1)"
+        self.progress = None
+
+    def report(self,event,message):
+        if self.progress:
+            self.progress(event,message)
 
     def get(self, store, url, params=None, headers=None):
         return self.request(store, "GET", url, params=params, headers=headers)
 
     def request(self, store, method, url, **kwargs):
         delay = reserve(self.db, f"rate:{store}", self.cfg[f"{store}_interval_seconds"])
+        if delay > 0.1:
+            self.report('rate_wait', f'等待商店限速窗口：{delay:.1f} 秒')
         time.sleep(delay)
+        self.report('request', f'{method} 请求 {urlsplit(url).hostname}；超时上限 {self.cfg["timeout_seconds"]} 秒')
+        started = time.monotonic()
         try:
             if method == "GET":
                 r = self.session.get(url, timeout=self.cfg["timeout_seconds"], **kwargs)
@@ -48,6 +57,7 @@ class Client:
         except requests.RequestException as e:
             # Do not persist exception URLs, proxy credentials or bearer tokens.
             raise FetchError(type(e).__name__) from e
+        self.report('response', f'HTTP {r.status_code}；响应耗时 {time.monotonic()-started:.2f} 秒')
         if r.status_code in (403, 429) or r.status_code >= 500:
             delay = 300
             value = r.headers.get("Retry-After", "")

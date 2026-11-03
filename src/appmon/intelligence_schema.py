@@ -2,6 +2,12 @@
 from .db import APP_KEY, REGION
 
 TABLES = {
+    'collection_logs': '''id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        resource VARCHAR(24) CHARACTER SET ascii NOT NULL,
+        target_key VARCHAR(64) CHARACTER SET ascii NOT NULL,
+        execution_id CHAR(32) CHARACTER SET ascii, created_at DOUBLE NOT NULL,
+        level VARCHAR(16) CHARACTER SET ascii NOT NULL, event VARCHAR(32) CHARACTER SET ascii NOT NULL,
+        message TEXT NOT NULL, INDEX task_log_cursor(resource,target_key,id)''',
     'collection_controls': '''name VARCHAR(32) PRIMARY KEY, settings LONGTEXT NOT NULL,
         updated_at DOUBLE NOT NULL''',
     'aso_drafts': f'''id BIGINT AUTO_INCREMENT PRIMARY KEY, {APP_KEY}, {REGION},

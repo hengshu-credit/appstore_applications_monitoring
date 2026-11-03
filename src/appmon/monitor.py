@@ -114,14 +114,19 @@ def work(cfg, db, limit, client=None, managed=False):
         job = claim(db, cfg["countries"], cfg["language"], cfg["lease_seconds"])
         if not job:
             break
-        try:
-            result = client.fetch(job)
-        except FetchError as e:
-            accepted = save_result(db, cfg, job, error=e)
-            outcome = "error"
-        else:
-            accepted = save_result(db, cfg, job, result=result)
-            outcome = result.outcome
+        from .task_logs import execution
+        with execution(db,client,'pipelines','pool',f"{job['store']} / {job['app_id']} / {job['country']}") as task_log:
+            try:
+                result = client.fetch(job)
+            except FetchError as e:
+                accepted = save_result(db, cfg, job, error=e)
+                outcome = "error"
+                detail = str(e) + "；已安排退避重试"
+            else:
+                accepted = save_result(db, cfg, job, result=result)
+                outcome = result.outcome
+                detail = "地区状态与版本观察已处理"
+            task_log.finish(outcome,accepted,detail)
         counts["processed"] += 1
         counts[outcome if accepted else "stale"] += 1
         log.info("%s %s %s %s", job["store"], job["app_id"], job["country"], outcome)
@@ -150,26 +155,30 @@ def discover(cfg, db, client=None, max_sources=None, managed=False):
         schedule = db.execute("SELECT next_at FROM schedules WHERE name=%s", ("discover:" + name,)).fetchone()
         if schedule and schedule["next_at"] > time.time():
             continue
-        try:
-            rows = client.discover(*source)
-            if any(not valid_id(row[0], row[1]) for row in rows):
-                raise ValueError("Invalid app ID in discovery response")
-            with db:
-                added = add_apps(db, rows, name)
-                # Enqueue only the newly observed set, without re-scanning millions of IDs.
-                db.executemany("INSERT INTO jobs(store,app_id,country,language,due) VALUES(%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE app_id=jobs.app_id",
-                               [(s, a, c, cfg["language"], -time.time()) for s, a, _, _ in rows for c in cfg["countries"]])
-                db.execute("INSERT INTO discovery_runs(source,observed_at,count,added) VALUES(%s,%s,%s,%s)",
-                           (name, time.time(), len(rows), added))
-            reserve(db, "discover:" + name, cfg["discovery_hours"] * 3600)
-            results.append({"source": name, "count": len(rows), "added": added})
-        except (FetchError, ValueError, KeyError, TypeError) as e:
-            message = str(e) if isinstance(e, FetchError) else type(e).__name__
-            with db:
-                db.execute("INSERT INTO discovery_runs(source,observed_at,count,added,error) VALUES(%s,%s,0,0,%s)",
-                           (name, time.time(), message))
-            reserve(db, "discover:" + name, 3600)
-            results.append({"source": name, "error": message})
+        from .task_logs import execution
+        with execution(db,client,'pipelines','discovery',name) as task_log:
+            try:
+                rows = client.discover(*source)
+                if any(not valid_id(row[0], row[1]) for row in rows):
+                    raise ValueError("Invalid app ID in discovery response")
+                with db:
+                    added = add_apps(db, rows, name)
+                    # Enqueue only the newly observed set, without re-scanning millions of IDs.
+                    db.executemany("INSERT INTO jobs(store,app_id,country,language,due) VALUES(%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE app_id=jobs.app_id",
+                                   [(s, a, c, cfg["language"], -time.time()) for s, a, _, _ in rows for c in cfg["countries"]])
+                    db.execute("INSERT INTO discovery_runs(source,observed_at,count,added) VALUES(%s,%s,%s,%s)",
+                               (name, time.time(), len(rows), added))
+                reserve(db, "discover:" + name, cfg["discovery_hours"] * 3600)
+                results.append({"source": name, "count": len(rows), "added": added})
+                task_log.finish("ok",detail=f"发现 {len(rows)} 个应用，新增 {added} 个")
+            except (FetchError, ValueError, KeyError, TypeError) as e:
+                message = str(e) if isinstance(e, FetchError) else type(e).__name__
+                with db:
+                    db.execute("INSERT INTO discovery_runs(source,observed_at,count,added,error) VALUES(%s,%s,0,0,%s)",
+                               (name, time.time(), message))
+                reserve(db, "discover:" + name, 3600)
+                results.append({"source": name, "error": message})
+                task_log.finish("error",detail=message+"；1小时后重试")
         log.info("Discovery %s: %s", name, results[-1])
     return results
 
@@ -177,6 +186,7 @@ def discover(cfg, db, client=None, max_sources=None, managed=False):
 def daemon(cfg, db):
     from .keywords import work_keywords
     from .pipelines import configured
+    from .task_logs import execution, emit
     while True:
         keyword_counts = work_keywords(cfg, db, cfg["batch_size"])
         if keyword_counts["processed"]:
@@ -185,11 +195,14 @@ def daemon(cfg, db):
         seed_enabled, seed_cfg = configured(db,cfg,'seed')
         if seed_enabled and (not row or row["next_at"] <= time.time()):
             try:
-                sync_seed(seed_cfg, db)
+                with execution(db,None,'pipelines','seed','AppGoblin GitHub 公开种子包') as seed_log:
+                    imported = sync_seed(seed_cfg, db, progress=seed_log.write)
+                    seed_log.finish('ok',detail=f"已处理 {imported['processed']} 行，新增 {imported['added']} 个应用")
                 reserve(db, "seed-sync", seed_cfg["seed_sync_hours"] * 3600)
             except Exception as e:
                 log.error("Seed sync failed: %s", type(e).__name__)
                 reserve(db, "seed-sync", 3600)
+                emit(db,'pipelines','seed','retry','种子同步失败，已安排1小时后重试','warning')
         discovery_enabled, discovery_cfg = configured(db,cfg,'discovery')
         if discovery_enabled:
             discover(discovery_cfg, db, managed=True)

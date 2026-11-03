@@ -1,4 +1,5 @@
 import { icon, storeLogo } from "./icons.js";
+import { createTaskLogViewer } from "./task-logs.js";
 export const taskKinds = {
   details: "应用详情",
   keywords: "关键词排名",
@@ -15,6 +16,7 @@ const states = {
 };
 
 export function createCollectionCenter(ctx) {
+  const logs = createTaskLogViewer(ctx);
   const {
     $,
     api,
@@ -232,7 +234,7 @@ export function createCollectionCenter(ctx) {
         : section === "pipelines"
           ? panel(
               "后台基础采集",
-              `<p class="sub">这些流程由全池监控服务执行，设置保存在数据库，当前请求 / 批次完成后应用。重点任务由上方任务列表独立管理。</p><div class="pipeline-grid">${pipelines.map((p) => `<form class="pipeline-card" data-pipeline="${p.id}"><h3>${esc(p.name)}</h3><p class="sub">${p.id === "seed" ? "检查 AppGoblin GitHub 公开历史包，不代表官网最新付费或登录下载。" : p.id === "pool" ? "按国家与语言检查已有应用池；百万应用需要持续排队。" : "从榜单、搜索词和已验证开发者补充应用 ID。"}</p><label class="check-label"><input name="enabled" type="checkbox" ${p.enabled ? "checked" : ""}>启用此流程</label>${field("检查周期（小时）", "refresh_hours", p.refresh_hours, "number", 'min="0.25" max="8760" step="0.25" required')}${p.id !== "seed" ? field("国家代码（逗号分隔）", "countries", p.countries.join(", "), "text", "required") + field("请求语言", "language", p.language, "text", "required") : ""}${p.id === "discovery" ? `<label>发现关键词（每行一个）<textarea name="search_terms">${esc(p.search_terms.join("\n"))}</textarea></label><label>Google 分类 ID（逗号分隔）<input name="google_categories" value="${esc(p.google_categories.join(", "))}"></label>` : ""}<button type="submit" class="secondary">保存流程设置</button><p role="status" class="sub pipeline-feedback"></p></form>`).join("")}</div>`,
+              `<p class="sub">这些流程由全池监控服务执行，设置保存在数据库，当前请求 / 批次完成后应用。重点任务由上方任务列表独立管理。</p><div class="pipeline-grid">${pipelines.map((p) => `<form class="pipeline-card" data-pipeline="${p.id}"><h3>${esc(p.name)}</h3><p class="sub">${p.id === "seed" ? "检查 AppGoblin GitHub 公开历史包，不代表官网最新付费或登录下载。" : p.id === "pool" ? "按国家与语言检查已有应用池；百万应用需要持续排队。" : "从榜单、搜索词和已验证开发者补充应用 ID。"}</p><label class="check-label"><input name="enabled" type="checkbox" ${p.enabled ? "checked" : ""}>启用此流程</label>${field("检查周期（小时）", "refresh_hours", p.refresh_hours, "number", 'min="0.25" max="8760" step="0.25" required')}${p.id !== "seed" ? field("国家代码（逗号分隔）", "countries", p.countries.join(", "), "text", "required") + field("请求语言", "language", p.language, "text", "required") : ""}${p.id === "discovery" ? `<label>发现关键词（每行一个）<textarea name="search_terms">${esc(p.search_terms.join("\n"))}</textarea></label><label>Google 分类 ID（逗号分隔）<input name="google_categories" value="${esc(p.google_categories.join(", "))}"></label>` : ""}<button type="submit" class="secondary">保存流程设置</button><button type="button" class="secondary" data-pipeline-logs="${p.id}">查看运行日志</button><p role="status" class="sub pipeline-feedback"></p></form>`).join("")}</div>`,
             )
           : `${panel(
               "采集任务",
@@ -262,7 +264,7 @@ export function createCollectionCenter(ctx) {
                   `${t.refresh_hours} 小时<div class="sub">${t.depth ? num(t.depth) + " 条" : "单应用详情"}</div>`,
                   `${stamp(t.success_at)}<div class="sub">${t.enabled ? "到期 " + (t.due ? stamp(t.due) : "尽快执行") : "已暂停"}</div>`,
                   `<span class="badge ${t.task_state === "error" ? "warn" : t.task_state === "running" ? "good" : ""}">${esc(states[t.task_state])}</span>${t.last_error ? `<details class="task-error"><summary>查看错误</summary>${esc(t.last_error)}</details>` : ""}`,
-                  `<div class="task-actions"><button class="link" data-edit-task="${index}">编辑</button><button class="link" data-task-action="${index}" data-action="${t.enabled ? "pause" : "resume"}">${t.enabled ? "暂停" : "恢复"}</button><button class="link" data-task-action="${index}" data-action="refresh" ${t.enabled ? "" : "disabled"}>立即采集</button></div>`,
+                  `<div class="task-actions"><button class="link" data-task-logs="${index}">日志${t.task_state === "running" ? " · 实时" : ""}</button><button class="link" data-edit-task="${index}">编辑</button><button class="link" data-task-action="${index}" data-action="${t.enabled ? "pause" : "resume"}">${t.enabled ? "暂停" : "恢复"}</button><button class="link" data-task-action="${index}" data-action="refresh" ${t.enabled ? "" : "disabled"}>立即采集</button></div>`,
                 ]),
               )}<div class="task-pagination"><span>共 ${num(tasks.total)} 个任务 · 第 ${page} / ${Math.max(1, Math.ceil(tasks.total / 50))} 页</span><div class="actions"><button class="secondary small" id="previous-tasks" ${page <= 1 ? "disabled" : ""}>上一页</button><button class="secondary small" id="next-tasks" ${tasks.has_more ? "" : "disabled"}>下一页</button></div></div>`,
             )}
@@ -280,9 +282,7 @@ export function createCollectionCenter(ctx) {
             }[p.status],
           ),
           stamp(p.created_at),
-          p.status === "error"
-            ? `<button class="link" data-retry-plan="${p.id}">重试未完成部分</button>`
-            : "—",
+          `<button class="link" data-plan-logs="${p.id}">日志</button> ${p.status === "error" ? `<button class="link" data-retry-plan="${p.id}">重试未完成部分</button>` : ""}`,
         ]),
       )}</details>`;
     if (
@@ -304,6 +304,45 @@ export function createCollectionCenter(ctx) {
           refresh().catch((e) => toast(e.message));
         }),
     );
+    document.querySelectorAll("[data-task-logs]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          const t = tasks.items[Number(b.dataset.taskLogs)];
+          logs
+            .open(
+              t.resource,
+              t.id,
+              `${taskKinds[t.kind]} · ${t.label} · ${t.country.toUpperCase()} / ${t.language}`,
+            )
+            .catch((e) => toast(e.message));
+        }),
+    );
+    document
+      .querySelectorAll("[data-pipeline-logs]")
+      .forEach(
+        (b) =>
+          (b.onclick = () =>
+            logs
+              .open(
+                "pipelines",
+                b.dataset.pipelineLogs,
+                pipelines.find((p) => p.id === b.dataset.pipelineLogs).name,
+              )
+              .catch((e) => toast(e.message))),
+      );
+    document
+      .querySelectorAll("[data-plan-logs]")
+      .forEach(
+        (b) =>
+          (b.onclick = () =>
+            logs
+              .open(
+                "plans",
+                b.dataset.planLogs,
+                "采集计划 #" + b.dataset.planLogs,
+              )
+              .catch((e) => toast(e.message))),
+      );
     if (section === "create") {
       bindCreation(rev);
       return;

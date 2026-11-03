@@ -21,6 +21,7 @@ from .ingest import valid_id
 from . import catalog
 from . import aso, review_desk, insights, collection
 from . import collection_tasks, pipelines
+from . import task_logs
 from datetime import date, datetime, timezone
 from . import keywords, intelligence as intel, analytics, alerts, exports
 
@@ -434,6 +435,11 @@ def create_app(cfg):
         return {'plans':db.execute('SELECT id,name,status,completed,total,error,created_at FROM collection_plans ORDER BY id DESC LIMIT 100').fetchall(),
                 'heartbeat':db.execute("SELECT next_at FROM schedules WHERE name='console-heartbeat'").fetchone()}
 
+    @api.get('/research/collection/logs/{resource}/{identifier}')
+    def collection_task_logs(resource:str,identifier:str,after_id:int=Query(0,ge=0),before_id:int=Query(0,ge=0),
+                             limit:int=Query(200,ge=1,le=500),db=DB):
+        return task_logs.read_logs(db,resource,identifier,after_id,before_id,limit)
+
     @api.post('/research/collection/tasks/batch')
     def batch_collection(value:dict=Body(...),db=DB):return collection_tasks.control_tasks(db,value)
 
@@ -457,7 +463,9 @@ def create_app(cfg):
     def retry_plan(identifier:int,db=DB):
         row=db.execute('SELECT status FROM collection_plans WHERE id=%s',(identifier,)).fetchone()
         if not row or row['status']!='error':raise ValueError('只有失败计划可以重试')
-        db.execute("UPDATE collection_plans SET status='queued',error=NULL,updated_at=%s WHERE id=%s",(time.time(),identifier))
+        with db:
+            db.execute("UPDATE collection_plans SET status='queued',error=NULL,updated_at=%s WHERE id=%s",(time.time(),identifier))
+            task_logs.emit(db,'plans',identifier,'retry','已安排从未完成的配置步骤继续重试')
         return {'id':identifier,'status':'queued'}
 
     app.include_router(api)

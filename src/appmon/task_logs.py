@@ -1,0 +1,91 @@
+"""Durable per-task logs. A read cursor never exposes process output or secrets."""
+import re
+import time
+import uuid
+from contextlib import contextmanager
+
+
+def safe_message(value):
+    message = re.sub(r'https?://\S+', '[URL已隐藏]', str(value))
+    message = re.sub(r'(?i)\bBearer\s+[^\s,;]+', 'Bearer [已隐藏]', message)
+    message = re.sub(r'(?i)\b(password|token|secret|cookie|authorization)\s*[:=]\s*[^\s,;]+', r'\1=[已隐藏]', message)
+    return message[:4000]
+
+
+def emit(db, resource, identifier, event, message, level='info', execution_id=None):
+    # No transaction wrapper here: callers may emit atomically with a state change.
+    db.execute('''INSERT INTO collection_logs(resource,target_key,execution_id,created_at,level,event,message)
+        VALUES(%s,%s,%s,%s,%s,%s,%s)''',
+               (resource,str(identifier),execution_id,time.time(),level,event,safe_message(message)))
+
+
+class Execution:
+    def __init__(self, db, resource, identifier):
+        self.db,self.resource,self.identifier = db,resource,identifier
+        self.id,self.started = uuid.uuid4().hex,time.monotonic()
+
+    def write(self,event,message,level='info'):
+        emit(self.db,self.resource,self.identifier,event,message,level,self.id)
+
+    def finish(self,outcome,accepted=True,detail=''):
+        elapsed = time.monotonic()-self.started
+        state = 'stale' if not accepted else outcome
+        labels = {'ok':'采集成功，数据已保存','missing':'本次地区查询未发现应用','error':'采集失败，保留上次有效数据','stale':'租约已失效，本次结果未写入'}
+        self.write(state,f'{labels.get(state,state)}；耗时 {elapsed:.2f} 秒'+(f'；{detail}' if detail else ''),
+                   'error' if state=='error' else 'warning' if state in ('stale','missing') else 'info')
+
+
+@contextmanager
+def execution(db, client, resource, identifier, label):
+    log = Execution(db,resource,identifier)
+    old = getattr(client,'progress',None) if client is not None else None
+    if client is not None: client.progress = log.write
+    log.write('started','开始采集：'+label)
+    try:
+        yield log
+    except Exception as exc:
+        log.write('aborted','执行异常中断：'+type(exc).__name__+'；已完成的数据保留，请查看任务状态','error')
+        raise
+    finally:
+        if client is not None: client.progress = old
+
+
+def target_state(db,resource,identifier):
+    if resource=='pipelines':
+        if identifier not in ('pool','seed','discovery'): raise ValueError('未知采集流程')
+        return {'status':'pipeline','note':'基础流程中的每次操作按执行编号区分'}
+    if not identifier.isdigit() or int(identifier)<1: raise ValueError('任务标识无效')
+    if resource=='plans':
+        row=db.execute('SELECT status,completed,total FROM collection_plans WHERE id=%s',(int(identifier),)).fetchone()
+        if not row: raise ValueError('计划不存在')
+        return row
+    if resource=='watchlist':
+        row=db.execute('''SELECT w.enabled,j.lease_until,j.due,j.failures,j.last_error FROM watchlist w
+            LEFT JOIN jobs j USING(store,app_id,country,language) WHERE w.id=%s''',(int(identifier),)).fetchone()
+    else:
+        table={'keywords':'keyword_targets','targets':'observation_targets'}.get(resource)
+        if table is None: raise ValueError('未知日志类型')
+        row=db.execute(f'SELECT enabled,lease_until,due,failures,last_error FROM {table} WHERE id=%s',(int(identifier),)).fetchone()
+    if not row: raise ValueError('任务不存在')
+    now=time.time()
+    status=('paused' if not row['enabled'] else 'running' if (row['lease_until'] or 0)>now
+            else 'error' if row['failures'] else 'pending' if (row['due'] or 0)<=now else 'scheduled')
+    return {**row,'status':status}
+
+
+def read_logs(db,resource,identifier,after_id=0,before_id=0,limit=200):
+    if after_id<0 or before_id<0 or (after_id and before_id) or not 1<=limit<=500:
+        raise ValueError('日志游标或分页数量无效')
+    state=target_state(db,resource,str(identifier))
+    where='resource=%s AND target_key=%s';args=[resource,str(identifier)]
+    if after_id: where+=' AND id>%s';args.append(after_id)
+    if before_id: where+=' AND id<%s';args.append(before_id)
+    order='ASC' if after_id else 'DESC'
+    rows=list(db.execute(f'SELECT * FROM collection_logs WHERE {where} ORDER BY id {order} LIMIT %s',(*args,limit+1)).fetchall())
+    more=len(rows)>limit;rows=rows[:limit]
+    if not after_id:rows.reverse()
+    oldest=rows[0]['id'] if rows else before_id or 0
+    older=bool(oldest and db.execute('SELECT 1 FROM collection_logs WHERE resource=%s AND target_key=%s AND id<%s LIMIT 1',
+                                    (resource,str(identifier),oldest)).fetchone())
+    return {'items':rows,'next_cursor':rows[-1]['id'] if rows else after_id,'oldest_cursor':oldest,
+            'has_more':bool(after_id and more),'has_older':older,'task':state,'server_time':time.time()}

@@ -130,14 +130,19 @@ def work_keywords(cfg, db, limit=200, client=None, target_id=None, refresh=False
         target = claim_target(db, cfg["lease_seconds"], target_id=target_id, refresh=refresh)
         if target is None:
             break
-        try:
-            result = client.search(target)
-        except FetchError as exc:
-            accepted = save_search(db, cfg, target, error=exc)
-            outcome = "error"
-        else:
-            accepted = save_search(db, cfg, target, result=result)
-            outcome = "ok"
+        from .task_logs import execution
+        with execution(db,client,'keywords',target['id'],f"{target['store']} / {target['country']} / {target['language']}") as task_log:
+            try:
+                result = client.search(target)
+            except FetchError as exc:
+                accepted = save_search(db, cfg, target, error=exc)
+                outcome = "error"
+                detail = str(exc) + f"；失败次数 {target['failures']+1}，已安排退避重试"
+            else:
+                accepted = save_search(db, cfg, target, result=result)
+                outcome = "ok"
+                detail = f"返回应用 {len(result.apps)} 条"
+            task_log.finish(outcome,accepted,detail)
         counts["processed"] += 1
         counts[outcome if accepted else "stale"] += 1
         log.info("Keyword %s %s/%s/%s: %s", target["id"], target["store"],

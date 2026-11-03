@@ -40,6 +40,7 @@ const newModules = (
   await Promise.all([
     wrappedModule("icons.js", "icon,storeLogo"),
     wrappedModule("market-controls.js", "initMarketControls"),
+    wrappedModule("task-logs.js", "createTaskLogViewer"),
     wrappedModule("collection-center.js", "createCollectionCenter"),
   ])
 ).join("\n");

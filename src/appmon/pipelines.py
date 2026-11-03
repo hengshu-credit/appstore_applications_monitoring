@@ -5,6 +5,7 @@ import time
 from .db import dump
 from .keywords import validate_target
 from .intelligence import hours
+from .task_logs import emit
 
 NAMES = {'pool':'全池应用详情', 'seed':'AppGoblin 公开种子同步', 'discovery':'榜单 / 搜索 / 开发者发现'}
 INTERVALS = {'pool':'refresh_hours','seed':'seed_sync_hours','discovery':'discovery_hours'}
@@ -53,6 +54,7 @@ def save(db, cfg, name, value):
         # Re-evaluate periodic source schedules after a configuration change.
         if name=='seed': db.execute("UPDATE schedules SET next_at=0 WHERE name='seed-sync'")
         if name=='discovery': db.execute("UPDATE schedules SET next_at=0 WHERE name LIKE 'discover:%'")
+        emit(db,'pipelines',name,'settings_updated',f'流程设置已更新：{"启用" if enabled else "暂停"}，周期 {result["refresh_hours"]} 小时')
     return result
 
 

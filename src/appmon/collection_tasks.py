@@ -1,6 +1,7 @@
 """One paginated task registry and atomic controls for all observation workers."""
 import time
 from .intelligence import hours, text
+from .task_logs import emit
 
 TABLES = {'watchlist': 'watchlist', 'keywords': 'keyword_targets', 'targets': 'observation_targets'}
 UNION = '''SELECT 'watchlist' resource,w.id,'details' kind,w.store,w.country,w.language,w.app_id,
@@ -74,6 +75,7 @@ def edit_task(db, resource, identifier, value):
             db.execute(f'''UPDATE {table} SET refresh_hours=%s,depth=%s,
                 due=LEAST(due,%s),token=NULL,lease_until=0 WHERE id=%s''',
                        (interval,depth,time.time()+interval*3600,identifier))
+        emit(db,resource,identifier,'settings_updated',f'采集设置已更新，刷新周期 {interval} 小时')
     return {'id':identifier,'resource':resource,'saved':True}
 
 
@@ -101,4 +103,5 @@ def control_tasks(db, value):
                 db.execute(f'UPDATE {table} SET enabled=%s,token=NULL,lease_until=0 WHERE id=%s', (action=='resume',identifier))
             else:
                 db.execute(f'UPDATE {table} SET due=0 WHERE id=%s AND lease_until<=%s', (identifier,time.time()))
+            emit(db,resource,identifier,action,{'pause':'任务已暂停，当前租约已失效','resume':'任务已恢复，等待到期后领取','refresh':'已请求立即采集；由后台按租约和限速执行'}[action])
     return {'updated':len(refs),'action':action}
