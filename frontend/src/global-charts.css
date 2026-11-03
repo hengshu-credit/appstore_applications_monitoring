@@ -137,18 +137,68 @@
   white-space: normal;
   overflow-wrap: anywhere;
 }
-.global-country-options {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+#global-chart-form > .country-field,
+#global-chart-form > .chart-type-field {
+  flex: 1;
+  min-width: 180px;
+}
+#global-chart-form > .global-chart-actions {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+@media (max-width: 560px) {
+  #global-chart-form > .global-chart-actions {
+    width: 100%;
+  }
+  .global-chart-actions > button {
+    flex: 1;
+  }
+}
+.chart-type-field {
+  display: flex;
+  flex-direction: column;
   gap: 6px;
-  max-height: 300px;
-  overflow-y: auto;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--muted);
+  position: relative;
 }
-.global-country-options [hidden] {
+.chart-type-field > button,
+#global-countries-trigger {
+  width: 100%;
+}
+.filter-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 100%;
+  width: max-content;
+  max-width: calc(100vw - 40px);
+  padding: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: 0 10px 24px var(--shadow);
+}
+.toolbar .filter-popover .check-label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.filter-popover input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex: 0 0 auto;
+}
+.filter-popover[hidden] {
   display: none;
-}
-.global-country-picker {
-  width: min(100%, 520px);
 }
 @media (max-width: 680px) {
   .global-lists {

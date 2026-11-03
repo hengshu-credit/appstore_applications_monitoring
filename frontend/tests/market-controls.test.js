@@ -25,14 +25,26 @@ test("store and language menus commit values, close on Escape, and retain custom
     doc.querySelector("#store-trigger").click();
     assert.equal(doc.querySelector("#store-menu").hidden, false);
     doc.querySelector('#store-menu [data-value="apple"]').click();
-    assert.equal(doc.querySelector("#global-store").value, "apple");
+    assert.equal(doc.querySelector("#global-store").value, "all");
     assert.equal(changes, 1);
+    assert.equal(doc.querySelector('#store-menu [data-value="all"]'), null);
+    assert.equal(
+      doc.querySelectorAll('#store-menu [aria-selected="true"]').length,
+      2,
+    );
+    assert.equal(doc.querySelector("#store-menu").hidden, false);
+    doc.querySelector('#store-menu [data-value="google"]').click();
+    assert.equal(doc.querySelector("#global-store").value, "apple");
+    assert.equal(changes, 2);
+    doc.querySelector('#store-menu [data-value="apple"]').click();
+    assert.equal(doc.querySelector("#global-store").value, "apple");
+    assert.equal(changes, 2, "keep the last selected store");
     assert.match(
       doc.querySelector("#store-value img").src,
       /stores\/apple.svg$/,
     );
-    assert.equal(doc.querySelector("#store-menu").hidden, true);
     doc.querySelector("#language-trigger").click();
+    assert.equal(doc.querySelector("#store-menu").hidden, true);
     const search = doc.querySelector("#language-menu input");
     search.value = "泰语";
     search.dispatchEvent(new win.Event("input"));

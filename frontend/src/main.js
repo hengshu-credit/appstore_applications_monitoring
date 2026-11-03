@@ -999,9 +999,9 @@ async function keywordPage(rev) {
   const m = market();
   const rows = (await api("/keywords")).filter(
     (r) =>
-      r.store === m.store &&
+      (m.store === "all" || r.store === m.store) &&
       r.country === m.country &&
-      r.language === m.language,
+      r.language === market(r.store).language,
   );
   mount(
     collectionLink("keywords") +
@@ -1521,7 +1521,7 @@ async function render() {
     }
     await selectors.ready();
     selectors.syncCountry();
-    if (!selectors.supportsMarket(market().store, market().country)) {
+    if (name !== "globalcharts" && !selectors.supportsMarket(market().store, market().country)) {
       mount(
         '<div class="callout">该地区没有独立的 App Store 市场，请选择可用国家或地区。</div><button id="choose-supported-country" class="secondary">选择国家 / 地区</button>',
         rev,

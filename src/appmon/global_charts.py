@@ -10,7 +10,7 @@ DEFAULT_COUNTRIES=['us','cn','jp','kr','gb','de','fr','in','br','th','vn','id','
 
 
 def countries(store,selection=''):
-    if store not in ('google','apple'):raise ValueError('全球榜单须选择一个商店')
+    if store not in ('google','apple','all'):raise ValueError('请选择有效的应用商店')
     if not isinstance(selection,str) or len(selection)>2000:raise ValueError('国家选择无效')
     known={c['code']:c for c in catalog.CATALOG['countries'] if store!='apple' or c['code'] in catalog.APPLE_COUNTRIES}
     chosen=list(known) if selection=='all' else list(dict.fromkeys(selection.lower().split(','))) if selection else [c for c in DEFAULT_COUNTRIES if c in known and (store!='google' or c!='cn')]
@@ -28,6 +28,29 @@ def collections(store,value):
 
 def report(db,store,selection='',collection='top-free,top-paid,top-grossing',category='',as_of=None,depth=10,offset=0,page_size=6):
     if type(depth) is not int or not 1<=depth<=50 or not 0<=offset<=250 or not 1<=page_size<=12:raise ValueError('榜单深度或分页参数无效')
+    if store=='all':
+        if category:raise ValueError('同时选择多个商店时，请分别查看各商店官方分类')
+        selected=countries(store,selection);page=selected[offset:offset+page_size];parts={};types=collections('google',collection)
+        at=cutoff(as_of)
+        for platform in ('google','apple'):
+            eligible=[c['code'] for c in page if platform!='apple' or c['code'] in catalog.APPLE_COUNTRIES]
+            parts[platform]=report(db,platform,','.join(eligible),collection,as_of=as_of,depth=depth,page_size=page_size) if eligible else None
+        result=[]
+        for country in page:
+            for platform,part in parts.items():
+                row=next((c for c in part['countries'] if c['country']==country['code']),None) if part else None
+                if row is None:
+                    row={'country':country['code'],'name':country['name'],'language':'','boards':[
+                        {'collection':kind,'definition':charts.definition(platform,kind),'items':[],
+                         'observed_at':None,'returned_count':0,'fresh':False,'unsupported':True,
+                         'quality':'unsupported','reason':'App Store 暂未支持此地区'} for kind in types]}
+                result.append(row|{'store':platform})
+        return {'store':store,'countries':result,'selected_codes':[c['code'] for c in selected],
+            'total_countries':len(selected),'offset':offset,'page_size':page_size,'page_country_count':len(page),
+            'has_more':offset+page_size<len(selected),'fresh_boards':sum(p['fresh_boards'] for p in parts.values() if p),
+            'observed_boards':sum(p['observed_boards'] for p in parts.values() if p),'requested_boards':len(result)*len(types),
+            'as_of':at,'note':'各国家、各商店榜单独立展示，保留原始名次。未支持、未采集和过期状态分别标注。',
+            'available_countries':countries(store,'all')}
     selected=countries(store,selection);types=collections(store,collection);at=cutoff(as_of)
     if category:catalog.category_aliases(store,category)
     result=[];cache={};fresh=0;observed=0
@@ -54,6 +77,18 @@ def report(db,store,selection='',collection='top-free,top-paid,top-grossing',cat
 
 def preview(value):
     store=value.get('store');selected=countries(store,value.get('countries',''))
+    if store=='all':
+        if value.get('category'):raise ValueError('同时选择多个商店时，请分别查看各商店官方分类')
+        actions=[];unsupported=[];note=''
+        for platform in ('google','apple'):
+            eligible=[c['code'] for c in selected if platform!='apple' or c['code'] in catalog.APPLE_COUNTRIES]
+            types=collections(platform,value.get('collections','top-free,top-paid,top-grossing'))
+            unsupported.extend({'store':platform,'country':c['code'],'collection':kind}
+                for c in selected if c['code'] not in eligible for kind in types)
+            if not eligible:continue
+            part=preview(value|{'store':platform,'countries':','.join(eligible)})
+            actions.extend(part['actions']);unsupported.extend(part['unsupported']);note=part['note']
+        return {'actions':actions,'total':len(actions),'countries':len(selected),'unsupported':unsupported,'note':note}
     types=collections(store,value.get('collections','top-free,top-paid,top-grossing'));category=value.get('category','')
     if not isinstance(category,str) or len(category)>64:raise ValueError('分类无效')
     if category and category not in catalog.BY_ID[store] and not(store=='google' and category=='APPLICATION'):raise ValueError('请选择商店官方分类')

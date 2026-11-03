@@ -6,7 +6,9 @@ import { Window } from "happy-dom";
 const html = (
   await readFile(new URL("../index.html", import.meta.url), "utf8")
 ).replace(/<script[^>]*><\/script>/g, "");
-const accountSource = (await readFile(new URL("../src/accounts.js", import.meta.url), "utf8")).replace(/^export /gm, "");
+const accountSource = (
+  await readFile(new URL("../src/accounts.js", import.meta.url), "utf8")
+).replace(/^export /gm, "");
 const themeSource = (
   await readFile(new URL("../src/theme.js", import.meta.url), "utf8")
 ).replace(/^export /gm, "");
@@ -121,7 +123,31 @@ const tick = async () => {
 
 test("country follows automatic language and all-store views send explicit scope", async () => {
   const { window, calls } = await setup((path) =>
-    path.startsWith("/api/keywords?") ? [] : undefined,
+    path.startsWith("/api/keywords?")
+      ? [
+          {
+            id: 901,
+            store: "google",
+            country: "kz",
+            language: "kk",
+            keyword: "Google 跟踪词",
+          },
+          {
+            id: 902,
+            store: "apple",
+            country: "kz",
+            language: "ru",
+            keyword: "Apple 跟踪词",
+          },
+          {
+            id: 903,
+            store: "apple",
+            country: "us",
+            language: "en",
+            keyword: "其他市场",
+          },
+        ]
+      : undefined,
   );
   try {
     const doc = window.document;
@@ -134,13 +160,16 @@ test("country follows automatic language and all-store views send explicit scope
     assert.match(doc.querySelector("#language-value").textContent, /哈萨克/);
     doc.querySelector("#store-trigger").click();
     doc.querySelector('#store-menu [data-value="apple"]').click();
+    doc.querySelector('#store-menu [data-value="google"]').click();
     await tick();
     assert.match(doc.querySelector("#language-value").textContent, /俄语/);
-    doc.querySelector("#store-trigger").click();
-    doc.querySelector('#store-menu [data-value="all"]').click();
+    doc.querySelector('#store-menu [data-value="google"]').click();
     window.location.hash = "keywords";
     await tick();
     assert.ok(calls.some((c) => c.path === "/api/keywords?store=all"));
+    assert.equal(doc.querySelectorAll("[data-keyword]").length, 2);
+    assert.ok(doc.querySelector('[data-keyword="901"]'));
+    assert.ok(doc.querySelector('[data-keyword="902"]'));
     assert.equal(doc.querySelectorAll("#store-value img").length, 2);
     assert.match(
       doc.querySelector("#language-value").textContent,
@@ -186,8 +215,30 @@ async function setup(responder) {
   const calls = [];
   window.fetch = async (path, options = {}) => {
     calls.push({ path, options });
-    if (path === '/api/auth/config') return {ok:true, status:200, json:async () => ({initialization_required:false, registration_enabled:true})};
-    if (path === '/api/auth/me') return {ok:true, status:200, json:async () => ({user:{id:1,username:'admin',role:'admin',effective_role:'admin',permissions:[]},csrf_token:'test-csrf'})};
+    if (path === "/api/auth/config")
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          initialization_required: false,
+          registration_enabled: true,
+        }),
+      };
+    if (path === "/api/auth/me")
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          user: {
+            id: 1,
+            username: "admin",
+            role: "admin",
+            effective_role: "admin",
+            permissions: [],
+          },
+          csrf_token: "test-csrf",
+        }),
+      };
     let data =
       path === "/api/catalog"
         ? catalogFixture
@@ -222,7 +273,9 @@ async function setup(responder) {
     return { ok: true, status: 200, json: async () => data };
   };
   window.eval(
-    accountSource + "\n" + themeSource +
+    accountSource +
+      "\n" +
+      themeSource +
       "\n" +
       selectorSource +
       "\n" +
@@ -1056,6 +1109,28 @@ test("global rankings show countries and multiple chart kinds together and previ
     assert.equal(plan.countries, "us,jp");
     assert.equal(plan.collections, "top-free,top-paid,top-grossing");
     assert.ok(window.document.querySelector("#global-plan-confirm"));
+    const doc = window.document;
+    doc.querySelector("#global-countries-trigger").click();
+    await tick();
+    doc.querySelector('[data-country-action="clear"]').click();
+    const search = doc.querySelector("#country-picker input");
+    search.value = "日本";
+    search.dispatchEvent(new window.Event("input"));
+    doc.querySelector('[data-country-code="jp"]').click();
+    doc.querySelector('[data-country-action="apply"]').click();
+    assert.equal(
+      doc.querySelector("#global-plan-confirm"),
+      null,
+      "changing the scope invalidates a reviewed plan",
+    );
+    assert.equal(
+      doc.querySelector("#global-country").value,
+      "us",
+      "global board selection does not alter header market",
+    );
+    doc.querySelector("#global-configure").click();
+    await tick();
+    assert.equal(plan.countries, "jp");
   } finally {
     await window.happyDOM.close();
   }
@@ -1262,6 +1337,195 @@ test("global chart links retain storefront, category and time and open a richer 
     await tick();
     assert.equal(detailQuery.get("country"), "us");
     assert.equal(detailQuery.get("offset"), "0");
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("multi-store global boards preserve store links and count countries once", async () => {
+  const { window, calls } = await setup((path) => {
+    if (!path.startsWith("/api/charts/global?")) return;
+    return {
+      selected_codes: ["us"],
+      total_countries: 1,
+      page_country_count: 1,
+      page_size: 6,
+      has_more: false,
+      fresh_boards: 2,
+      requested_boards: 2,
+      observed_boards: 2,
+      available_countries: [
+        { code: "us", name: "美国", english: "United States" },
+      ],
+      note: "各商店独立排名",
+      countries: ["google", "apple"].map((store) => ({
+        store,
+        country: "us",
+        name: "美国",
+        language: "en",
+        boards: [
+          {
+            collection: "top-free",
+            definition: catalogFixture.charts[store][0],
+            fresh: true,
+            items: [
+              {
+                app_id: store === "apple" ? "123" : "com.example.app",
+                name: store + " App",
+                position: store === "apple" ? 3 : 1,
+              },
+            ],
+            returned_count: 100,
+            observed_at: 10,
+          },
+        ],
+      })),
+    };
+  });
+  try {
+    window.document.querySelector("#global-store").value = "all";
+    window.location.hash = "globalcharts";
+    await tick();
+    assert.ok(calls.some((c) => c.path.includes("charts/global?store=all")));
+    const titles = [
+      ...window.document.querySelectorAll(".global-country h2"),
+    ].map((e) => e.textContent);
+    assert.match(titles[0], /Google Play/);
+    assert.match(titles[1], /App Store/);
+    const links = [
+      ...window.document.querySelectorAll(".chart-title-link"),
+    ].map((e) => e.getAttribute("href"));
+    assert.match(links[0], /store=google/);
+    assert.match(links[1], /store=apple/);
+    assert.match(
+      window.document.querySelector("#content").textContent,
+      /第 1–1 个 \/ 共 1 个国家/,
+    );
+    assert.ok(
+      window.document.querySelector('[data-store="apple"][data-app="123"]'),
+    );
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+const emptyGlobalBoard = () => ({
+  selected_codes: ["us"],
+  total_countries: 1,
+  page_size: 6,
+  has_more: false,
+  fresh_boards: 0,
+  requested_boards: 3,
+  observed_boards: 0,
+  countries: [],
+  note: "暂无观察",
+  available_countries: [{ code: "us", name: "美国", english: "United States" }],
+});
+test("global filters recover invalid saved values and reject future dates without poisoning refresh", async () => {
+  const { window, calls } = await setup((path) =>
+    path.startsWith("/api/charts/global?") ? emptyGlobalBoard() : undefined,
+  );
+  try {
+    window.localStorage.setItem(
+      "appmon-global-chart-filters",
+      JSON.stringify({
+        google: {
+          countries: "zz,us,us",
+          collections: "retired,top-free,top-free",
+          category: "bogus",
+          as_of: "2999-01-01",
+          depth: "999",
+          layout: "invalid",
+          store: "apple",
+        },
+      }),
+    );
+    window.location.hash = "globalcharts";
+    await tick();
+    const query = new URL(
+      calls.find((c) => c.path.startsWith("/api/charts/global?")).path,
+      "http://localhost",
+    ).searchParams;
+    assert.equal(query.get("store"), "google");
+    assert.equal(query.get("countries"), "us");
+    assert.equal(query.get("collections"), "top-free");
+    assert.equal(query.get("depth"), "10");
+    assert.equal(query.get("category"), null);
+    assert.equal(query.get("as_of"), null);
+    const form = window.document.querySelector("#global-chart-form");
+    form.elements.as_of.value = "2999-01-01";
+    const before = calls.filter((c) =>
+      c.path.startsWith("/api/charts/global?"),
+    ).length;
+    form.dispatchEvent(
+      new window.Event("submit", { bubbles: true, cancelable: true }),
+    );
+    await tick();
+    assert.equal(
+      calls.filter((c) => c.path.startsWith("/api/charts/global?")).length,
+      before,
+    );
+    assert.match(
+      window.document.querySelector("#toast").textContent,
+      /不能晚于今天/,
+    );
+    window.document.querySelector("#refresh-page").click();
+    await tick();
+    assert.ok(window.document.querySelector("#global-countries-trigger"));
+    assert.equal(
+      window.document.querySelector('#global-chart-form [name="as_of"]').value,
+      "",
+    );
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+test("a delayed collection preview cannot restore an obsolete scope", async () => {
+  let finishPreview;
+  const { window } = await setup((path) => {
+    if (path.startsWith("/api/charts/global?")) return emptyGlobalBoard();
+    if (path === "/api/charts/global/preview")
+      return new Promise((resolve) => (finishPreview = resolve));
+  });
+  try {
+    window.location.hash = "globalcharts";
+    await tick();
+    window.document.querySelector("#global-configure").click();
+    await tick();
+    const collection = window.document.querySelector(
+      '[name="collection"][value="top-paid"]',
+    );
+    collection.checked = false;
+    collection.dispatchEvent(new window.Event("change", { bubbles: true }));
+    finishPreview({ countries: 1, total: 3, unsupported: [], note: "旧预览" });
+    await tick();
+    assert.equal(window.document.querySelector("#global-plan-confirm"), null);
+    window.document.querySelector("#global-configure").click();
+    await tick();
+    finishPreview({ countries: 1, total: 2, unsupported: [], note: "新预览" });
+    await tick();
+    assert.match(
+      window.document.querySelector("#global-plan-preview").textContent,
+      /新预览/,
+    );
+    assert.ok(window.document.querySelector("#global-plan-confirm"));
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+test("global countries are independent of an unsupported header Apple market", async () => {
+  const { window, calls } = await setup((path) =>
+    path.startsWith("/api/charts/global?") ? emptyGlobalBoard() : undefined,
+  );
+  try {
+    window.document.querySelector("#global-store").value = "apple";
+    window.document.querySelector("#global-country").value = "aq";
+    window.location.hash = "globalcharts";
+    await tick();
+    assert.ok(
+      calls.some((c) => c.path.includes("/api/charts/global?store=apple")),
+    );
+    assert.ok(window.document.querySelector("#global-countries-trigger"));
   } finally {
     await window.happyDOM.close();
   }

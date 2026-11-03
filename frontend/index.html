@@ -42,9 +42,16 @@
     </aside>
     <div class="shell">
       <header>
-        <div>
+        <div class="page-heading">
           <span class="eyebrow">WORKSPACE / INTELLIGENCE</span>
           <h1 id="page-title">监控概览</h1>
+          <button
+            id="refresh-page"
+            type="button"
+            class="link page-refresh"
+            aria-label="刷新当前页面"
+            title="刷新当前页面"
+          ></button>
         </div>
         <div class="market">
           <div class="market-field store-field">
@@ -71,7 +78,15 @@
               </svg>
             </button>
             <div id="store-menu" class="market-menu" hidden>
-              <div role="listbox" aria-label="应用商店"></div>
+              <div
+                role="listbox"
+                aria-label="应用商店"
+                aria-multiselectable="true"
+                aria-describedby="store-selection-note"
+              ></div>
+              <p id="store-selection-note" class="sub market-menu-note">
+                点击商店可多选，至少保留一个
+              </p>
             </div>
           </div>
           <div class="country-field">
@@ -121,8 +136,7 @@
             </div>
           </div>
           <div class="market-actions">
-            <button id="refresh-page" class="secondary">刷新</button
-            ><button id="open-theme" class="secondary">主题设置</button>
+            <button id="open-theme" class="secondary">主题设置</button>
           </div>
         </div>
       </header>

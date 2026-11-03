@@ -37,3 +37,30 @@ class GlobalChartsTest(MySQLTestCase):
         with self.assertRaises(ValueError):global_charts.preview(value|{'countries':['us']})
         unsupported=global_charts.preview(value|{'collections':'new-free','category':'6015'})
         self.assertEqual(unsupported['total'],0)
+
+    def test_multiple_stores_keep_platform_identity_country_pagination_and_missing_markets(self):
+        result=global_charts.report(self.db,'all','us,aq,jp',collection='top-free',page_size=2)
+        self.assertEqual(result['total_countries'],3)
+        self.assertEqual(result['page_country_count'],2)
+        self.assertTrue(result['has_more'])
+        self.assertEqual([(c['country'],c['store']) for c in result['countries']],
+                         [('us','google'),('us','apple'),('aq','google'),('aq','apple')])
+        self.assertEqual(result['requested_boards'],4)
+        self.assertTrue(result['countries'][3]['boards'][0]['unsupported'])
+        self.assertEqual(result['countries'][3]['boards'][0]['items'],[])
+        later=global_charts.report(self.db,'all','us,aq,jp',collection='top-free',page_size=2,offset=2)
+        self.assertEqual({c['country'] for c in later['countries']},{'jp'})
+        self.assertFalse(later['has_more'])
+        spec={'store':'all','countries':'us,aq','collections':'top-free,trending'}
+        plan=global_charts.preview(spec)
+        self.assertEqual(plan['countries'],2)
+        # Google trending is a direct chart; Apple's derived view shares top-free.
+        self.assertEqual(plan['total'],5)
+        self.assertEqual({(a['value']['store'],a['value']['country'],a['value']['collection']) for a in plan['actions']},
+                         {('google','us','top-free'),('google','aq','top-free'),('google','us','trending'),
+                          ('google','aq','trending'),('apple','us','top-free')})
+        self.assertEqual({(a['value']['store'],a['value']['country']) for a in plan['actions']},
+                         {('google','us'),('google','aq'),('apple','us')})
+        self.assertEqual(len(plan['unsupported']),2)
+        with self.assertRaises(ValueError):global_charts.preview(spec|{'category':'FINANCE'})
+        with self.assertRaises(ValueError):global_charts.report(self.db,'all','us',category='6015')

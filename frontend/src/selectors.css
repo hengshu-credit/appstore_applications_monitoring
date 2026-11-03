@@ -150,6 +150,41 @@
   margin-bottom: 0;
   font-size: 11px;
 }
+.picker-bulk,
+.picker-footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+.picker-footer {
+  justify-content: flex-end;
+  margin-bottom: 0;
+}
+.picker-bulk[hidden],
+.picker-footer[hidden] {
+  display: none;
+}
+.country-multiple .picker-scroll {
+  max-height: 46dvh;
+}
+.selection-dialog .picker-section-heading .picker-group-toggle {
+  height: 30px;
+  min-height: 30px;
+  padding: 0 8px;
+  font-size: 12px;
+  margin-left: auto;
+}
+.choice-check {
+  margin-left: auto;
+  visibility: hidden;
+  flex: 0 0 auto;
+}
+[aria-pressed="true"] > .choice-check,
+[aria-selected="true"] > .choice-check {
+  visibility: visible;
+}
 .category-tabs {
   display: flex;
   gap: 12px;

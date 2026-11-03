@@ -240,3 +240,63 @@ test("offline font contains the requested variable SemiBold instance and license
   );
   assert.equal(woff.toString("ascii", 0, 4), "wOF2");
 });
+
+test("multiple countries support regional selection, cancel, all, and clear without changing header", async () => {
+  const { win, selector } = setup();
+  try {
+    const doc = win.document;
+    let result;
+    const allowed = ["us", "jp", "th", "vn", "gb"];
+    const open = () =>
+      selector.chooseCountries({
+        selected: ["us"],
+        allowed,
+        onApply: (codes) => (result = codes),
+        trigger: doc.querySelector("#country-trigger"),
+      });
+    await open();
+    doc.querySelector('[data-region="southeast_asia"]').click();
+    doc
+      .querySelector(
+        '[data-country-group="th,vn"], [data-country-group="vn,th"]',
+      )
+      .click();
+    assert.match(
+      doc.querySelector("#country-selection-count").textContent,
+      /3 \/ 5/,
+    );
+    doc.querySelector('[data-country-action="apply"]').click();
+    assert.deepEqual(new Set(result), new Set(["us", "th", "vn"]));
+    assert.equal(doc.querySelector("#global-country").value, "us");
+    assert.equal(doc.querySelector("#country-picker").open, false);
+    await tick();
+    await open();
+    doc.querySelector('[data-country-action="all"]').click();
+    assert.match(
+      doc.querySelector("#country-selection-count").textContent,
+      /5 \/ 5/,
+    );
+    doc.querySelector('[data-country-action="clear"]').click();
+    assert.equal(
+      doc.querySelector('[data-country-action="apply"]').disabled,
+      true,
+    );
+    doc.querySelector('[data-country-action="cancel"]').click();
+    assert.deepEqual(
+      new Set(result),
+      new Set(["us", "th", "vn"]),
+      "cancel must not apply the draft",
+    );
+    await tick();
+    await open();
+    const search = doc.querySelector("#country-picker input");
+    search.value = "japan";
+    search.dispatchEvent(new win.Event("input"));
+    doc.querySelector('[data-country-code="jp"]').click();
+    assert.equal(doc.querySelector("#country-picker").open, true);
+    doc.querySelector('[data-country-action="apply"]').click();
+    assert.deepEqual(new Set(result), new Set(["us", "jp"]));
+  } finally {
+    await win.happyDOM.close();
+  }
+});

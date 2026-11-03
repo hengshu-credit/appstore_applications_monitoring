@@ -6,6 +6,29 @@ header {
 header > div:first-child {
   min-width: 0;
 }
+header .page-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+header #refresh-page {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  width: 34px;
+  flex: 0 0 34px;
+  justify-content: center;
+  padding: 0;
+  text-decoration: none;
+}
+header #refresh-page:hover {
+  background: var(--hover);
+  color: var(--accent-text);
+}
+.market-menu-note {
+  margin: 6px 8px;
+  font-size: 12px;
+}
 header .eyebrow {
   display: none;
 }
@@ -32,12 +55,39 @@ header .language-field {
 header #store-trigger,
 header .market #country-trigger,
 header #language-trigger,
-header #refresh-page,
 header #open-theme {
   height: 34px;
   min-height: 34px;
   padding: 0 10px;
   font-size: 13px;
+}
+header #refresh-page {
+  height: 34px;
+  min-height: 34px;
+}
+/* Labels may wrap; controls and action buttons keep a shared baseline. */
+#content
+  .toolbar
+  > :is(label, .country-field, .category-field, .chart-type-field) {
+  line-height: 18px;
+  gap: 6px;
+}
+#content
+  .toolbar
+  :is(
+    button:not(.link),
+    .button,
+    select:not([multiple]),
+    input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not(
+        [type="range"]
+      ):not([type="color"])
+  ) {
+  box-sizing: border-box;
+  height: 42px;
+  min-height: 42px;
+  line-height: 20px;
+  padding-block: 0;
+  font-size: 14px;
 }
 header .market-field,
 header .country-field {

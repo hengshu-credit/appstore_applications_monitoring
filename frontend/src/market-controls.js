@@ -65,7 +65,6 @@ export function initMarketControls(win = window) {
         ? [
             ["google", "Google Play"],
             ["apple", "App Store"],
-            ["all", "全部商店"],
           ]
         : languageChoices(
             preferences,
@@ -80,7 +79,9 @@ export function initMarketControls(win = window) {
     }
     function sync() {
       const choices = choicesFor();
-      const selected = choices.find((v) => v[0] === input.value) || [
+      const selected = (kind === "store" && input.value === "all"
+        ? ["all", "2 个商店"]
+        : choices.find((v) => v[0] === input.value)) || [
         input.value,
         "自定义语言",
       ];
@@ -119,7 +120,7 @@ export function initMarketControls(win = window) {
         rows
           .map(
             ([code, name]) =>
-              `<button type="button" role="option" aria-selected="${code === input.value}" data-value="${esc(code)}">${label(code, name)}</button>`,
+              `<button type="button" role="option" aria-selected="${code === input.value || (kind === "store" && input.value === "all")}" data-value="${esc(code)}">${label(code, name)}${kind === "store" ? '<span class="choice-check" aria-hidden="true">✓</span>' : ""}</button>`,
           )
           .join("") || '<p class="sub">没有匹配语言，可输入语言代码</p>';
     }
@@ -144,9 +145,29 @@ export function initMarketControls(win = window) {
     menu.addEventListener("click", (e) => {
       const option = e.target.closest("[data-value]");
       if (!option) return;
-      input.value = option.dataset.value;
+      if (kind === "store") {
+        // The canonical "all" value represents both checked stores.
+        if (input.value === option.dataset.value) return;
+        input.value =
+          input.value === "all"
+            ? option.dataset.value === "google"
+              ? "apple"
+              : "google"
+            : "all";
+      } else input.value = option.dataset.value;
       sync();
-      close(true);
+      if (kind === "store") {
+        menu
+          .querySelectorAll('[role="option"]')
+          .forEach((row) =>
+            row.setAttribute(
+              "aria-selected",
+              String(
+                input.value === "all" || input.value === row.dataset.value,
+              ),
+            ),
+          );
+      } else close(true);
       input.dispatchEvent(new win.Event("change", { bubbles: true }));
     });
     menu.addEventListener("keydown", (e) => {
@@ -175,7 +196,7 @@ export function initMarketControls(win = window) {
       }
     });
     doc.addEventListener("click", (e) => {
-      if (!trigger.parentElement.contains(e.target)) close();
+      if (!e.composedPath().includes(trigger.parentElement)) close();
     });
     trigger.parentElement.addEventListener("focusout", () => {
       win.setTimeout(() => {
@@ -186,8 +207,7 @@ export function initMarketControls(win = window) {
     sync();
     controllers.push({ sync, close });
   }
-  doc.querySelector("#refresh-page").innerHTML =
-    icon("refresh") + "<span>刷新</span>";
+  doc.querySelector("#refresh-page").innerHTML = icon("refresh");
   doc.querySelector("#open-theme").innerHTML =
     icon("settings") + "<span>主题设置</span>";
   const countryArrow = doc.querySelector("#country-trigger > :last-child");
