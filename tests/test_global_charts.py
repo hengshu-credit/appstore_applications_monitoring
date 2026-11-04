@@ -64,3 +64,30 @@ class GlobalChartsTest(MySQLTestCase):
         self.assertEqual(len(plan['unsupported']),2)
         with self.assertRaises(ValueError):global_charts.preview(spec|{'category':'FINANCE'})
         with self.assertRaises(ValueError):global_charts.report(self.db,'all','us',category='6015')
+
+    def test_app_summary_spans_pages_and_excludes_stale_failed_and_unsupported_markets(self):
+        from appmon import locales
+        codes=['us','jp','cn','gb','de','fr','br','kr'];now=time.time()
+        for i,country in enumerate(codes):
+            target=add_observation_target(self.db,dict(store='apple',country=country,language=locales.language_for('apple',country),kind='chart',collection='top-free'))['id']
+            at=now-3*86400 if country=='kr' else now
+            self.db.execute("INSERT INTO observation_runs(target_id,observed_at,outcome,source,parser_version,coverage,returned_count) VALUES(%s,%s,'ok','fixture','v1','returned_chart_range',1)",(target,at))
+            run=self.db.cursor.lastrowid
+            self.db.execute('INSERT INTO observation_items VALUES(%s,%s,%s,%s)',(run,'123',i+1,json.dumps({'app_id':'123','name':'Same Name'})))
+            self.db.execute('UPDATE observation_targets SET latest_success_id=%s,failures=%s WHERE id=%s',(run,1 if country=='br' else 0,target))
+        result=global_charts.app_summary(self.db,'apple','123',','.join(codes+['aq','ca']),collection='top-free,top-paid')
+        free,paid=result['charts']
+        self.assertEqual(free['selected_countries'],10)
+        self.assertEqual(free['ranked_countries'],6)
+        self.assertEqual(free['top3'],3)
+        self.assertEqual(free['median_rank'],3.5)
+        self.assertEqual(free['stale_countries'],2)
+        self.assertEqual(free['missing_countries'],1)
+        self.assertEqual(free['unsupported_countries'],1)
+        self.assertEqual(free['short_countries'],6)
+        self.assertEqual(paid['ranked_countries'],0)
+        self.assertIsNone(paid['best_rank'])
+        historic=global_charts.app_summary(self.db,'apple','123','br',collection='top-free',as_of=now)['charts'][0]
+        self.assertEqual(historic['ranked_countries'],1, 'live failure must not erase an earlier historical snapshot')
+        other=global_charts.app_summary(self.db,'apple','456','us',collection='top-free')['charts'][0]
+        self.assertEqual(other['ranked_countries'],0, 'do not join different IDs by display name')

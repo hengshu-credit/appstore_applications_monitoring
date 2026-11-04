@@ -122,3 +122,45 @@ def create_plan(db,value):
                        ('全球榜单 / '+value['store'],canonical,dump(plan['actions']),plan['total'],now,now))
             identifier=db.cursor.lastrowid
     return {'id':identifier,'total':plan['total'],'status':'queued','note':plan['note']}
+
+
+def app_summary(db,store,app_id,selection='',collection='top-free,top-paid,top-grossing',category='',as_of=None,depth=10):
+    """One app across the complete selected scope, independent of visible pagination."""
+    from .ingest import valid_id
+    import statistics
+    if store not in ('apple','google') or not valid_id(store,app_id):raise ValueError('应用标识无效')
+    if type(depth) is not int or not 1<=depth<=50:raise ValueError('榜单深度须为1–50')
+    selected=countries('all' if store=='apple' else store,selection);types=collections(store,collection);at=cutoff(as_of)
+    if category:catalog.category_aliases(store,category)
+    # Avoid one query per missing market when users select all countries.
+    targets={(r['country'],r['language'],r['collection'],r['category']) for r in db.execute(
+        "SELECT country,language,collection,category FROM observation_targets WHERE kind='chart' AND store=%s",(store,)).fetchall()}
+    cache={};stats=[]
+    for kind in types:
+        spec=charts.definition(store,kind);matches=[];observed=stale=missing=unsupported=short=insufficient=0
+        for c in selected:
+            if store=='apple' and c['code'] not in catalog.APPLE_COUNTRIES:unsupported+=1;continue
+            language=locales.language_for(store,c['code'])
+            if category and not spec['category_supported']:unsupported+=1;continue
+            aliases=('', 'APPLICATION') if store=='google' and category in ('','APPLICATION') else (category,)
+            if not any((c['code'],language,spec['base_collection'],cat) in targets for cat in aliases):missing+=1;continue
+            board=charts.view(db,store,c['code'],language,kind,category,cache,as_of=as_of)
+            current=board['latest_success'];target=board['target']
+            if not current:missing+=1;continue
+            if not board.get('ready',True):insufficient+=1;continue
+            fresh=at-current['observed_at']<=target['refresh_hours']*3600
+            if as_of is None:fresh=fresh and not target['failures'] and bool(target['enabled'])
+            if not fresh:stale+=1;continue
+            observed+=1
+            if len(board['items'])<depth:short+=1
+            hit=next((r for r in board['items'] if r['app_id']==app_id and r['position']<=depth),None)
+            if hit:matches.append({'country':c['code'],'name':c['name'],'position':hit['position'],'observed_at':current['observed_at']})
+        ranks=[m['position'] for m in matches]
+        stats.append({'collection':kind,'name':spec['name'],'mode':spec['mode'],'selected_countries':len(selected),
+            'observed_countries':observed,'missing_countries':missing,'stale_countries':stale,'unsupported_countries':unsupported,
+            'insufficient_countries':insufficient,'short_countries':short,'ranked_countries':len(ranks),
+            'top1':sum(r==1 for r in ranks),'top3':sum(r<=3 for r in ranks),'top10':sum(r<=10 for r in ranks),
+            'best_rank':min(ranks) if ranks else None,'median_rank':statistics.median(ranks) if ranks else None,
+            'matches':sorted(matches,key=lambda m:(m['position'],m['country']))})
+    return {'store':store,'app_id':app_id,'depth':depth,'as_of':at,'charts':stats,
+        'note':'统计所选国家的有效快照；缺失、过期和返回范围不足不代表未上榜。不同商店不按名称合并。'}

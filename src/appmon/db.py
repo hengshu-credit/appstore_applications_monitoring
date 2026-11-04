@@ -162,6 +162,8 @@ from .discovery_schema import tables as discovery_tables
 TABLES.update(discovery_tables(APP_KEY, REGION))
 from .auth_schema import TABLES as AUTH_TABLES
 TABLES.update(AUTH_TABLES)
+from .source_schema import TABLES as SOURCE_TABLES
+TABLES.update(SOURCE_TABLES)
 
 
 def add_apps(db, rows, source, now=None):

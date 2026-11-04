@@ -8,6 +8,7 @@ import "./research.css";
 import { createResearchPages } from "./research.js";
 import { createDiscoveryPages } from "./discovery.js";
 import { createGlobalCharts } from "./global-charts.js";
+import { createDataSourcePage } from "./data-sources.js";
 import { createChartDetail } from "./chart-detail.js";
 import "./global-charts.css";
 import { createSelectors } from "./selectors.js";
@@ -136,6 +137,7 @@ const nav = [
   ["ads", "◇", "广告观察"],
   ["alerts", "◉", "告警与日报"],
   ["exports", "↓", "数据导出"],
+  ["datasources", "⚙", "数据源配置"],
   ["administration", "◎", "账户管理"],
 ];
 $("#navigation").innerHTML = nav
@@ -1455,6 +1457,7 @@ const routes = {
   ads: adPage,
   alerts: alertPage,
   exports: exportPage,
+  datasources: createDataSourcePage({ $, api, esc, panel, table, mount, toast }),
 };
 async function render() {
   if (!accounts.user) return;
@@ -1522,7 +1525,7 @@ async function render() {
     }
     await selectors.ready();
     selectors.syncCountry();
-    if (name !== "globalcharts" && !selectors.supportsMarket(market().store, market().country)) {
+    if (!["globalcharts", "datasources"].includes(name) && !selectors.supportsMarket(market().store, market().country)) {
       mount(
         '<div class="callout">该地区没有独立的 App Store 市场，请选择可用国家或地区。</div><button id="choose-supported-country" class="secondary">选择国家 / 地区</button>',
         rev,

@@ -26,6 +26,7 @@ export function createAccounts({ esc, onReady, toast }) {
   }
   function can(resource, action = "read") {
     if (!user) return false;
+    if (resource === "datasources") return user.role === "admin";
     if (resource === "account") return true;
 
     if (resource === "target")

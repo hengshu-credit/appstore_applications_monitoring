@@ -23,6 +23,7 @@ from . import charts, app_collection
 from . import growth, keyword_discovery, keyword_reports
 from . import auth
 from . import global_charts
+from . import data_sources
 from . import apple_popularity
 from . import app_discovery, app_metrics, availability
 from .stores import FetchError
@@ -231,6 +232,31 @@ def create_app(cfg):
 
     @api.post('/charts/global/preview')
     def global_preview(value:dict=Body(...)):return global_charts.preview(value)
+
+    @api.get('/data-sources')
+    def source_settings(db=DB):return data_sources.status(db)
+
+    @api.put('/data-sources/appgoblin')
+    def source_save(value:dict=Body(...),db=DB):return data_sources.save(db,cfg,value)
+
+    @api.post('/data-sources/appgoblin/authorize')
+    def source_authorize(db=DB):return data_sources.authorize(db,cfg)
+
+    @api.put('/data-sources/appbrain')
+    def brain_save(value:dict=Body(...),db=DB):return data_sources.save(db,cfg,value,'appbrain')
+
+    @api.post('/data-sources/appbrain/authorize')
+    def brain_authorize(db=DB):return data_sources.authorize(db,cfg,'appbrain')
+
+    @api.get('/data-sources/appgoblin/datasets')
+    def source_datasets(db=DB):return data_sources.dataset_catalog(db,cfg)
+
+    @api.post('/data-sources/app-metrics')
+    def source_metrics(value:dict=Body(...),db=DB):return data_sources.app_metrics(db,cfg,value.get('store'),value.get('app_id'),value.get('provider','auto'))
+
+    @api.get('/charts/global/app-summary')
+    def global_app_summary(store:str,app_id:str,countries:str='',collections:str='top-free,top-paid,top-grossing',category:str='',as_of:float|None=None,depth:int=10,db=DB):
+        return global_charts.app_summary(db,store,app_id,countries,collections,category,as_of,depth)
 
     @api.post('/charts/global/plan')
     def global_plan(value:dict=Body(...),db=DB):return global_charts.create_plan(db,value)

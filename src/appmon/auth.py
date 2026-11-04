@@ -159,6 +159,7 @@ def issue_session(db, request, row):
 def requirements(path, method, params=None):
     """All business endpoints pass this explicit resource map; unknown routes deny."""
     p = path.removeprefix('/api')
+    if p.startswith('/data-sources'):return ['admin']
     action = 'read' if method in ('GET', 'HEAD') else 'write'
     if p in ('/catalog', '/categories/counts') or p.startswith('/icons/'):
         return []  # authenticated shared display support

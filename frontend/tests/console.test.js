@@ -85,6 +85,8 @@ const newModules = (
     ),
     wrappedModule("app-insights.js", "createAppInsights"),
     wrappedModule("discovery.js", "createDiscoveryPages"),
+    wrappedModule("global-chart-hover.js", "bindGlobalChartHover"),
+    wrappedModule("data-sources.js", "createDataSourcePage"),
     wrappedModule("global-charts.js", "createGlobalCharts"),
     wrappedModule("chart-detail.js", "createChartDetail"),
     wrappedModule("availability.js", "createAvailabilityPage"),
@@ -317,15 +319,24 @@ test("navigation queries the API and escapes upstream application content", asyn
     );
     assert.equal(window.document.querySelector("img[onerror]"), null);
     assert.ok(calls.some((c) => c.path.startsWith("/api/apps?")));
-    assert.equal(window.document.querySelectorAll("nav a").length, 19);
-    assert.equal(window.document.querySelectorAll("nav a .ui-icon").length, 19);
+    assert.equal(window.document.querySelectorAll("nav a").length, 20);
+    assert.equal(window.document.querySelectorAll("nav a .ui-icon").length, 20);
+    assert.ok(window.document.querySelector('[data-nav="datasources"]'));
     assert.equal(window.document.querySelector('[data-nav="account"]'), null);
-    assert.equal(window.document.querySelectorAll('#account-menu [role="menuitem"] svg').length, 3);
-    window.document.querySelector('#account-trigger').click();
-    assert.equal(window.document.querySelector('#account-menu').hidden, false);
-    window.document.querySelector('#account-menu').dispatchEvent(new window.KeyboardEvent('keydown', {key:'Escape',bubbles:true}));
-    assert.equal(window.document.querySelector('#account-menu').hidden, true);
-    assert.equal(window.document.activeElement.id, 'account-trigger');
+    assert.equal(
+      window.document.querySelectorAll('#account-menu [role="menuitem"] svg')
+        .length,
+      3,
+    );
+    window.document.querySelector("#account-trigger").click();
+    assert.equal(window.document.querySelector("#account-menu").hidden, false);
+    window.document
+      .querySelector("#account-menu")
+      .dispatchEvent(
+        new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    assert.equal(window.document.querySelector("#account-menu").hidden, true);
+    assert.equal(window.document.activeElement.id, "account-trigger");
     assert.ok(window.document.querySelector('a[href="#availability"]'));
   } finally {
     await window.happyDOM.close();
@@ -1533,6 +1544,84 @@ test("global countries are independent of an unsupported header Apple market", a
       calls.some((c) => c.path.includes("/api/charts/global?store=apple")),
     );
     assert.ok(window.document.querySelector("#global-countries-trigger"));
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("admin source configuration submits secrets in the request body, clears password and shows authorization", async () => {
+  const result = {
+    appgoblin: {
+      configured: false,
+      status: "not_configured",
+      message: "未配置",
+    },
+    catalog: [],
+  };
+  const { window, calls } = await setup((path) => {
+    if (path === "/api/data-sources") return result;
+    if (path === "/api/data-sources/appbrain")
+      return {
+        appbrain: {
+          configured: true,
+          status: "authorized",
+          message: "AppBrain授权有效",
+        },
+      };
+    if (path === "/api/data-sources/appgoblin")
+      return {
+        appgoblin: {
+          configured: true,
+          status: "authorized",
+          message: "授权有效",
+        },
+      };
+  });
+  try {
+    window.location.hash = "datasources";
+    await tick();
+    const form = window.document.querySelector("#provider-account");
+    form.elements.email.value = "fixture@example.com";
+    form.elements.password.value = "fixture-secret";
+    form.dispatchEvent(
+      new window.Event("submit", { bubbles: true, cancelable: true }),
+    );
+    assert.equal(form.elements.password.value, "");
+    await tick();
+    const call = calls.find((c) => c.path === "/api/data-sources/appgoblin");
+    assert.equal(call.options.method, "PUT");
+    assert.deepEqual(JSON.parse(call.options.body), {
+      email: "fixture@example.com",
+      password: "fixture-secret",
+    });
+    assert.match(
+      window.document.querySelector("#provider-state").textContent,
+      /授权有效/,
+    );
+    assert.equal(
+      window.document.querySelector("#provider-authorize").disabled,
+      false,
+    );
+    assert.ok(calls.every((c) => !c.path.includes("fixture-secret")));
+    const brain = window.document.querySelector("#brain-account");
+    brain.elements.email.value = "brain@example.com";
+    brain.elements.password.value = "brain-secret";
+    brain.dispatchEvent(
+      new window.Event("submit", { bubbles: true, cancelable: true }),
+    );
+    assert.equal(brain.elements.password.value, "");
+    await tick();
+    assert.match(
+      window.document.querySelector("#brain-state").textContent,
+      /AppBrain授权有效/,
+    );
+    assert.ok(
+      calls.some(
+        (c) =>
+          c.path === "/api/data-sources/appbrain" &&
+          JSON.parse(c.options.body).email === "brain@example.com",
+      ),
+    );
   } finally {
     await window.happyDOM.close();
   }

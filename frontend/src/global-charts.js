@@ -1,3 +1,4 @@
+import { bindGlobalChartHover } from "./global-chart-hover.js";
 export function createGlobalCharts(ctx) {
   const {
     $,
@@ -238,11 +239,23 @@ export function createGlobalCharts(ctx) {
             ["compare", "按榜种横向对比"],
           ],
           filters.layout,
-        )}<div class="actions global-chart-actions"><button type="submit">查看各国榜单</button><button type="button" id="global-configure" class="secondary">配置所选范围采集</button></div></form><div id="global-plan-preview"></div><p class="callout">${esc(data.note)} 本页有效 ${data.fresh_boards} / ${data.requested_boards} 个榜单，已有观察 ${data.observed_boards} 个。</p><div class="toolbar"><button id="global-prev" class="secondary" ${offset ? "" : "disabled"}>上一组国家</button><span>第 ${offset + 1}–${Math.min(offset + (data.page_country_count ?? data.countries.length), data.total_countries)} 个 / 共 ${data.total_countries} 个国家；每页${data.page_size}个</span><button id="global-next" class="secondary" ${data.has_more ? "" : "disabled"}>下一组国家</button><a class="button secondary" href="#collection">查看采集进度</a></div>${filters.layout === "compare" ? comparisons : `<div class="global-board-grid">${cards}</div>`}`,
+        )}<div class="actions global-chart-actions"><button type="submit">查看各国榜单</button><button type="button" id="global-configure" class="secondary">配置所选范围采集</button></div></form><div id="global-plan-preview"></div><p class="callout">${esc(data.note)} 本页有效 ${data.fresh_boards} / ${data.requested_boards} 个榜单，已有观察 ${data.observed_boards} 个。</p><div class="toolbar"><button id="global-prev" class="secondary" ${offset ? "" : "disabled"}>上一组国家</button><span>第 ${offset + 1}–${Math.min(offset + (data.page_country_count ?? data.countries.length), data.total_countries)} 个 / 共 ${data.total_countries} 个国家；每页${data.page_size}个</span><button id="global-next" class="secondary" ${data.has_more ? "" : "disabled"}>下一组国家</button><a class="button secondary" href="#collection">查看采集进度</a></div><div id="global-rankings">${filters.layout === "compare" ? comparisons : `<div class="global-board-grid">${cards}</div>`}</div>`,
         rev,
       )
     )
       return;
+    bindGlobalChartHover({
+      root: $("#global-rankings"),
+      api,
+      esc,
+      scope: {
+        countries: data.selected_codes.join(","),
+        collections: filters.collections,
+        category: filters.category,
+        depth: filters.depth,
+        ...(at == null ? {} : { as_of: at }),
+      },
+    });
     const getFilters = () => {
       const form = $("#global-chart-form");
       const countries = [...selected],
