@@ -21,6 +21,8 @@ def main():
     parser.add_argument("--config", default="config.toml")
     sub = parser.add_subparsers(dest="command", required=True)
     configure_cli(sub)
+    accounts = sub.add_parser('accounts', help='Local operator account recovery')
+    accounts.add_argument('action', choices=['recover-admin'])
     web = sub.add_parser("web", help="Start the local observation console")
     web.add_argument("--host", default="127.0.0.1")
     web.add_argument("--port", type=int, default=8765)
@@ -68,6 +70,13 @@ def main():
         return 0
     db = connect(cfg)
     try:
+        if args.command == 'accounts':
+            from .account_recovery import run as recover_account
+            try:
+                recover_account(db)
+            except ValueError as exc:
+                parser.error(str(exc))
+            return 0
         if args.command == "console":
             from .console import run_once, worker
             if args.limit <= 0:

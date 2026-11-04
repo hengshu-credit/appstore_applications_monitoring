@@ -4,6 +4,207 @@ body.account-locked > :not(#login) {
 [data-nav][hidden] {
   display: none !important;
 }
+.account-dropdown {
+  position: relative;
+  flex: none;
+}
+#account-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 240px;
+  height: var(--control-height, 34px);
+  min-height: var(--control-height, 34px);
+  padding: 0 10px;
+}
+#account-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#account-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+#account-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 180px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px var(--shadow);
+  z-index: 80;
+  border-radius: 0;
+}
+#account-menu button,
+#account-menu #open-theme {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0 10px;
+  height: 36px;
+  min-height: 36px;
+}
+#account-menu .ui-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+}
+#account-menu button:hover,
+#account-menu button:focus-visible {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+#account-menu #logout-account {
+  border-top: 1px solid var(--line-soft);
+  margin-top: 4px;
+}
+.account-tabs {
+  display: flex;
+  gap: 24px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 20px;
+  overflow-x: auto;
+}
+.account-tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  width: auto;
+  flex: none;
+  border-radius: 0;
+  padding: 12px 0;
+  background: transparent;
+  color: var(--muted);
+}
+.account-tabs button[aria-selected="true"] {
+  border-bottom-color: var(--accent);
+  color: var(--accent-text);
+}
+.account-admin [role="tabpanel"][hidden],
+.account-dialog [role="tabpanel"][hidden],
+.account-dialog button[hidden] {
+  display: none !important;
+}
+.account-dialog {
+  width: min(860px, calc(100vw - 32px));
+  max-width: 860px;
+  max-height: 88dvh;
+  padding: 24px;
+  overflow: auto;
+  color: var(--ink);
+  background: var(--surface);
+  border-radius: 0;
+}
+.account-dialog .account-dialog-heading {
+  display: flex;
+  flex-direction: row;
+  position: static;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0 16px;
+  margin: 0;
+  gap: 16px;
+  border: 0;
+  background: transparent;
+}
+.account-dialog-heading h2 {
+  font-size: 18px;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.account-dialog-heading button {
+  width: auto;
+  flex: none;
+}
+.account-dialog .account-editor {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.account-dialog label {
+  margin: 14px 0;
+}
+.account-dialog [role="tabpanel"] > label {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.account-dialog [role="tabpanel"] > .auth-check {
+  flex-direction: row;
+  align-items: center;
+}
+.account-dialog [role="tabpanel"] > label > input:not([type="checkbox"]),
+.account-dialog select {
+  width: 100%;
+}
+.account-dialog .account-editor-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  padding: 18px 0 0;
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.account-editor-actions button {
+  width: auto;
+  min-width: 90px;
+}
+.permission-table {
+  max-height: 45dvh;
+  overflow: auto;
+  margin: 14px 0;
+}
+.permission-table th,
+.permission-table td {
+  text-align: left;
+}
+.permission-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--soft);
+  z-index: 1;
+}
+.permission-table input {
+  width: 16px;
+  height: 16px;
+}
+#role-editor > label {
+  max-width: 240px;
+}
+#role-editor > button {
+  margin-top: 16px;
+}
+#rotate-recovery-code {
+  width: auto;
+}
+@media (max-width: 600px) {
+  .account-dialog {
+    padding: 16px;
+  }
+  .account-tabs {
+    gap: 18px;
+  }
+  #account-trigger {
+    max-width: 180px;
+  }
+}
 .account-gate {
   padding: 0;
   border: 0;

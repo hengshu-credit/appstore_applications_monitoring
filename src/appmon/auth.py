@@ -19,14 +19,14 @@ RESOURCES = {
     'aso': 'ASO 工作台', 'compare': '竞品集合', 'reviews': '评论工作台',
     'market': '市场分布', 'developers': '开发者', 'collection': '采集中心',
     'ads': '广告观察', 'alerts': '告警与日报', 'exports': '数据导出',
+    'administration': '账户管理',
 }
 PERMISSIONS = {f'{resource}:{action}' for resource in RESOURCES for action in ('read', 'write')}
 DEFAULTS = {
     'user': ['overview:read', 'apps:read', 'charts:read', 'globalcharts:read', 'market:read'],
-    'member': [f'{resource}:read' for resource in RESOURCES if resource != 'collection'],
+    'member': [f'{resource}:read' for resource in RESOURCES if resource not in ('collection', 'administration')],
 }
 COOKIE = 'appmon_account'
-PUBLIC = {'/api/auth/config', '/api/auth/initialize', '/api/auth/register', '/api/auth/login', '/api/auth/recover'}
 
 
 def initialize(db):
@@ -91,6 +91,27 @@ def profile(db, row):
 def audit(db, actor, action, target=None):
     db.execute('INSERT INTO auth_audit(actor_id,target_id,action,created_at) VALUES(%s,%s,%s,%s)',
                (actor, target, action, time.time()))
+
+
+def recover_administrator(db, new_username, new_password):
+    """Local operator recovery only. Never expose this operation as an HTTP route."""
+    encoded = password_hash(new_password)
+    recovery = secrets.token_urlsafe(32)
+    with db:
+        row = db.execute("SELECT * FROM auth_users WHERE role='admin' FOR UPDATE").fetchone()
+        if not row:
+            raise ValueError('尚未创建超级管理员，请从首次启动页面注册')
+        name = username(new_username) if new_username else row['username']
+        try:
+            db.execute('UPDATE auth_users SET username=%s,password_hash=%s,recovery_hash=%s,enabled=1 WHERE id=%s',
+                       (name, encoded, digest(recovery), row['id']))
+        except pymysql.IntegrityError:
+            raise ValueError('该账号已被使用，请更换账号') from None
+        db.execute('DELETE FROM auth_sessions WHERE user_id=%s', (row['id'],))
+        for account in (row['username'], name):
+            db.execute('DELETE FROM auth_limits WHERE bucket=%s', (digest('account:' + account),))
+        audit(db, None, 'operator_recover_admin', row['id'])
+    return {'username': name, 'recovery_code': recovery}
 
 
 def throttle(db, request, identifier=''):
@@ -292,15 +313,37 @@ def router(database):
             audit(db, row['id'], 'profile', row['id'])
         return {'ok': True}
 
+    @api.post('/recovery-code')
+    def rotate_recovery(request: Request, value: dict = Body(...), row=Depends(actor), db=DB):
+        throttle(db, request, row['username'])
+        recovery = secrets.token_urlsafe(32)
+        with db:
+            fresh = db.execute('SELECT * FROM auth_users WHERE id=%s FOR UPDATE', (row['id'],)).fetchone()
+            if not password_matches(value.get('current_password'), fresh['password_hash']):
+                raise HTTPException(400, '当前密码不正确')
+            db.execute('UPDATE auth_users SET recovery_hash=%s WHERE id=%s', (digest(recovery), row['id']))
+            audit(db, row['id'], 'rotate_recovery_code', row['id'])
+        return {'username': row['username'], 'recovery_code': recovery}
+
     @api.get('/admin')
-    def management(q: str = Query('', max_length=64), offset: int = Query(0, ge=0), row=Depends(admin), db=DB):
-        users = db.execute('SELECT * FROM auth_users WHERE username LIKE %s ORDER BY id LIMIT 100 OFFSET %s', ('%' + q + '%', offset)).fetchall()
-        total = db.execute('SELECT count(*) n FROM auth_users WHERE username LIKE %s', ('%' + q + '%',)).fetchone()['n']
+    def management(q: str = Query('', max_length=64), offset: int = Query(0, ge=0), own: bool = False,
+                   row=Depends(actor), db=DB):
+        principal = profile(db, row)
+        is_admin = row['role'] == 'admin'
+        if not own and not is_admin and 'administration:read' not in principal['permissions']:
+            raise HTTPException(403, '没有账户管理查看权限')
+        scope = 'id=%s' if own else "1=1" if is_admin else "role!='admin'"
+        args = [row['id']] if own else []
+        scope += ' AND username LIKE %s'; args.append('%' + q + '%')
+        users = db.execute('SELECT * FROM auth_users WHERE ' + scope + ' ORDER BY id LIMIT 100 OFFSET %s', (*args, offset)).fetchall()
+        total = db.execute('SELECT count(*) n FROM auth_users WHERE ' + scope, args).fetchone()['n']
         items = []
         for user in users:
             override = db.execute('SELECT permissions FROM auth_overrides WHERE user_id=%s', (user['id'],)).fetchone()
             items.append(profile(db, user) | {'override': json.loads(override['permissions']) if override else None})
         return {'users': items, 'total': total, 'resources': RESOURCES,
+                'can_manage': is_admin or 'administration:write' in principal['permissions'],
+                'is_admin': is_admin, 'own': own,
                 'roles': {r['role']: json.loads(r['permissions']) for r in db.execute('SELECT * FROM auth_roles').fetchall()},
                 'registration_enabled': bool(db.execute('SELECT registration_enabled FROM auth_settings WHERE id=1').fetchone()['registration_enabled'])}
 
@@ -325,13 +368,26 @@ def router(database):
         return {'ok': True}
 
     @api.put('/admin/users/{identifier}')
-    def update_user(identifier: int, value: dict = Body(...), row=Depends(admin), db=DB):
+    def update_user(identifier: int, request: Request, value: dict = Body(...), row=Depends(actor), db=DB):
+        is_admin, own = row['role'] == 'admin', identifier == row['id']
+        if own:
+            forbidden = set(value) & {'role', 'enabled', 'member_until', 'permissions'}
+            if forbidden:
+                raise HTTPException(403, '不能修改自己的身份、状态或权限')
+            # All own credential edits use the same current-password validation.
+            return update_profile(request, value, row, db)
+        principal = profile(db, row)
+        if not is_admin and 'administration:write' not in principal['permissions']:
+            raise HTTPException(403, '没有账户管理操作权限')
         with db:
             target = db.execute('SELECT * FROM auth_users WHERE id=%s FOR UPDATE', (identifier,)).fetchone()
             if not target:
                 raise HTTPException(404, '账户不存在')
             if target['role'] == 'admin':
-                raise HTTPException(403, '超管账号请通过个人设置或恢复码修改，不可降级或停用')
+                raise HTTPException(403, '非超管不能修改超级管理员')
+            previous = profile(db, target)
+            if not is_admin and not set(previous['permissions']) <= set(principal['permissions']):
+                raise HTTPException(403, '不能管理权限高于自己的账户')
             role, enabled = value.get('role', target['role']), value.get('enabled', bool(target['enabled']))
             until = value.get('member_until', target['member_until'])
             if role not in DEFAULTS or type(enabled) is not bool or until is not None and (
@@ -349,7 +405,16 @@ def router(database):
                 else:
                     permissions = json.dumps(grants(value['permissions']))
                     db.execute('REPLACE INTO auth_overrides VALUES(%s,%s)', (identifier, permissions))
-            # Password resets rotate recovery credentials and revoke all sessions.
+            if not is_admin:
+                updated = db.execute('SELECT * FROM auth_users WHERE id=%s', (identifier,)).fetchone()
+                effective = set(profile(db, updated)['permissions'])
+                # Check both now and after membership expires; role inheritance
+                # must not become an indirect escalation when a member lapses.
+                future = set(profile(db, updated | {'member_until': 0})['permissions']) if role == 'member' else effective
+                if not (effective | future) <= set(principal['permissions']):
+                    raise HTTPException(403, '只能分配自己已拥有的权限')
+                if (effective | future) - set(previous['permissions']) & {'administration:read', 'administration:write'}:
+                    raise HTTPException(403, '只有超管可以授予账户管理权限')
             recovery = None
             if value.get('password'):
                 recovery = secrets.token_urlsafe(32)

@@ -136,7 +136,16 @@
             </div>
           </div>
           <div class="market-actions">
-            <button id="open-theme" class="secondary">主题设置</button>
+            <div class="account-dropdown">
+              <button id="account-trigger" class="secondary" aria-label="我的账户" aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu">
+                <span id="account-avatar" aria-hidden="true">U</span><span id="account-name">我的账户</span><span aria-hidden="true">⌄</span>
+              </button>
+              <div id="account-menu" role="menu" hidden>
+                <button id="account-settings" role="menuitem" type="button"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg><span>用户设置</span></button>
+                <button id="open-theme" role="menuitem" type="button">主题设置</button>
+                <button id="logout-account" role="menuitem" type="button"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v9M7 5a9 9 0 1 0 10 0"/></svg><span>退出登录</span></button>
+              </div>
+            </div>
           </div>
         </div>
       </header>

@@ -27,7 +27,7 @@ export function createAccounts({ esc, onReady, toast }) {
   function can(resource, action = "read") {
     if (!user) return false;
     if (resource === "account") return true;
-    if (resource === "administration") return user.role === "admin";
+
     if (resource === "target")
       return ["charts", "featured", "reviews", "collection"].some((r) =>
         can(r, action),
@@ -40,6 +40,10 @@ export function createAccounts({ esc, onReady, toast }) {
     );
   }
   function applyNavigation() {
+    const label = document.querySelector("#account-name");
+    if (label) label.textContent = user?.username || "我的账户";
+    const avatar = document.querySelector("#account-avatar");
+    if (avatar) avatar.textContent = (user?.username || "U")[0].toUpperCase();
     document.querySelectorAll("[data-nav]").forEach((a) => {
       a.hidden = !can(a.dataset.nav);
     });
@@ -49,12 +53,30 @@ export function createAccounts({ esc, onReady, toast }) {
       <p>账号：<strong>${esc(data.username || "")}</strong></p><p>忘记账号或密码时可使用此码找回。它仅在此处显示，请保存在安全位置，勿转发。</p>
       <textarea readonly aria-label="账户恢复码" rows="3">${esc(data.recovery_code)}</textarea>
       <label class="auth-check"><input type="checkbox" id="saved-code">我已安全保存恢复码</label>
-      <button id="code-done" disabled>继续</button></section>`;
+      <button id="download-code" type="button" class="secondary">下载恢复码</button><button id="code-done" disabled>继续</button></section>`;
     if (!dialog.open) dialog.showModal();
     dialog.querySelector("#saved-code").onchange = (e) => {
       dialog.querySelector("#code-done").disabled = !e.target.checked;
     };
-    dialog.querySelector("#code-done").onclick = done;
+    dialog.querySelector("#code-done").onclick = () => {
+      dialog.replaceChildren();
+      done();
+    };
+    dialog.querySelector("#download-code").onclick = () => {
+      const url = URL.createObjectURL(
+        new Blob(
+          [
+            `观星账户：${data.username}\n恢复码：${data.recovery_code}\n请安全保存，勿转发。`,
+          ],
+          { type: "text/plain;charset=utf-8" },
+        ),
+      );
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "观星账户恢复码.txt";
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
   }
   function field(
     label,
@@ -67,6 +89,7 @@ export function createAccounts({ esc, onReady, toast }) {
   }
   function show(modeValue = "login") {
     mode = config?.initialization_required ? "initialize" : modeValue;
+    document.querySelector("#account-editor-dialog")?.remove();
     user = null;
     csrf = "";
     document.body.classList.add("account-locked");
@@ -78,6 +101,7 @@ export function createAccounts({ esc, onReady, toast }) {
     };
     dialog.innerHTML = `<section class="auth-card"><p class="auth-eyebrow">衡枢 · 观星</p><h1>${titles[mode]}</h1>
       <p>${mode === "initialize" ? "首次启动，请创建系统唯一的超级管理员。完成后将关闭初始化入口。" : "星河璀璨，万象浮沉。登录后访问为你开放的观察资源。"}</p>
+      ${mode === "recover" ? "<p>恢复码可在登录后的账户管理 → 编辑账户 → 安全设置中重新生成。超管如已全部遗忘，请由服务器运维执行应急重置。</p>" : ""}
       <form id="account-entry">
       ${mode === "recover" ? field("恢复码", "recovery_code", "password", "off") : field("账号", "username", "text", "username")}
       ${field(mode === "recover" ? "新密码（10–128 位）" : mode === "login" ? "密码" : "密码（10–128 位）", "password", "password", mode === "login" ? "current-password" : "new-password")}
@@ -143,61 +167,146 @@ export function createAccounts({ esc, onReady, toast }) {
     accept(await request("/me"));
     applyNavigation();
   }
-  async function account(root) {
-    root.innerHTML = `<section class="panel account-panel"><h2>我的账户</h2><p>${esc(user.username)} · ${roleNames[user.effective_role]}${user.member_until ? " · 会员到期 " + new Date(user.member_until * 1000).toLocaleString() : ""}</p>
-      <p>修改账号或密码后需要重新登录；忘记凭据可在登录页使用恢复码。</p><form id="profile-form">
-      ${field("新账号", "username", "text", "username")}${field("当前密码", "current_password", "password", "current-password")}
-      ${field("新密码（留空则不修改）", "password", "password", "new-password", false)}
-      ${field("确认新密码", "confirm_password", "password", "new-password", false)}<button>保存并重新登录</button><p role="alert"></p></form>
-      <button id="logout-account" class="secondary">退出登录</button></section>`;
-    root.querySelector("[name=username]").value = user.username;
-    root.querySelector("form").onsubmit = async (event) => {
-      event.preventDefault();
-      const form = event.target,
-        value = Object.fromEntries(new FormData(form));
-      const button = form.querySelector("button");
-      button.disabled = true;
-      try {
-        if (value.password !== value.confirm_password)
-          throw Error("两次输入的密码不一致");
-        await request("/profile", value, "PUT");
-        form.reset();
-        root.replaceChildren();
-        show();
-      } catch (error) {
-        form.querySelector("[role=alert]").textContent = error.message;
-      } finally {
-        button.disabled = false;
-      }
+  function closeMenu(focus = false) {
+    const menu = document.querySelector("#account-menu");
+    if (menu) menu.hidden = true;
+    document
+      .querySelector("#account-trigger")
+      ?.setAttribute("aria-expanded", "false");
+    if (focus) document.querySelector("#account-trigger")?.focus();
+  }
+  const trigger = document.querySelector("#account-trigger");
+  trigger?.addEventListener("click", () => {
+    const menu = document.querySelector("#account-menu");
+    menu.hidden = !menu.hidden;
+    trigger.setAttribute("aria-expanded", String(!menu.hidden));
+    if (!menu.hidden) menu.querySelector("[role=menuitem]")?.focus();
+  });
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".account-dropdown")) closeMenu();
+  });
+  document.querySelector("#account-menu")?.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeMenu(true);
+    }
+    if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
+      e.preventDefault();
+      const items = [
+        ...document.querySelectorAll("#account-menu [role=menuitem]"),
+      ];
+      const i = items.indexOf(document.activeElement);
+      items[
+        e.key === "Home"
+          ? 0
+          : e.key === "End"
+            ? items.length - 1
+            : (i + (e.key === "ArrowDown" ? 1 : -1) + items.length) %
+              items.length
+      ]?.focus();
+    }
+  });
+  document.querySelector("#account-settings")?.addEventListener("click", () => {
+    closeMenu();
+    if (location.hash === "#administration?own=1") onReady();
+    else location.hash = "administration?own=1";
+  });
+  document
+    .querySelector("#open-theme")
+    ?.addEventListener("click", () => closeMenu());
+  async function logout() {
+    try {
+      await request("/logout", {});
+      document.querySelector("#content")?.replaceChildren();
+      closeMenu();
+      show();
+    } catch (error) {
+      toast(error.message);
+    }
+  }
+  document.querySelector("#logout-account")?.addEventListener("click", logout);
+
+  function tabs(items, active, prefix) {
+    return `<div class="account-tabs" role="tablist">${items.map(([key, label]) => `<button type="button" role="tab" id="${prefix}-tab-${key}" aria-controls="${prefix}-panel-${key}" aria-selected="${key === active}" tabindex="${key === active ? 0 : -1}" data-tab="${key}">${label}</button>`).join("")}</div>`;
+  }
+  function bindTabs(root, change) {
+    const bar = root.querySelector(".account-tabs");
+    const choose = (button) => {
+      bar.querySelectorAll("[role=tab]").forEach((b) => {
+        b.setAttribute("aria-selected", String(b === button));
+        b.tabIndex = b === button ? 0 : -1;
+      });
+      change(button.dataset.tab);
     };
-    root.querySelector("#logout-account").onclick = async () => {
-      try {
-        await request("/logout", {});
-        root.replaceChildren();
-        show();
-      } catch (error) {
-        toast(error.message);
-      }
+    bar
+      .querySelectorAll("[role=tab]")
+      .forEach((b) => (b.onclick = () => choose(b)));
+    bar.onkeydown = (e) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+      e.preventDefault();
+      const buttons = [...bar.querySelectorAll("[role=tab]")],
+        i = buttons.indexOf(document.activeElement);
+      const b =
+        buttons[
+          e.key === "Home"
+            ? 0
+            : e.key === "End"
+              ? buttons.length - 1
+              : (i + (e.key === "ArrowRight" ? 1 : -1) + buttons.length) %
+                buttons.length
+        ];
+      choose(b);
+      b.focus();
     };
   }
   function permissionFields(resources, selected) {
-    return `<div class="permission-grid">${Object.entries(resources)
+    return `<div class="table-wrap permission-table"><table><thead><tr><th>页面 / 功能</th><th>访问</th><th>操作</th></tr></thead><tbody>${Object.entries(
+      resources,
+    )
       .map(
         ([key, label]) =>
-          `<fieldset><legend>${esc(label)}</legend>${["read", "write"].map((action) => `<label class="auth-check"><input type="checkbox" name="permissions" value="${key}:${action}" ${selected.includes(`${key}:${action}`) ? "checked" : ""}>${action === "read" ? "查看" : "操作"}</label>`).join("")}</fieldset>`,
+          `<tr><th scope="row">${esc(label)}</th>${["read", "write"].map((action) => `<td><input type="checkbox" name="permissions" aria-label="${esc(label)}${action === "read" ? "访问" : "操作"}" value="${key}:${action}" ${selected.includes(`${key}:${action}`) ? "checked" : ""}></td>`).join("")}</tr>`,
       )
-      .join("")}</div>`;
+      .join("")}</tbody></table></div>`;
+  }
+  function syncPermissionChecks(root) {
+    root.querySelectorAll("[name=permissions]").forEach((input) =>
+      input.addEventListener("change", () => {
+        const [resource, action] = input.value.split(":");
+        if (action === "write" && input.checked)
+          root.querySelector(`[value="${resource}:read"]`).checked = true;
+        if (action === "read" && !input.checked)
+          root.querySelector(`[value="${resource}:write"]`).checked = false;
+      }),
+    );
   }
   async function management(root, q = "", offset = 0) {
+    root.textContent = "正在加载账户…";
+    const own =
+      new URLSearchParams(location.hash.split("?")[1] || "").get("own") === "1";
     const data = await request(
-      "/admin?q=" + encodeURIComponent(q) + "&offset=" + offset,
+      "/admin?" + new URLSearchParams({ q, offset, own }),
     );
-    root.innerHTML = `<section class="panel account-admin"><h2>账户与权限</h2><p>注册用户默认为普通用户。会员到期后自动使用普通用户权限；单独配置的用户权限持续有效。操作权限自动包含查看权限。</p>
-      <label class="auth-check"><input id="registration-enabled" type="checkbox" ${data.registration_enabled ? "checked" : ""}>允许外部用户注册</label>
-      <h3>默认角色权限</h3><div class="auth-actions"><button data-role="user" class="secondary">配置普通用户</button><button data-role="member" class="secondary">配置会员</button><button id="show-auth-audit" class="secondary">安全操作记录</button></div>
-      <form id="user-search" class="auth-actions"><input name="q" aria-label="搜索账号" placeholder="搜索账号" value="${esc(q)}"><button>搜索</button></form>
-      <div class="table-wrap"><table><thead><tr><th>账号</th><th>类型</th><th>状态</th><th>会员到期</th><th>权限来源</th><th>管理</th></tr></thead><tbody>${data.users.map((u) => `<tr><td>${esc(u.username)}</td><td>${roleNames[u.effective_role]}</td><td>${u.enabled ? "启用" : "停用"}</td><td>${u.member_until ? new Date(u.member_until * 1000).toLocaleString() : "—"}</td><td>${u.override === null ? "角色默认" : "单独配置"}</td><td>${u.role !== "admin" ? `<button data-user="${u.id}" class="secondary">编辑</button>` : "个人账户中修改"}</td></tr>`).join("")}</tbody></table></div>
-      <div class="auth-actions"><button id="users-prev" ${offset ? "" : "disabled"} class="secondary">上一页</button><span>共 ${data.total} 个账户</span><button id="users-next" ${offset + 100 < data.total ? "" : "disabled"} class="secondary">下一页</button></div><div id="account-editor"></div></section>`;
+    const isAdmin = user.role === "admin",
+      canManage = isAdmin || user.permissions.includes("administration:write");
+    root.innerHTML = `<section class="panel account-admin">${tabs(
+      [
+        ["users", "账户管理"],
+        ...(isAdmin
+          ? [
+              ["roles", "角色权限"],
+              ["audit", "操作日志"],
+            ]
+          : []),
+      ],
+      "users",
+      "accounts",
+    )}
+      <div id="accounts-panel-users" role="tabpanel" aria-labelledby="accounts-tab-users">
+      <form id="user-search" class="auth-actions"><input name="q" aria-label="搜索账号" placeholder="搜索账号" value="${esc(q)}"><button>搜索</button>${own && can("administration") ? '<a href="#administration">查看全部账户</a>' : ""}</form>
+      <div class="table-wrap"><table><thead><tr><th>账号</th><th>类型</th><th>状态</th><th>会员到期</th><th>权限来源</th><th>操作</th></tr></thead><tbody>${data.users.map((u) => `<tr><td>${esc(u.username)}${u.id === user.id ? ' <span class="sub">（当前账户）</span>' : ""}</td><td>${roleNames[u.effective_role]}</td><td>${u.enabled ? "启用" : "停用"}</td><td>${u.member_until ? new Date(u.member_until * 1000).toLocaleString() : "—"}</td><td>${u.role === "admin" ? "全部权限" : u.override === null ? "角色默认" : "单独配置"}</td><td>${u.id === user.id || canManage ? `<button data-user="${u.id}" class="secondary">编辑</button>` : "仅查看"}</td></tr>`).join("")}</tbody></table></div>
+      <div class="auth-actions"><button id="users-prev" ${offset ? "" : "disabled"} class="secondary">上一页</button><span>共 ${data.total} 个账户</span><button id="users-next" ${offset + 100 < data.total ? "" : "disabled"} class="secondary">下一页</button></div></div>
+      ${isAdmin ? '<div id="accounts-panel-roles" role="tabpanel" aria-labelledby="accounts-tab-roles" hidden></div><div id="accounts-panel-audit" role="tabpanel" aria-labelledby="accounts-tab-audit" hidden></div>' : ""}</section>`;
     const reload = () => management(root, q, offset);
     root.querySelector("#users-prev").onclick = () =>
       management(root, q, Math.max(0, offset - 100)).catch((e) =>
@@ -207,114 +316,229 @@ export function createAccounts({ esc, onReady, toast }) {
       management(root, q, offset + 100).catch((e) => toast(e.message));
     root.querySelector("#user-search").onsubmit = (e) => {
       e.preventDefault();
-      management(root, new FormData(e.target).get("q")).catch((error) =>
-        toast(error.message),
+      management(root, new FormData(e.target).get("q")).catch((e) =>
+        toast(e.message),
       );
     };
-    root.querySelector("#registration-enabled").onchange = async (e) => {
-      try {
-        await request(
-          "/admin/settings",
-          { registration_enabled: e.target.checked },
-          "PUT",
+    bindTabs(root, (tab) => {
+      root.querySelectorAll("[role=tabpanel]").forEach((p) => {
+        p.hidden = p.id !== `accounts-panel-${tab}`;
+      });
+      if (tab === "roles") renderRoles();
+      if (tab === "audit") renderAudit().catch((e) => toast(e.message));
+    });
+    async function renderAudit() {
+      const target = root.querySelector("#accounts-panel-audit");
+      target.textContent = "正在加载…";
+      const rows = await request("/admin/audit");
+      const labels = {
+        initialize: "初始化超管",
+        register: "注册",
+        login: "登录",
+        profile: "修改账密",
+        recover: "恢复账户",
+        rotate_recovery_code: "更新恢复码",
+        operator_recover_admin: "服务器应急重置",
+        update_user: "编辑账户",
+        role_user: "普通用户权限",
+        role_member: "会员权限",
+        registration_settings: "注册设置",
+      };
+      target.innerHTML = `<p class="sub">最近 200 条安全操作</p><div class="table-wrap"><table><thead><tr><th>时间</th><th>操作人</th><th>动作</th><th>目标</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${new Date(r.created_at * 1000).toLocaleString()}</td><td>${esc(r.actor || "服务器运维")}</td><td>${esc(labels[r.action] || r.action)}</td><td>${esc(r.target || "—")}</td></tr>`).join("")}</tbody></table></div>`;
+    }
+    function renderRoles() {
+      const target = root.querySelector("#accounts-panel-roles");
+      target.innerHTML = `<div class="auth-actions"><label class="auth-check"><input id="registration-enabled" type="checkbox" ${data.registration_enabled ? "checked" : ""}>允许外部用户注册</label></div><form id="role-editor"><label>默认角色<select name="role"><option value="user">普通用户</option><option value="member">会员</option></select></label><p class="sub">操作权限包含访问权限。会员到期后按普通用户权限处理，单独配置的账户权限优先。</p><div id="role-permissions"></div><button>保存角色权限</button><p role="alert"></p></form>`;
+      const form = target.querySelector("form");
+      const sync = () => {
+        target.querySelector("#role-permissions").innerHTML = permissionFields(
+          data.resources,
+          data.roles[form.elements.role.value],
         );
-        toast("注册设置已保存");
-      } catch (error) {
-        e.target.checked = !e.target.checked;
-        toast(error.message);
-      }
-    };
-    root.querySelector("#show-auth-audit").onclick = async () => {
-      try {
-        const rows = await request("/admin/audit");
-        root.querySelector("#account-editor").innerHTML =
-          `<h3>最近 200 条安全操作</h3><div class="table-wrap"><table><thead><tr><th>时间</th><th>操作人</th><th>动作</th><th>目标</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${new Date(r.created_at * 1000).toLocaleString()}</td><td>${esc(r.actor || "—")}</td><td>${esc(r.action)}</td><td>${esc(r.target || "—")}</td></tr>`).join("")}</tbody></table></div>`;
-      } catch (error) {
-        toast(error.message);
-      }
-    };
-    function edit(role, target) {
-      const editor = root.querySelector("#account-editor");
-      editor.innerHTML = `<form class="account-editor"><h3>${target ? "编辑账户 · " + esc(target.username) : "配置" + roleNames[role]}</h3>
-        ${
-          target
-            ? `${field("账号", "username", "text", "off")}<label>账户类型<select name="role"><option value="user">普通用户</option><option value="member">会员</option></select></label>
-        <label>会员到期（留空为长期）<input type="datetime-local" name="member_until"></label><label class="auth-check"><input type="checkbox" name="enabled" ${target.enabled ? "checked" : ""}>启用账户</label>
-        ${field("重置密码（留空则不修改）", "password", "password", "new-password", false)}
-        <label class="auth-check"><input type="checkbox" name="inherit" ${target.override === null ? "checked" : ""}>使用角色默认权限（取消后可单独配置）</label>`
-            : ""
-        }
-        <div class="permission-fields">${permissionFields(data.resources, target ? target.override || target.permissions : data.roles[role])}</div><button>保存设置</button><p role="alert"></p></form>`;
-      const form = editor.querySelector("form");
-      if (target) {
-        form.elements.username.value = target.username;
-        form.elements.role.value = target.role;
-        if (target.member_until) {
-          const d = new Date(target.member_until * 1000);
-          d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-          form.elements.member_until.value = d.toISOString().slice(0, 16);
-        }
-        const sync = () =>
-          form.querySelectorAll("[name=permissions]").forEach((el) => {
-            el.disabled = form.elements.inherit.checked;
-          });
-        form.elements.inherit.onchange = sync;
-        sync();
-      }
-      form.onsubmit = async (event) => {
-        event.preventDefault();
-        const values = new FormData(form),
-          button = form.querySelector("button");
-        button.disabled = true;
+        syncPermissionChecks(form);
+      };
+      sync();
+      form.elements.role.onchange = sync;
+      target.querySelector("#registration-enabled").onchange = async (e) => {
         try {
-          const payload = { permissions: values.getAll("permissions") };
-          if (target)
-            Object.assign(payload, {
-              username: values.get("username"),
-              role: values.get("role"),
-              enabled: values.has("enabled"),
-              member_until: values.get("member_until")
-                ? new Date(values.get("member_until")).getTime() / 1000
-                : null,
-              password: values.get("password"),
-              permissions: values.has("inherit") ? null : payload.permissions,
-            });
-          const result = await request(
-            target ? "/admin/users/" + target.id : "/admin/roles/" + role,
-            payload,
+          await request(
+            "/admin/settings",
+            { registration_enabled: e.target.checked },
             "PUT",
           );
-          if (result.recovery_code)
-            showCode({ ...result, username: payload.username }, () =>
-              dialog.close(),
-            );
-          toast("设置已保存");
-          await reload();
+          data.registration_enabled = e.target.checked;
+          toast("注册设置已保存");
+        } catch (error) {
+          e.target.checked = !e.target.checked;
+          toast(error.message);
+        }
+      };
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const button = form.querySelector("button");
+        button.disabled = true;
+        try {
+          const value = {
+            permissions: new FormData(form).getAll("permissions"),
+          };
+          await request(
+            "/admin/roles/" + form.elements.role.value,
+            value,
+            "PUT",
+          );
+          data.roles[form.elements.role.value] = value.permissions;
+          toast("角色权限已保存");
         } catch (error) {
           form.querySelector("[role=alert]").textContent = error.message;
         } finally {
           button.disabled = false;
         }
       };
-      editor.scrollIntoView({ block: "nearest" });
     }
-    root.querySelectorAll("[data-role]").forEach((b) => {
-      b.onclick = () => edit(b.dataset.role);
-    });
-    root.querySelectorAll("[data-user]").forEach((b) => {
-      b.onclick = () =>
-        edit(
-          null,
-          data.users.find((u) => u.id === Number(b.dataset.user)),
-        );
-    });
+    function edit(target) {
+      document.querySelector("#account-editor-dialog")?.remove();
+      const ownAccount = target.id === user.id,
+        editablePermissions = !ownAccount && target.role !== "admin";
+      const modal = document.createElement("dialog");
+      modal.id = "account-editor-dialog";
+      modal.className = "account-dialog";
+      modal.setAttribute("aria-labelledby", "account-editor-title");
+      modal.innerHTML = `<header class="account-dialog-heading"><h2 id="account-editor-title">编辑账户 · ${esc(target.username)}</h2><button type="button" id="close-account-editor" class="secondary" aria-label="关闭编辑账户">关闭</button></header>
+      ${tabs([["details", "基本信息"], ["permissions", "页面权限"], ...(ownAccount ? [["security", "安全设置"]] : [])], "details", "edit-account")}
+      <form class="account-editor"><div id="edit-account-panel-details" role="tabpanel" aria-labelledby="edit-account-tab-details">
+      ${field("账号", "username", "text", "username")}
+      ${ownAccount ? field("当前密码", "current_password", "password", "current-password", false) : `<label>账户类型<select name="role"><option value="user">普通用户</option><option value="member">会员</option></select></label><label>会员到期（留空为长期）<input type="datetime-local" name="member_until"></label><label class="auth-check"><input type="checkbox" name="enabled" ${target.enabled ? "checked" : ""}>启用账户</label>`}
+      ${field("新密码（留空则不修改）", "password", "password", "new-password", false)}${field("确认新密码", "confirm_password", "password", "new-password", false)}</div>
+      <div id="edit-account-panel-permissions" role="tabpanel" aria-labelledby="edit-account-tab-permissions" hidden>
+      <p class="sub">${ownAccount ? "自己的身份与权限由超管配置。" : isAdmin ? "单独配置优先于角色权限。" : "只能分配自己已有的权限，账户管理授权由超管配置。"}</p>
+      ${editablePermissions ? `<label class="auth-check"><input type="checkbox" name="inherit" ${target.override === null ? "checked" : ""}>继承角色默认权限</label>` : ""}
+      ${permissionFields(data.resources, target.override || target.permissions)}</div>
+      ${ownAccount ? `<div id="edit-account-panel-security" role="tabpanel" aria-labelledby="edit-account-tab-security" hidden><h3>账户恢复码</h3><p>旧恢复码无法再次读取。验证当前密码后可生成新码并下载保存，旧码立即失效。</p>${field("验证当前密码", "recovery_password", "password", "current-password", false)}<button type="button" id="rotate-recovery-code">重新生成恢复码</button>${isAdmin ? '<p class="sub">如果账号、密码及恢复码全部遗失，可由有服务器权限的运维人员执行应急重置，无需旧凭据。</p>' : ""}</div>` : ""}
+      <p role="alert"></p><footer class="account-editor-actions"><button type="submit" id="save-account">保存设置</button><button type="button" id="cancel-account-editor" class="secondary">取消</button></footer></form>`;
+      document.body.append(modal);
+      const form = modal.querySelector("form");
+      form.elements.username.value = target.username;
+      if (!ownAccount) {
+        form.elements.role.value = target.role;
+        if (target.member_until) {
+          const d = new Date(target.member_until * 1000);
+          d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+          form.elements.member_until.value = d.toISOString().slice(0, 16);
+        }
+      }
+      const close = () => {
+        modal.close();
+        modal.remove();
+      };
+      modal.querySelector("#close-account-editor").onclick = close;
+      modal.querySelector("#cancel-account-editor").onclick = close;
+      modal.addEventListener("close", () => modal.remove());
+      bindTabs(modal, (tab) => {
+        modal.querySelectorAll("[role=tabpanel]").forEach((p) => {
+          p.hidden = p.id !== `edit-account-panel-${tab}`;
+        });
+        modal.querySelector("#save-account").hidden =
+          tab === "security" || (ownAccount && tab === "permissions");
+      });
+      const sync = () =>
+        form.querySelectorAll("[name=permissions]").forEach((el) => {
+          el.disabled =
+            !editablePermissions ||
+            form.elements.inherit?.checked ||
+            (!isAdmin &&
+              (!user.permissions.includes(el.value) ||
+                el.value.startsWith("administration:")));
+        });
+      if (form.elements.inherit) form.elements.inherit.onchange = sync;
+      sync();
+      syncPermissionChecks(form);
+      modal
+        .querySelector("#rotate-recovery-code")
+        ?.addEventListener("click", async (e) => {
+          e.target.disabled = true;
+          try {
+            const result = await request("/recovery-code", {
+              current_password: form.elements.recovery_password.value,
+            });
+            form.elements.recovery_password.value = "";
+            close();
+            showCode(result, () => dialog.close());
+          } catch (error) {
+            form.querySelector("[role=alert]").textContent = error.message;
+          } finally {
+            e.target.disabled = false;
+          }
+        });
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const button = modal.querySelector("#save-account");
+        button.disabled = true;
+        try {
+          const values = new FormData(form);
+          if (values.get("password") !== values.get("confirm_password"))
+            throw Error("两次输入的密码不一致");
+          const payload = {
+            username: values.get("username"),
+            password: values.get("password"),
+          };
+          if (ownAccount)
+            payload.current_password = values.get("current_password");
+          else
+            Object.assign(payload, {
+              role: values.get("role"),
+              member_until: values.get("member_until")
+                ? new Date(values.get("member_until")).getTime() / 1000
+                : null,
+              enabled: values.has("enabled"),
+              permissions: values.has("inherit")
+                ? null
+                : [...form.querySelectorAll("[name=permissions]:checked")].map(
+                    (el) => el.value,
+                  ),
+            });
+          const result = await request(
+            "/admin/users/" + target.id,
+            payload,
+            "PUT",
+          );
+          form.reset();
+          if (ownAccount) {
+            close();
+            root.replaceChildren();
+            show();
+            return;
+          }
+          toast("账户设置已保存");
+          await reload().catch((error) =>
+            toast("账户已保存，列表刷新失败：" + error.message),
+          );
+          close();
+          if (result.recovery_code)
+            showCode({ ...result, username: payload.username }, () =>
+              dialog.close(),
+            );
+        } catch (error) {
+          form.querySelector("[role=alert]").textContent = error.message;
+        } finally {
+          button.disabled = false;
+        }
+      };
+      modal.showModal();
+    }
+    root
+      .querySelectorAll("[data-user]")
+      .forEach(
+        (b) =>
+          (b.onclick = () =>
+            edit(data.users.find((u) => u.id === Number(b.dataset.user)))),
+      );
   }
   return {
     start,
     refresh,
     can,
     show,
-    account,
+    logout,
     management,
     get user() {
       return user;

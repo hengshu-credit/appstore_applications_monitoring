@@ -317,8 +317,15 @@ test("navigation queries the API and escapes upstream application content", asyn
     );
     assert.equal(window.document.querySelector("img[onerror]"), null);
     assert.ok(calls.some((c) => c.path.startsWith("/api/apps?")));
-    assert.equal(window.document.querySelectorAll("nav a").length, 20);
-    assert.equal(window.document.querySelectorAll("nav a .ui-icon").length, 20);
+    assert.equal(window.document.querySelectorAll("nav a").length, 19);
+    assert.equal(window.document.querySelectorAll("nav a .ui-icon").length, 19);
+    assert.equal(window.document.querySelector('[data-nav="account"]'), null);
+    assert.equal(window.document.querySelectorAll('#account-menu [role="menuitem"] svg').length, 3);
+    window.document.querySelector('#account-trigger').click();
+    assert.equal(window.document.querySelector('#account-menu').hidden, false);
+    window.document.querySelector('#account-menu').dispatchEvent(new window.KeyboardEvent('keydown', {key:'Escape',bubbles:true}));
+    assert.equal(window.document.querySelector('#account-menu').hidden, true);
+    assert.equal(window.document.activeElement.id, 'account-trigger');
     assert.ok(window.document.querySelector('a[href="#availability"]'));
   } finally {
     await window.happyDOM.close();

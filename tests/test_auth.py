@@ -139,6 +139,65 @@ class AccountTest(MySQLTestCase):
         self.assertEqual(admin.put('/api/auth/admin/roles/user', json={'permissions':['admin']}).status_code, 400)
         self.assertEqual(admin.put('/api/auth/admin/roles/admin', json={'permissions':[]}).status_code, 400)
 
+    def test_delegated_account_management_cannot_cross_admin_or_grant_boundary(self):
+        admin = self.login_admin(self.client()); manager = self.client(); other = self.client()
+        self.register(manager, 'manager'); principal = self.login(manager, 'manager')
+        self.register(other, 'other-user'); target = self.login(other, 'other-user')
+        path = f"/api/auth/admin/users/{target['id']}"
+        self.assertEqual(manager.put(path, json={'username':'edited-user'}).status_code, 403)
+        base = auth.DEFAULTS['user']
+        admin.put(f"/api/auth/admin/users/{principal['id']}", json={'permissions':base+['administration:read']})
+        self.login(manager, 'manager')
+        rows = manager.get('/api/auth/admin').json()['users']
+        self.assertTrue(all(u['role'] != 'admin' for u in rows))
+        self.assertEqual(manager.put(path, json={'username':'edited-user'}).status_code, 403)
+        admin.put(f"/api/auth/admin/users/{principal['id']}", json={'permissions':base+['administration:write']})
+        self.login(manager, 'manager')
+        self.assertEqual(manager.put(path, json={'username':'edited-user'}).status_code, 200)
+        admin_id = admin.get('/api/auth/me').json()['user']['id']
+        self.assertEqual(manager.put(f'/api/auth/admin/users/{admin_id}', json={'password':'malicious-reset'}).status_code, 403)
+        for payload in ({'permissions':['exports:write']}, {'permissions':['administration:write']}, {'role':'admin'}, {'role':'member'}):
+            self.assertIn(manager.put(path,json=payload).status_code, (400,403))
+        self.assertEqual(manager.put(f"/api/auth/admin/users/{principal['id']}", json={'permissions':list(auth.PERMISSIONS)}).status_code,403)
+        self.assertEqual(manager.put('/api/auth/admin/roles/user', json={'permissions':[]}).status_code,403)
+        self.assertEqual(manager.get('/api/auth/admin/audit').status_code,403)
+        unchanged = self.db.execute('SELECT * FROM auth_users WHERE id=%s',(target['id'],)).fetchone()
+        self.assertEqual(unchanged['role'],'user')
+        self.assertEqual(manager.put(path,json={'permissions':['apps:read']}).status_code,200)
+
+    def test_own_editor_superadmin_update_and_recovery_rotation(self):
+        admin = self.login_admin(self.client())
+        identifier = admin.get('/api/auth/me').json()['user']['id']
+        self.assertEqual(admin.post('/api/auth/recovery-code',json={'current_password':'wrong'}).status_code,400)
+        result = admin.post('/api/auth/recovery-code',json={'current_password':'test-password-1234'})
+        self.assertEqual(result.status_code,200)
+        code = result.json()['recovery_code']
+        rotated = admin.post('/api/auth/recovery-code',json={'current_password':'test-password-1234'}).json()['recovery_code']
+        self.assertNotEqual(code,rotated)
+        self.assertEqual(self.client().post('/api/auth/recover',json={'recovery_code':code,'password':'new-password-123'}).status_code,400)
+        self.assertEqual(admin.put(f'/api/auth/admin/users/{identifier}',json={'current_password':'test-password-1234','username':'new-admin','password':'new-password-123'}).status_code,200)
+        self.assertEqual(admin.get('/api/auth/me').status_code,401)
+        self.login(admin,'new-admin','new-password-123')
+        user = self.client(); self.register(user); info = self.login(user)
+        self.assertEqual(user.get('/api/auth/admin').status_code,403)
+        self.assertEqual([u['id'] for u in user.get('/api/auth/admin?own=true').json()['users']],[info['id']])
+
+    def test_operator_recovery_without_credentials_revokes_old_secrets(self):
+        import io
+        from appmon.account_recovery import run
+        admin = self.login_admin(self.client())
+        previous = admin.post('/api/auth/recovery-code',json={'current_password':'test-password-1234'}).json()['recovery_code']
+        with patch('appmon.account_recovery.sys.stdin.isatty',return_value=False):
+            with self.assertRaisesRegex(ValueError,'交互式终端'):run(self.db)
+        output = io.StringIO()
+        with patch('appmon.account_recovery.sys.stdin.isatty',return_value=True), patch('appmon.account_recovery.sys.stdout',output), patch.object(output,'isatty',return_value=True), patch('builtins.input',side_effect=['RESET','recovered-admin']), patch('appmon.account_recovery.getpass.getpass',side_effect=['new-secret-password','new-secret-password']):
+            run(self.db)
+        self.assertNotIn('new-secret-password',output.getvalue())
+        self.assertEqual(admin.get('/api/auth/me').status_code,401)
+        self.assertEqual(self.client().post('/api/auth/recover',json={'recovery_code':previous,'password':'new-password-123'}).status_code,400)
+        self.login(admin,'recovered-admin','new-secret-password')
+        self.assertEqual(self.db.execute("SELECT count(*) n FROM auth_audit WHERE action='operator_recover_admin'").fetchone()['n'],1)
+
     def test_throttle_is_shared_between_instances_and_expired_sessions_fail(self):
         self.login_admin(self.client())
         clients = [self.client(), self.client()]

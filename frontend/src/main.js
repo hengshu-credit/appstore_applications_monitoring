@@ -136,8 +136,7 @@ const nav = [
   ["ads", "◇", "广告观察"],
   ["alerts", "◉", "告警与日报"],
   ["exports", "↓", "数据导出"],
-  ["account", "◎", "我的账户"],
-  ["administration", "◎", "账户与权限"],
+  ["administration", "◎", "账户管理"],
 ];
 $("#navigation").innerHTML = nav
   .map(
@@ -1461,23 +1460,25 @@ async function render() {
   if (!accounts.user) return;
   try { await accounts.refresh(); } catch { accounts.show(); return; }
   const resource = routeResource((location.hash.slice(1) || "overview").split("?")[0]);
+  if (resource === 'account') { location.hash = 'administration?own=1'; return; }
   clearTimeout(appProgressTimer);
   $("#task-logs")?.close();
   $("#collection-editor")?.remove();
   $("#research-dialog")?.close();
   document.querySelectorAll('[data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === resource));
-  if (!accounts.can(resource)) {
+  const ownAccount = resource === 'administration' && new URLSearchParams(location.hash.split('?')[1] || '').get('own') === '1';
+  if (!accounts.can(resource) && !ownAccount) {
     ++revision;
     $("#page-title").textContent = '暂无访问权限';
-    $("#content").innerHTML = '<div class="empty"><h2>暂无访问权限</h2><p>请联系管理员开通此功能，或从左侧选择已授权页面。</p><a href="#account">我的账户</a></div>';
+    $("#content").innerHTML = '<div class="empty"><h2>暂无访问权限</h2><p>请联系管理员开通此功能，或从左侧选择已授权页面。</p><a href="#administration?own=1">用户设置</a></div>';
     return;
   }
-  if (resource === 'account' || resource === 'administration') {
+  if (resource === 'administration') {
     ++revision;
-    $("#page-title").textContent = resource === 'account' ? '我的账户' : '账户与权限';
+    $("#page-title").textContent = '账户管理';
     const accountRoot = document.createElement('div');
     $("#content").replaceChildren(accountRoot);
-    try { await accounts[resource === 'account' ? 'account' : 'management'](accountRoot); }
+    try { await accounts.management(accountRoot); }
     catch (error) { toast(error.message); }
     return;
   }

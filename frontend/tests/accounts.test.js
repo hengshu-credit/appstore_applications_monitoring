@@ -12,7 +12,7 @@ const tick = async () => {
 function setup(responder) {
   const window = new Window({ url: "http://localhost/" });
   window.document.write(
-    '<nav><a data-nav="apps"></a><a data-nav="keywords"></a><a data-nav="administration"></a><a data-nav="account"></a></nav><main></main><dialog id="login"></dialog>',
+    '<nav><a data-nav="apps"></a><a data-nav="keywords"></a><a data-nav="administration"></a><a data-nav="account"></a></nav><header><div class="account-dropdown"><button id="account-trigger"><span id="account-name"></span><span id="account-avatar"></span></button><div id="account-menu" hidden><button id="account-settings" role="menuitem">用户设置</button><button id="open-theme" role="menuitem">主题设置</button><button id="logout-account" role="menuitem">退出登录</button></div></div></header><main></main><dialog id="login"></dialog>',
   );
   const calls = [];
   window.fetch = async (url, options = {}) => {
@@ -101,7 +101,16 @@ test("ordinary users see allowed navigation only and account changes require cur
         data: { initialization_required: false, registration_enabled: true },
       };
     if (url.endsWith("/me")) return { data: { user, csrf_token: "csrf-test" } };
-    if (url.endsWith("/profile")) return { data: { ok: true } };
+    if (url.includes("/admin?"))
+      return {
+        data: {
+          users: [{ ...user, enabled: true, override: null }],
+          total: 1,
+          resources: { apps: "应用库" },
+          roles: { user: ["apps:read"], member: [] },
+        },
+      };
+    if (url.endsWith("/admin/users/2")) return { data: { ok: true } };
     throw Error(url);
   });
   try {
@@ -110,13 +119,15 @@ test("ordinary users see allowed navigation only and account changes require cur
     assert.equal(doc.querySelector("[data-nav=keywords]").hidden, true);
     assert.equal(doc.querySelector("[data-nav=apps]").hidden, false);
     assert.equal(accounts.can("apps", "write"), false);
-    await accounts.account(doc.querySelector("main"));
-    const form = doc.querySelector("form");
+    window.location.hash = "administration?own=1";
+    await accounts.management(doc.querySelector("main"));
+    doc.querySelector("[data-user]").click();
+    const form = doc.querySelector(".account-editor");
     form.elements.username.value = "renamed";
     form.elements.current_password.value = "current-password";
     form.dispatchEvent(new window.Event("submit", { cancelable: true }));
     await tick();
-    const sent = calls.find((c) => c.url.endsWith("/profile"));
+    const sent = calls.find((c) => c.url.endsWith("/admin/users/2"));
     assert.equal(sent.options.method, "PUT");
     assert.equal(sent.body.current_password, "current-password");
     assert.equal(sent.options.headers["X-CSRF-Token"], "csrf-test");
@@ -135,7 +146,10 @@ test("admin edits member expiry and explicit permission override without grantin
       };
     if (url.endsWith("/me"))
       return {
-        data: { user: { ...user, role: "admin" }, csrf_token: "csrf-admin" },
+        data: {
+          user: { ...user, id: 1, role: "admin" },
+          csrf_token: "csrf-admin",
+        },
       };
     if (url.includes("/admin?"))
       return {
@@ -157,6 +171,7 @@ test("admin edits member expiry and explicit permission override without grantin
     const form = doc.querySelector(".account-editor");
     form.elements.role.value = "member";
     form.elements.member_until.value = "2030-12-01T10:30";
+    doc.querySelector("#edit-account-tab-permissions").click();
     form.elements.inherit.click();
     form.querySelector('[value="apps:write"]').click();
     form.dispatchEvent(new window.Event("submit", { cancelable: true }));
