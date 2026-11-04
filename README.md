@@ -1,5 +1,7 @@
 # 衡枢·观星
 
+新增：[离线备份、空库恢复与 Docker Compose 离线部署](docs/offline-deployment.md)。采集中心支持跨页全选暂停/恢复、所有商店统一请求间隔与共享冷却配置。
+
 星河璀璨，万象浮沉。
 
 Google Play / Apple App Store 应用池监控平台。
@@ -158,4 +160,4 @@ Compose 中的 MySQL 已实际启动并配置自动重启，持久化在 `data/m
 
 代码、研究文档、数据校验清单纳入版本管理；大数据、数据库、上游副本、环境和临时文件通过 `.gitignore` 排除，物理位置仍在此仓库下。`.github/workflows/ci.yml` 配置 Linux/Windows × Python 3.11/3.12/3.13 的安装、编译、真实 MySQL 8.4 集成测试及 CLI 检查。
 
-远程仓库为 `https://github.com/hengshu-credit/appstore_applications_monitoring`，默认分支 `master`。后续代码直接在 `master` 上修改和提交，不自行创建功能分支或开发 worktree，详见 [AGENTS.md](AGENTS.md)。每次提交交付必须核对最终 SHA 的全部六项矩阵和任何其他触发的必需检查；以 [GitHub Actions](https://github.com/hengshu-credit/appstore_applications_monitoring/actions/workflows/ci.yml) 中该 SHA 的结果为准。本地测试成功或推送成功不能代替远程 CI 通过。
+远程仓库为 `https://github.com/hengshu-credit/appstore_applications_monitoring`，默认分支 `master`。后续代码直接在 `master` 上修改和提交，不自行创建功能分支或开发 worktree，详见 [AGENTS.md](AGENTS.md)。提交前检查上一 SHA 的远程 CI 和已报告问题，修复失败并完成相关本地检查。推送后报告本次 SHA、CI 链接和已知状态，不等待本次 CI；留到下次提交前核对。本地测试成功或推送成功不能代替远程 CI 通过。

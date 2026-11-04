@@ -1,6 +1,7 @@
 from pathlib import Path
 import re
 import os
+import math
 import tomllib
 from dotenv import load_dotenv
 
@@ -16,6 +17,12 @@ def load(path="config.toml"):
         raise ValueError("countries must contain two-letter storefront codes")
     if not re.fullmatch(r"[a-z]{2}(?:[-_][A-Za-z]{2})?", cfg["language"]):
         raise ValueError("Invalid language")
+    cfg.setdefault('global_interval_seconds', 5)
+    cfg.setdefault('cooldown_seconds', 900)
+    for key, low, high in [('global_interval_seconds',0.1,3600),('cooldown_seconds',60,86400)]:
+        value=cfg[key]
+        if type(value) not in (int,float) or not math.isfinite(value) or not low<=value<=high:
+            raise ValueError(f'{key} must be between {low} and {high}')
     for key in ("refresh_hours", "missing_recheck_hours", "lease_seconds", "timeout_seconds",
                 "google_interval_seconds", "apple_interval_seconds", "batch_size",
                 "missing_confirmations", "discovery_hours", "seed_sync_hours"):

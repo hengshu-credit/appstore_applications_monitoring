@@ -565,6 +565,16 @@ def create_app(cfg):
     @api.get('/research/collection/pipelines')
     def collection_pipelines(db=DB):return pipelines.report(db,cfg)
 
+    @api.get('/research/collection/limits')
+    def collection_limit_settings(db=DB):
+        from .collection_limits import settings
+        return settings(db,cfg)
+
+    @api.put('/research/collection/limits')
+    def save_collection_limits(value:dict=Body(...),db=DB):
+        from .collection_limits import save
+        return save(db,cfg,value)
+
     @api.put('/research/collection/pipelines/{name}')
     def save_pipeline(name:str,value:dict=Body(...),db=DB):return pipelines.save(db,cfg,name,value)
 

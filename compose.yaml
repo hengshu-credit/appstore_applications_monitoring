@@ -26,6 +26,7 @@ services:
       retries: 30
       start_period: 30s
   monitor:
+    image: ${APPMON_BACKEND_IMAGE:-appmon-backend:local}
     build: .
     init: true
     restart: unless-stopped
@@ -73,10 +74,11 @@ services:
     profiles: [console]
     command: ["appmon", "console", "daemon"]
   frontend:
+    image: ${APPMON_FRONTEND_IMAGE:-appmon-frontend:local}
     build: ./frontend
     profiles: [console]
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${APPMON_FRONTEND_PORT:-5173}:80"
+      - "${APPMON_BIND_ADDRESS:-127.0.0.1}:${APPMON_FRONTEND_PORT:-5173}:80"
     depends_on:
       - web

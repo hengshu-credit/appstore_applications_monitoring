@@ -42,7 +42,23 @@ class Execution:
 def execution(db, client, resource, identifier, label):
     log = Execution(db,resource,identifier)
     old = getattr(client,'progress',None) if client is not None else None
-    if client is not None: client.progress = log.write
+    old_guard = getattr(client,'request_guard',None) if client is not None else None
+    if client is not None:
+        client.progress = log.write
+        if resource in ('watchlist','keywords','targets','icons'):
+            def state():
+                if resource == 'watchlist':
+                    return db.execute('''SELECT w.enabled,j.token FROM watchlist w LEFT JOIN jobs j
+                        USING(store,app_id,country,language) WHERE w.id=%s''',(identifier,)).fetchone()
+                table={'keywords':'keyword_targets','targets':'observation_targets','icons':'app_icons'}[resource]
+                return db.execute(f'SELECT enabled,token FROM {table} WHERE id=%s',(identifier,)).fetchone()
+            initial=state()
+            def guard():
+                from .stores import FetchError
+                current=state()
+                if not current or not current['enabled'] or initial and current['token']!=initial['token']:
+                    raise FetchError('任务已暂停或租约已替换',60)
+            client.request_guard=guard
     log.write('started','开始采集：'+label)
     try:
         yield log
@@ -50,7 +66,9 @@ def execution(db, client, resource, identifier, label):
         log.write('aborted','执行异常中断：'+type(exc).__name__+'；已完成的数据保留，请查看任务状态','error',diagnostics(exc))
         raise
     finally:
-        if client is not None: client.progress = old
+        if client is not None:
+            client.progress = old
+            client.request_guard = old_guard
 
 
 def target_state(db,resource,identifier):

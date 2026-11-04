@@ -159,7 +159,8 @@ def issue_session(db, request, row):
 def requirements(path, method, params=None):
     """All business endpoints pass this explicit resource map; unknown routes deny."""
     p = path.removeprefix('/api')
-    if p.startswith('/data-sources'):return ['admin']
+    if p == '/data-sources' or p.startswith('/data-sources/'):
+        return ['data-sources:admin']  # explicit, non-delegable administrator capability
     action = 'read' if method in ('GET', 'HEAD') else 'write'
     if p in ('/catalog', '/categories/counts') or p.startswith('/icons/'):
         return []  # authenticated shared display support
@@ -207,7 +208,7 @@ def authorize(db, request):
                 needed = []
     if request.method == 'GET' and request.url.path in ('/api/charts/detail', '/api/charts/view') and 'globalcharts:read' in user['permissions']:
         needed = []
-    if row['role'] != 'admin' and any(p not in user['permissions'] for p in needed):
+    if row['role'] != 'admin' and ('data-sources:admin' in needed or any(p not in user['permissions'] for p in needed)):
         raise HTTPException(403, '当前账户没有访问此资源的权限，请联系管理员')
     request.state.user = user
 

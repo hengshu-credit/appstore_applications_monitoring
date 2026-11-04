@@ -1,5 +1,6 @@
 import html
 import json
+import math
 import re
 import ssl
 import time
@@ -10,7 +11,7 @@ from urllib.parse import unquote_plus, urlsplit
 
 import requests
 
-from .db import reserve
+from . import collection_limits
 
 
 class FetchError(Exception):
@@ -35,6 +36,7 @@ class Client:
             self.session.mount("https://", TLS12Adapter())
         self.session.headers["User-Agent"] = "Mozilla/5.0 (compatible; AppPoolMonitor/0.1)"
         self.progress = None
+        self.request_guard = None
 
     def report(self,event,message):
         if self.progress:
@@ -44,10 +46,19 @@ class Client:
         return self.request(store, "GET", url, params=params, headers=headers)
 
     def request(self, store, method, url, **kwargs):
-        delay = reserve(self.db, f"rate:{store}", self.cfg[f"{store}_interval_seconds"])
-        if delay > 0.1:
-            self.report('rate_wait', f'等待商店限速窗口：{delay:.1f} 秒')
-        time.sleep(delay)
+        deadline = time.monotonic() + max(1, self.cfg.get('lease_seconds',600)-self.cfg['timeout_seconds']*2)
+        while True:
+            if self.request_guard:
+                self.request_guard()
+            delay = collection_limits.admission(self.db,self.cfg,store)
+            if delay is None:
+                raise FetchError('整体采集已暂停', 60)
+            if delay == 0:
+                break
+            if time.monotonic()+delay >= deadline:
+                raise FetchError('等待共享限速窗口，稍后重试', delay)
+            self.report('rate_wait', f'等待整体 / 商店限速窗口：{delay:.1f} 秒')
+            time.sleep(min(delay, 2))  # re-read settings and cooldown after every wait
         self.report('request', f'{method} 请求 {urlsplit(url).hostname}；超时上限 {self.cfg["timeout_seconds"]} 秒')
         started = time.monotonic()
         details=dict(stage='http_request',method=method,host=urlsplit(url).hostname,timeout_seconds=self.cfg['timeout_seconds'])
@@ -64,13 +75,15 @@ class Client:
             delay = 300
             value = r.headers.get("Retry-After", "")
             try:
-                delay = max(delay, float(value))
+                seconds = float(value)
+                if math.isfinite(seconds):
+                    delay = max(delay, seconds)
             except ValueError:
                 try:
                     delay = max(delay, (parsedate_to_datetime(value) - datetime.now(timezone.utc)).total_seconds())
                 except (TypeError, ValueError):
                     pass
-            reserve(self.db, f"rate:{store}", delay)
+            delay = collection_limits.cooldown(self.db,self.cfg,store,delay)
             raise FetchError(f"HTTP {r.status_code}", delay, details|dict(status_code=r.status_code,retry_after_seconds=delay))
         if r.status_code not in (200, 404):
             raise FetchError(f"HTTP {r.status_code}",details=details|dict(status_code=r.status_code))

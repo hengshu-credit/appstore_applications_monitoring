@@ -30,6 +30,12 @@ def main():
     console.add_argument("action", choices=["run", "daemon"])
     console.add_argument("--limit", type=int, default=5)
     sub.add_parser("init")
+    snapshot = sub.add_parser('backup',help='Offline database and asset archive')
+    snapshot.add_argument('path')
+    snapshot.add_argument('--writers-stopped',action='store_true',required=True,
+                          help='Confirm API and all native/container writers are stopped')
+    restore = sub.add_parser('restore',help='Verify and restore archive into a database with no tables')
+    restore.add_argument('path')
     backfill=sub.add_parser('metrics-backfill',help='Replay retained metric snapshots without network requests')
     backfill.add_argument('--after-id',type=int,default=0)
     backfill.add_argument('--limit',type=int,default=500)
@@ -59,6 +65,11 @@ def main():
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     cfg = load(args.config)
+    if args.command in ('backup','restore'):
+        from .backup import backup, restore
+        result = backup(cfg,args.path,args.config) if args.command=='backup' else restore(cfg,args.path)
+        print(json.dumps(result,ensure_ascii=False,indent=2))
+        return 0
     if args.command == "web":
         from .console import serve
         serve(cfg, args.host, args.port)

@@ -12,6 +12,9 @@ tls_maximum_version = "1.2"
 min_free_gb = 2
 google_interval_seconds = 2.5
 apple_interval_seconds = 3.5
+# Shared across both stores and all workers; editable live in collection center.
+global_interval_seconds = 5
+cooldown_seconds = 900
 batch_size = 200
 discovery_hours = 24
 seed_sync_hours = 24

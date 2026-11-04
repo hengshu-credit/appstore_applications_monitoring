@@ -259,6 +259,8 @@ async function setup(responder) {
       };
     if (data === undefined && path === "/api/research/collection/pipelines")
       data = [];
+    if (data === undefined && path === "/api/research/collection/limits")
+      data = {global_interval_seconds:5,google_interval_seconds:2.5,apple_interval_seconds:3.5,cooldown_seconds:900,paused:false};
     if (
       data === undefined &&
       path.split("?")[0] === "/api/research/collection/activity"
@@ -575,6 +577,28 @@ test("keyword-only plan sends multilingual words and configured depth", async ()
   } finally {
     await window.happyDOM.close();
   }
+});
+
+test("cross-page selection sends scope and filters without enumerating pages", async () => {
+  const bodies=[];
+  const {window}=await setup((path,options)=> {
+    if (path.startsWith('/api/research/collection/tasks?')) return {items:[],total:175,summary:{running:0,pending:175,error:0,paused:0},has_more:true};
+    if (path==='/api/research/collection/tasks/batch') { bodies.push(JSON.parse(options.body)); return {updated:175}; }
+  });
+  try {
+    window.confirm=()=>true;
+    window.location.hash='collection'; await tick();
+    window.document.querySelector('#select-filtered-tasks').click();
+    assert.match(window.document.querySelector('#selected-count').textContent,/175/);
+    assert.equal(window.document.querySelector('[data-batch="refresh"]').disabled,true);
+    window.document.querySelector('[data-batch="pause"]').click(); await tick();
+    assert.equal(bodies[0].scope,'filtered');
+    assert.equal(bodies[0].action,'pause');
+    assert.equal('tasks' in bodies[0],false);
+    window.document.querySelector('#select-every-task').click();
+    window.document.querySelector('[data-batch="resume"]').click(); await tick();
+    assert.deepEqual(bodies[1],{scope:'all',action:'resume',filters:{}});
+  } finally { await window.happyDOM.close(); }
 });
 
 test("pending task controls block editing and cannot replace a newly selected page", async () => {

@@ -12,6 +12,19 @@ from test_monitor import MySQLTestCase
 
 
 class CollectionCenterTest(MySQLTestCase):
+    def test_cross_page_control_snapshots_filter_and_handles_all_resources(self):
+        self.seed()
+        add_targets(self.db,[dict(store='apple',country='us',language='en',keyword=f'word {i}') for i in range(125)])
+        result=control_tasks(self.db,{'scope':'filtered','filters':{'store':'apple','state':'pending'},'action':'pause'})
+        self.assertEqual(result['updated'],125)
+        self.assertEqual(list_tasks(self.db,state='paused')['total'],125)
+        self.assertEqual(list_tasks(self.db,store='google',state='pending')['total'],3)
+        self.assertEqual(control_tasks(self.db,{'scope':'all','action':'resume'})['updated'],128)
+        self.assertEqual(list_tasks(self.db,state='paused')['total'],0)
+        for value in ({'scope':'all','action':'refresh'}, {'scope':'filtered','action':'pause','filters':{'state':'typo'}},
+                      {'scope':'all','action':'pause','filters':{'store':'apple'}}, {'scope':'unknown','action':'pause'}):
+            with self.assertRaises(ValueError):control_tasks(self.db,value)
+
     def seed(self):
         m=dict(store='google',country='th',language='th')
         watch(self.db,m|{'app_id':'com.example.app'})

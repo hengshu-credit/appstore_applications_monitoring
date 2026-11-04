@@ -230,13 +230,14 @@ export function createCollectionCenter(ctx) {
       );
     }
     filters.store = market().store;
-    const [tasks, pipelines, quality] = await Promise.all([
+    const [tasks, pipelines, quality, limits] = await Promise.all([
       api(
         "/research/collection/tasks?" +
           new URLSearchParams({ ...filters, page, limit: 50 }),
       ),
       api("/research/collection/pipelines"),
       api("/research/collection/activity"),
+      api("/research/collection/limits"),
     ]);
     const s = tasks.summary;
     const tab = (key, label) =>
@@ -260,7 +261,7 @@ export function createCollectionCenter(ctx) {
                   ["apple", "App Store"],
                 ],
                 filters.store,
-              )}${select("任务状态", "state", [["", "全部状态"], ...options(states)], filters.state)}${field("国家代码", "country", filters.country, "text", 'maxlength="2" placeholder="全部"')}<button type="submit" class="secondary">查询</button><button type="button" class="secondary" id="reset-task-filters">重置</button></form><div class="task-bulk"><span id="selected-count">已选 0 项</span><button type="button" class="secondary small" data-batch="refresh">立即采集</button><button type="button" class="secondary small" data-batch="pause">暂停</button><button type="button" class="secondary small" data-batch="resume">恢复</button><span class="sub">仅操作当前页选中项，最多 50 个</span></div>${table(
+              )}${select("任务状态", "state", [["", "全部状态"], ...options(states)], filters.state)}${field("国家代码", "country", filters.country, "text", 'maxlength="2" placeholder="全部"')}<button type="submit" class="secondary">查询</button><button type="button" class="secondary" id="reset-task-filters">重置</button></form><div class="task-bulk"><span id="selected-count">已选 0 项</span><button type="button" class="secondary small" data-batch="refresh">立即采集</button><button type="button" class="secondary small" data-batch="pause">暂停</button><button type="button" class="secondary small" data-batch="resume">恢复</button><button type="button" class="secondary small" id="select-filtered-tasks">全选筛选结果（跨页）</button><button type="button" class="secondary small" id="select-every-task">全选全部任务（所有商店）</button><button type="button" class="secondary small" id="clear-task-selection">取消选择</button></div>${table(
                 [
                   '<input type="checkbox" id="select-all-tasks" aria-label="选择当前页全部任务">',
                   "采集类型 / 目标",
@@ -300,11 +301,18 @@ export function createCollectionCenter(ctx) {
       )}</details>`;
     if (
       !mount(
-        `<div class="collection-heading"><p class="lead">在一个地方配置全部采集流程，查看任务进度并处理失败。</p><button id="new-collection">${icon("plus")}新建采集计划</button></div><div class="cards collection-metrics">${metric("筛选结果", tasks.total, "已配置的独立采集目标")}${metric("采集中 / 等待", s.running + s.pending, "依照限速与队列执行")}${metric("失败待重试", s.error, "保留最近成功结果")}${metric("已暂停", s.paused, "恢复后继续按周期采集")}</div><div class="collection-status"><span class="status-dot"></span>后台最近心跳：${esc(stamp(quality.heartbeat?.next_at))}<span class="sub">所有市场独立保存 · 不改写历史</span></div><div class="collection-tabs" role="tablist" aria-label="采集管理视图">${tab("tasks", "采集任务")}${tab("pipelines", "基础采集流程")}${section === "create" ? tab("create", "新建计划") : ""}</div>${body}`,
+        `<div class="collection-heading"><p class="lead">在一个地方配置全部采集流程，查看任务进度并处理失败。</p><button id="new-collection">${icon("plus")}新建采集计划</button></div><div class="cards collection-metrics">${metric("筛选结果", tasks.total, "已配置的独立采集目标")}${metric("采集中 / 等待", s.running + s.pending, "依照限速与队列执行")}${metric("失败待重试", s.error, "保留最近成功结果")}${metric("已暂停", s.paused, "恢复后继续按周期采集")}</div><div class="collection-status"><span class="status-dot"></span>后台最近心跳：${esc(stamp(quality.heartbeat?.next_at))}<span class="sub">所有市场独立保存 · 不改写历史</span></div><div class="collection-tabs" role="tablist" aria-label="采集管理视图">${tab("tasks", "采集任务")}${tab("pipelines", "基础采集流程")}${section === "create" ? tab("create", "新建计划") : ""}</div>${panel("整体采集控频", `<form id="collection-limits" class="form-grid">${field("整体最小请求间隔（秒）", "global_interval_seconds", limits.global_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Google 最小间隔（秒）", "google_interval_seconds", limits.google_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Apple 最小间隔（秒）", "apple_interval_seconds", limits.apple_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("受限后整体冷却（秒）", "cooldown_seconds", limits.cooldown_seconds, "number", 'min="60" max="86400" required')}<label class="check-label"><input type="checkbox" name="paused" ${limits.paused ? "checked" : ""}>暂停所有商店采集请求</label><p class="sub full">所有采集 worker 共用额度，详情、关键词、榜单、评论、推荐和图标请求均计入。403 / 429 / 5xx 会触发共享冷却，并遵守更长的 Retry-After。保存后新请求生效，已发出的请求会完成。此开关不停止种子包同步和第三方数据源手动操作。</p><button type="submit">保存控频设置</button></form>`)}${body}`,
         rev,
       )
     )
       return;
+    bindForm("#collection-limits", async (v, f) => {
+      await api("/research/collection/limits", {
+        ...Object.fromEntries(["global_interval_seconds", "google_interval_seconds", "apple_interval_seconds", "cooldown_seconds"].map(k => [k, Number(v[k])])),
+        paused: f.elements.paused.checked,
+      }, "PUT");
+      toast("整体控频设置已保存，新请求即时生效");
+    });
     const storeFilter = $('#task-filters [name="store"]');
     if (storeFilter)
       storeFilter.onchange = () => {
@@ -431,19 +439,21 @@ export function createCollectionCenter(ctx) {
       page++;
       refresh().catch((e) => toast(e.message));
     };
+    let selectionScope = "selected";
     const selected = () =>
       [...document.querySelectorAll("[data-task-index]:checked")].map(
         (el) => tasks.items[Number(el.dataset.taskIndex)],
       );
     const selectionChange = () => {
-      $("#selected-count").textContent = `已选 ${selected().length} 项`;
+      $("#selected-count").textContent = selectionScope === "all" ? "已选全部任务（所有商店、所有页）" : selectionScope === "filtered" ? `已选筛选结果 ${tasks.total} 项（所有页）` : `已选 ${selected().length} 项`;
       document
         .querySelectorAll("[data-batch]")
-        .forEach((b) => (b.disabled = !selected().length));
+        .forEach((b) => (b.disabled = selectionScope === "selected" ? !selected().length : b.dataset.batch === "refresh" || (selectionScope === "filtered" && !tasks.total)));
     };
     const selectAll = $("#select-all-tasks");
     if (selectAll)
       selectAll.onchange = (e) => {
+        selectionScope = "selected";
         document
           .querySelectorAll("[data-task-index]")
           .forEach((c) => (c.checked = e.target.checked));
@@ -451,25 +461,34 @@ export function createCollectionCenter(ctx) {
       };
     document
       .querySelectorAll("[data-task-index]")
-      .forEach((c) => (c.onchange = selectionChange));
+      .forEach((c) => (c.onchange = () => { selectionScope = "selected"; selectionChange(); }));
     selectionChange();
-    async function control(action, rows) {
+    for (const [id, scope] of [["select-filtered-tasks", "filtered"], ["select-every-task", "all"], ["clear-task-selection", "selected"]]) {
+      $("#" + id).onclick = () => {
+        selectionScope = scope;
+        document.querySelectorAll("[data-task-index]").forEach(c => c.checked = scope !== "selected");
+        if (selectAll) selectAll.checked = scope !== "selected";
+        selectionChange();
+      };
+    }
+    async function control(action, rows, scope = "selected") {
+      if (scope !== "selected" && !window.confirm(`确认${action === "pause" ? "暂停" : "恢复"}${scope === "all" ? "所有商店的全部任务" : `当前筛选结果的 ${tasks.total} 个任务`}？将跨越所有分页，执行时匹配的任务均会更新。`)) return;
       const controls = [
         ...document.querySelectorAll(
-          "[data-edit-task],[data-task-action],[data-batch],#new-collection",
+          "[data-edit-task],[data-task-action],[data-batch],#new-collection,#select-filtered-tasks,#select-every-task,#clear-task-selection",
         ),
       ];
       const disabled = controls.map((b) => b.disabled);
       controls.forEach((b) => (b.disabled = true));
       try {
-        await api("/research/collection/tasks/batch", {
-          action,
-          tasks: rows.map((t) => ({ resource: t.resource, id: t.id })),
+        const result = await api("/research/collection/tasks/batch", {
+          action, scope,
+          ...(scope === "selected" ? {tasks: rows.map(t => ({resource: t.resource, id: t.id}))} : {filters: scope === "filtered" ? {...filters} : {}}),
         });
         toast(
           action === "refresh"
             ? "已安排采集，后台按限速执行"
-            : "任务状态已更新",
+            : `已更新 ${result.updated} 个任务`,
         );
         if (rev === currentRevision()) await refresh();
       } finally {
@@ -483,7 +502,7 @@ export function createCollectionCenter(ctx) {
       .forEach(
         (b) =>
           (b.onclick = () =>
-            control(b.dataset.batch, selected()).catch((e) =>
+            control(b.dataset.batch, selected(), selectionScope).catch((e) =>
               toast(e.message),
             )),
       );

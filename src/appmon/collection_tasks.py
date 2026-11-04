@@ -24,14 +24,16 @@ UNION = '''SELECT 'watchlist' resource,w.id,'details' kind,w.store,w.country,w.l
     FROM app_icons i WHERE i.requested=1'''
 
 
-def list_tasks(db, *, kind='', store='', country='', language='', state='', q='', page=1, limit=50):
+def task_query(*, kind='', store='', country='', language='', state='', q=''):
+    if any(not isinstance(v,str) for v in (kind,store,country,language,state,q)):
+        raise ValueError('筛选参数须为文本')
     if kind and kind not in ('details','keywords','chart','reviews','featured','icons'):
         raise ValueError('未知采集类型')
     if store=='all':store=''
     if store and store not in ('google','apple'):
         raise ValueError('未知商店')
-    if not 1 <= page <= 100000 or not 1 <= limit <= 200 or len(q) > 255:
-        raise ValueError('分页或搜索参数无效')
+    if len(q) > 255:
+        raise ValueError('搜索参数无效')
     now = time.time()
     query = f'''SELECT task.*,CASE WHEN enabled=0 THEN 'paused' WHEN lease_until>{now} THEN 'running'
         WHEN failures>0 THEN 'error' WHEN success_at IS NULL OR due<={now} THEN 'pending'
@@ -47,6 +49,13 @@ def list_tasks(db, *, kind='', store='', country='', language='', state='', q=''
         if state not in ('paused','running','error','pending','scheduled'): raise ValueError('未知任务状态')
         where.append('task_state=%s'); args.append(state)
     filtered = f'SELECT * FROM ({query}) classified' + (' WHERE '+' AND '.join(where) if where else '')
+    return filtered, args
+
+
+def list_tasks(db, *, page=1, limit=50, **filters):
+    if not 1 <= page <= 100000 or not 1 <= limit <= 200:
+        raise ValueError('分页参数无效')
+    filtered, args = task_query(**filters)
     counts = db.execute(f'SELECT task_state,count(*) n FROM ({filtered}) f GROUP BY task_state', args).fetchall()
     summary = {name:0 for name in ('paused','running','error','pending','scheduled')}
     summary.update({r['task_state']:r['n'] for r in counts})
@@ -88,9 +97,28 @@ def edit_task(db, resource, identifier, value):
 
 def control_tasks(db, value):
     refs, action = value.get('tasks'), value.get('action')
-    if not isinstance(refs,list) or not 1<=len(refs)<=100 or action not in ('pause','resume','refresh'):
+    scope = value.get('scope', 'selected')
+    if scope not in ('selected','filtered','all'):
+        raise ValueError('未知选择范围')
+    if scope != 'selected':
+        if action not in ('pause','resume') or refs is not None:
+            raise ValueError('跨页操作仅支持暂停和恢复，不能同时指定任务列表')
+        filters = value.get('filters', {})
+        if not isinstance(filters,dict) or set(filters)-{'kind','store','country','language','state','q'}:
+            raise ValueError('筛选参数无效')
+        if scope == 'all' and filters:
+            raise ValueError('全部任务操作不能带筛选条件')
+        query, args = task_query(**filters)
+    elif not isinstance(refs,list) or not 1<=len(refs)<=100 or action not in ('pause','resume','refresh'):
         raise ValueError('每次请选择1–100个任务及有效操作')
     with db:
+        if scope != 'selected':
+            # Snapshot matching identities once: state changes cannot shift later pages.
+            refs = db.execute(f'SELECT resource,id FROM ({query}) selected ORDER BY resource,id',args).fetchall()
+        else:
+            if any(not isinstance(ref,dict) or ref.get('resource') not in TABLES or type(ref.get('id')) is not int for ref in refs):
+                raise ValueError('任务标识无效')
+            refs = [dict(resource=r,id=i) for r,i in sorted({(ref['resource'],ref['id']) for ref in refs})]
         for ref in refs:
             if not isinstance(ref,dict): raise ValueError('任务标识无效')
             resource, identifier = ref.get('resource'), ref.get('id')
