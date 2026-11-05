@@ -1414,6 +1414,13 @@ const discoveryPages = createDiscoveryPages({
   bindForm,
   mount,
   market,
+  selectMarket: async (m) => {
+    $("#global-store").value = m.store;
+    $("#global-country").value = m.country;
+    $("#global-language").value = m.language;
+    saveMarket();
+    await render();
+  },
   toast,
   selectors,
   appLink,

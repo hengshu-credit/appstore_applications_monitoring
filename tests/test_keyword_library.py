@@ -59,3 +59,19 @@ class KeywordLibraryTest(MySQLTestCase):
         pages = [kr.library(self.db, self.m, offset=i, limit=1)['items'][0]['keyword'] for i in range(3)]
         self.assertEqual(len(set(pages)), 3)
         with self.assertRaises(ValueError): kr.library(self.db, self.m, offset=-1)
+
+    def test_catalog_exposes_populated_markets_without_relabeling_empty_market(self):
+        value = self.m | {'content_base64': base64.b64encode(self.raw).decode()}
+        first = kr.import_report(self.cfg, self.db, value)
+        kr.import_report(self.cfg, self.db, value | {'app_id': '456', 'language': 'en'})
+        self.db.execute("INSERT INTO keyword_report_rows VALUES(%s,'ASA竞价词',100,'仅竞价',1,'0','0','{}')", (first['id'],))
+        empty = kr.library(self.db, dict(store='google', country='us', language='en'))
+        self.assertEqual(empty['items'], [])
+        self.assertEqual((empty['total'], empty['market_terms']), (0,0))
+        self.assertEqual(empty['catalog']['total_terms'], 6)
+        self.assertEqual({(r['store'],r['country'],r['language'],r['terms']) for r in empty['catalog']['items']},
+                         {('apple','cn','zh-cn',3), ('apple','cn','en',3)})
+        filtered = kr.library(self.db, self.m, q='no match')
+        self.assertEqual((filtered['total'], filtered['market_terms']), (0,3))
+        self.assertEqual(filtered['catalog']['total_terms'], 3)  # same app only in workbench
+        self.assertEqual(kr.library(self.db, self.m | {'app_id': '999'})['catalog']['items'], [])

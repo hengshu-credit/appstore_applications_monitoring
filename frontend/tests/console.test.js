@@ -1080,6 +1080,113 @@ test("candidate selection creates only selected tracking targets and retains mar
   }
 });
 
+test("empty ASO market exposes populated markets and switches exact scope, with independent query", async () => {
+  const catalog = {
+    total_terms: 3,
+    items: [
+      {
+        store: "apple",
+        country: "cn",
+        language: "zh-cn",
+        terms: 3,
+        reports: 1,
+        apps: 1,
+      },
+    ],
+  };
+  const { window, calls } = await setup((path) => {
+    if (path.startsWith("/api/discovery/keywords/coverage?"))
+      return emptyCoverage;
+    if (path.startsWith("/api/discovery/keywords/candidates?"))
+      return { total: 0, items: [] };
+    if (path === "/api/discovery/keywords/sources")
+      return { frequency_languages: ["en"], note: "候选库" };
+    if (path.startsWith("/api/discovery/keywords/aso-library?")) {
+      const p = new URL(path, "https://example.org").searchParams;
+      const selected =
+        p.get("store") === "apple" &&
+        p.get("country") === "cn" &&
+        p.get("language") === "zh-cn";
+      return {
+        catalog,
+        market_terms: selected ? 3 : 0,
+        total: selected && !p.get("q") ? 3 : 0,
+        counts: { reports: selected ? 1 : 0, apps: selected ? 1 : 0 },
+        note: "自然搜索词",
+        items:
+          selected && !p.get("q")
+            ? [{ keyword: "报告词", candidate_id: 22, apps: 1, reports: 1 }]
+            : [],
+      };
+    }
+  });
+  try {
+    window.location.hash = "keywords";
+    await tick();
+    window.document.querySelector('[data-keyword-tab="candidates"]').click();
+    await tick();
+    const search = window.document.querySelector("#candidate-search");
+    search.elements.q.value = "previous candidate filter";
+    search.dispatchEvent(
+      new window.Event("submit", { bubbles: true, cancelable: true }),
+    );
+    await tick();
+    window.document.querySelector('[data-keyword-tab="aso-library"]').click();
+    await tick();
+    assert.match(
+      window.document.querySelector("#content").textContent,
+      /当前筛选.*没有ASO报告词/,
+    );
+    assert.equal(
+      window.document.querySelector("#aso-library-search [name=q]").value,
+      "",
+    );
+    assert.equal(
+      window.document.querySelector("#candidate-track").disabled,
+      true,
+    );
+    window.document.querySelector('[data-aso-market="0"]').click();
+    await tick();
+    for (const [key, value] of Object.entries({
+      store: "apple",
+      country: "cn",
+      language: "zh-cn",
+    }))
+      assert.equal(
+        window.document.querySelector(`#global-${key}`).value,
+        value,
+      );
+    assert.match(
+      window.document.querySelector("#content").textContent,
+      /报告词/,
+    );
+    const form = window.document.querySelector("#aso-library-search");
+    form.elements.q.value = "missing";
+    form.dispatchEvent(
+      new window.Event("submit", { bubbles: true, cancelable: true }),
+    );
+    await tick();
+    assert.match(
+      window.document.querySelector("#content").textContent,
+      /没有匹配筛选词/,
+    );
+    window.document.querySelector("#aso-clear-query").click();
+    await tick();
+    assert.match(
+      window.document.querySelector("#content").textContent,
+      /报告词/,
+    );
+    assert.ok(
+      calls.some(
+        (c) =>
+          c.path.includes("aso-library?") && c.path.includes("language=zh-cn"),
+      ),
+    );
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
 test("ASO library browses natural words and tracks selected candidate IDs", async () => {
   let submitted;
   const { window, calls } = await setup((path, options) => {

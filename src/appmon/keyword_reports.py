@@ -190,6 +190,20 @@ def rejections(db,identifier,offset=0):
     return {'items':rows,'total':total,'offset':offset,'limit':100}
 
 
+def library_catalog(db, m):
+    """List populated report markets independently of the current market/query."""
+    where = "k.sheet='ASO关键词'"
+    args = []
+    if m.get('app_id'):
+        where += ' AND r.store=%s AND r.app_id=%s'
+        args = [m['store'], m['app_id']]
+    rows = db.execute('''SELECT r.store,r.country,r.language,count(DISTINCT k.keyword) terms,
+        count(DISTINCT r.id) reports,count(DISTINCT r.app_id) apps
+        FROM keyword_report_rows k JOIN keyword_reports r ON r.id=k.report_id WHERE ''' + where +
+        ' GROUP BY r.store,r.country,r.language ORDER BY terms DESC,r.store,r.country,r.language', args).fetchall()
+    return {'items': list(rows), 'total_terms': sum(r['terms'] for r in rows)}
+
+
 def library(db, m, q='', offset=0, limit=100):
     """Natural-search vocabulary, with historical report evidence kept separate."""
     if type(offset) is not int or not 0 <= offset <= 1000000 or not 1 <= limit <= 100:
@@ -218,7 +232,11 @@ def library(db, m, q='', offset=0, limit=100):
             (*[m[k] for k in ('store','country','language')], *[r['keyword'] for r in rows])).fetchall()}
     for row in rows:
         row['candidate_id'] = ids.get(row['keyword'])
-    return {'items': rows, 'total': counts['terms'], 'counts': counts, 'offset': offset, 'limit': limit,
+    catalog = library_catalog(db, m)
+    market_terms = next((r['terms'] for r in catalog['items']
+                         if all(r[k] == m[k] for k in ('store', 'country', 'language'))), 0)
+    return {'items': list(rows), 'total': counts['terms'], 'counts': counts, 'offset': offset, 'limit': limit,
+            'catalog': catalog, 'market_terms': market_terms,
             'note': '仅含本市场报告中的ASO自然搜索词，按规范化关键词去重。最佳报告排名取所选报告历史最小值，'
                     '日期为最近报告日期，两者不代表同一条观察或当前排名。追踪语言沿用导入配置。'}
 

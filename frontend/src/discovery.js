@@ -26,6 +26,7 @@ export function createDiscoveryPages(ctx) {
     bindForm,
     mount,
     market,
+    selectMarket,
     toast,
     selectors,
     appLink,
@@ -98,6 +99,7 @@ export function createDiscoveryPages(ctx) {
     reportSheet = "ASO关键词",
     reportOffset = 0,
     keywordQuery = "",
+    asoQuery = "",
     appQuery = "",
     signalId = "";
 
@@ -473,31 +475,45 @@ export function createDiscoveryPages(ctx) {
     } else if (keywordTab === "aso-library") {
       data = await api(
         "/discovery/keywords/aso-library?" +
-          query({ ...m, q: keywordQuery, offset: candidateOffset }),
+          query({ ...m, q: asoQuery, offset: candidateOffset }),
       );
       data.items = data.items.map((r) => ({ ...r, id: r.candidate_id }));
-      content = `<div class="cards">${metric("ASO自然搜索词", data.total, "本市场去重词数")}${metric("报告来源", data.counts.reports, `${data.counts.apps} 个应用`)}</div><p class="callout">${esc(data.note)}</p><form id="candidate-search" class="toolbar">${field("筛选词", "q", keywordQuery)}<button type="submit">筛选</button></form><div class="toolbar"><button id="candidate-all" class="secondary">选择本页</button><button id="candidate-track">追踪所选词</button><button id="candidate-prev" class="secondary" ${candidateOffset ? "" : "disabled"}>上一页</button><button id="candidate-next" class="secondary" ${candidateOffset + 100 < data.total ? "" : "disabled"}>下一页</button><span>共 ${data.total} 词，每页100词</span></div>${table(
-        [
-          "选择",
-          "关键词",
-          "最佳报告排名",
-          "来源应用数",
-          "来源报告数",
-          "最近报告日期",
-          "来源",
-        ],
-        data.items.map((r) => [
-          r.id ? pick("id", r.id) : "待加入候选库",
-          esc(r.keyword),
-          r.best_report_position,
-          r.apps,
-          r.reports,
-          stamp(r.latest_report_at),
-          r.id
-            ? `<button type="button" class="link" data-candidate-sources="${r.id}">查看来源</button>`
-            : "—",
-        ]),
-      )}`;
+      const markets = data.catalog?.items || [];
+      const marketLabel = (r) =>
+        `${r.store === "apple" ? "App Store" : "Google Play"} · ${selectors.countryName(r.country)} · ${r.language}`;
+      const emptyReason = data.total
+        ? ""
+        : !data.catalog?.total_terms
+          ? "尚未导入ASO自然搜索词报告。"
+          : !data.market_terms
+            ? `当前筛选 ${marketLabel(m)} 没有ASO报告词，已导入词库位于下方市场。请选择“查看”切换商店、国家和追踪语言。`
+            : "当前市场已有ASO词库，但没有匹配筛选词。可清除筛选查看全部词条。";
+      content = `<div class="cards">${metric("已导入ASO总词数", data.catalog?.total_terms ?? data.total, "按商店、国家、追踪语言分别计数")}${metric("当前筛选词数", data.total, marketLabel(m))}${metric("报告来源", data.counts.reports, `${data.counts.apps} 个应用`)}</div>${emptyReason ? `<p class="callout">${esc(emptyReason)}</p>` : ""}${markets.length ? panel("已有词库的市场", `<div class="toolbar">${markets.map((r, i) => `<button type="button" class="secondary" data-aso-market="${i}">${esc(marketLabel(r))} · ${num(r.terms)} 词 · 查看</button>`).join("")}</div>`) : ""}<p class="sub">${esc(data.note)}</p><form id="aso-library-search" class="toolbar">${field("筛选词", "q", asoQuery)}<button type="submit">筛选</button>${asoQuery ? '<button type="button" id="aso-clear-query" class="secondary">清除筛选</button>' : ""}</form><div class="toolbar"><button id="candidate-all" class="secondary" ${data.items.length ? "" : "disabled"}>选择本页</button><button id="candidate-track" ${data.items.length ? "" : "disabled"}>追踪所选词</button><button id="candidate-prev" class="secondary" ${candidateOffset ? "" : "disabled"}>上一页</button><button id="candidate-next" class="secondary" ${candidateOffset + 100 < data.total ? "" : "disabled"}>下一页</button><span>共 ${data.total} 词，每页100词</span></div>${
+        data.items.length
+          ? table(
+              [
+                "选择",
+                "关键词",
+                "最佳报告排名",
+                "来源应用数",
+                "来源报告数",
+                "最近报告日期",
+                "来源",
+              ],
+              data.items.map((r) => [
+                r.id ? pick("id", r.id) : "待加入候选库",
+                esc(r.keyword),
+                r.best_report_position,
+                r.apps,
+                r.reports,
+                stamp(r.latest_report_at),
+                r.id
+                  ? `<button type="button" class="link" data-candidate-sources="${r.id}">查看来源</button>`
+                  : "—",
+              ]),
+            )
+          : ""
+      }`;
     } else if (keywordTab === "reports") {
       const reports = await api("/discovery/reports?" + query(m));
       const totals = await api("/discovery/report-summary?" + query(m));
@@ -685,6 +701,29 @@ export function createDiscoveryPages(ctx) {
       candidateOffset = 0;
       if (rev === currentRevision()) await keywords(nextRevision());
     });
+    bindForm("#aso-library-search", async (v) => {
+      asoQuery = v.q;
+      candidateOffset = 0;
+      if (rev === currentRevision()) await keywords(nextRevision());
+    });
+    act("#aso-clear-query", async () => {
+      asoQuery = "";
+      candidateOffset = 0;
+      if (rev === currentRevision()) await keywords(nextRevision());
+    });
+    document.querySelectorAll("[data-aso-market]").forEach((button) =>
+      button.addEventListener("click", async () => {
+        if (rev !== currentRevision()) return;
+        const selected = data.catalog.items[Number(button.dataset.asoMarket)];
+        asoQuery = "";
+        candidateOffset = 0;
+        try {
+          await selectMarket(selected);
+        } catch (e) {
+          toast(e.message);
+        }
+      }),
+    );
     document.querySelectorAll("[data-coverage-page]").forEach((button) =>
       button.addEventListener("click", () => {
         coverageOffsets[button.dataset.coveragePage] = Number(
