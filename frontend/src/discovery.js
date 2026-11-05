@@ -470,6 +470,34 @@ export function createDiscoveryPages(ctx) {
           r.tracked_id ? (r.tracked_enabled ? "已追踪" : "已暂停") : "未追踪",
         ]),
       )}`;
+    } else if (keywordTab === "aso-library") {
+      data = await api(
+        "/discovery/keywords/aso-library?" +
+          query({ ...m, q: keywordQuery, offset: candidateOffset }),
+      );
+      data.items = data.items.map((r) => ({ ...r, id: r.candidate_id }));
+      content = `<div class="cards">${metric("ASO自然搜索词", data.total, "本市场去重词数")}${metric("报告来源", data.counts.reports, `${data.counts.apps} 个应用`)}</div><p class="callout">${esc(data.note)}</p><form id="candidate-search" class="toolbar">${field("筛选词", "q", keywordQuery)}<button type="submit">筛选</button></form><div class="toolbar"><button id="candidate-all" class="secondary">选择本页</button><button id="candidate-track">追踪所选词</button><button id="candidate-prev" class="secondary" ${candidateOffset ? "" : "disabled"}>上一页</button><button id="candidate-next" class="secondary" ${candidateOffset + 100 < data.total ? "" : "disabled"}>下一页</button><span>共 ${data.total} 词，每页100词</span></div>${table(
+        [
+          "选择",
+          "关键词",
+          "最佳报告排名",
+          "来源应用数",
+          "来源报告数",
+          "最近报告日期",
+          "来源",
+        ],
+        data.items.map((r) => [
+          r.id ? pick("id", r.id) : "待加入候选库",
+          esc(r.keyword),
+          r.best_report_position,
+          r.apps,
+          r.reports,
+          stamp(r.latest_report_at),
+          r.id
+            ? `<button type="button" class="link" data-candidate-sources="${r.id}">查看来源</button>`
+            : "—",
+        ]),
+      )}`;
     } else if (keywordTab === "reports") {
       const reports = await api("/discovery/reports?" + query(m));
       const totals = await api("/discovery/report-summary?" + query(m));
@@ -599,6 +627,7 @@ export function createDiscoveryPages(ctx) {
         `<div class="toolbar">${[
           ["coverage", "覆盖与排名"],
           ["candidates", "候选词库"],
+          ["aso-library", "ASO词库"],
           ["reports", "应用报告"],
           ["hot", "热搜来源"],
           ["markets", "市场覆盖"],
@@ -617,6 +646,7 @@ export function createDiscoveryPages(ctx) {
     document.querySelectorAll("[data-keyword-tab]").forEach((el) =>
       el.addEventListener("click", () => {
         keywordTab = el.dataset.keywordTab;
+        candidateOffset = 0;
         keywords(nextRevision()).catch((e) => toast(e.message));
       }),
     );

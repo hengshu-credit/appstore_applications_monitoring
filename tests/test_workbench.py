@@ -180,6 +180,9 @@ class WorkbenchTest(MySQLTestCase):
         self.assertEqual([r['app_id'] for r in rows],['123'])
         self.assertEqual(client.get('/research/aso').status_code,404)
         self.assertEqual(client.get('/api/research/aso',params=m).status_code,200)
+        self.assertEqual(client.get('/api/research/aso/keywords',params=m).json()['total'],0)
+        from appmon.auth import requirements
+        self.assertEqual(requirements('/api/research/aso/keywords','GET'),['aso:read'])
         self.assertEqual(client.get('/api/research/events',params=m).status_code,200)
         self.assertEqual(client.get('/api/research/markets/apple/123').json()['items'][0]['country'],'us')
         plan={'store':'apple','country':'us','language':'en','name':'P','app_ids':['123'],'details':True}

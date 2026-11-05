@@ -767,6 +767,22 @@ test("ASO workbench edits a versioned local draft and never submits to a store",
         last_success: 100,
       };
     if (path === "/api/research/aso/check") return checked;
+    if (path.startsWith("/api/research/aso/keywords?")) {
+      const q = new URL(path, "https://example.org").searchParams;
+      assert.equal(q.get("app_id"), "com.example.app");
+      return {
+        total: 101,
+        limit: 100,
+        note: "历史自然搜索词",
+        items: [
+          {
+            keyword: q.get("offset") === "100" ? "next word" : "report word",
+            best_report_position: 1,
+            latest_report_at: 100,
+          },
+        ],
+      };
+    }
     if (path === "/api/research/aso/drafts") {
       saved = JSON.parse(options.body);
       return { id: 1, revision: 1, published: false };
@@ -800,6 +816,17 @@ test("ASO workbench edits a versioned local draft and never submits to a store",
       );
     await tick();
     const editor = window.document.querySelector("#aso-editor");
+    const words = window.document.querySelector("#aso-words");
+    words.value = "manual word\nreport word";
+    window.document.querySelector("#aso-library-add").click();
+    await tick();
+    assert.equal(words.value, "manual word\nreport word");
+    window.document.querySelector("#aso-library-next").click();
+    await tick();
+    window.document.querySelector("#aso-library-add").click();
+    await tick();
+    assert.equal(words.value, "manual word\nreport word\nnext word");
+    assert.equal(editor.elements.name.value, "Original");
     editor.elements.name.value = "Edited title";
     editor.dispatchEvent(new window.Event("input", { bubbles: true }));
     assert.equal(
@@ -1041,6 +1068,54 @@ test("candidate selection creates only selected tracking targets and retains mar
     window.document.querySelector("#candidate-track").click();
     await tick();
     assert.deepEqual(submitted.ids, [12]);
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("ASO library browses natural words and tracks selected candidate IDs", async () => {
+  let submitted;
+  const { window, calls } = await setup((path, options) => {
+    if (path.startsWith("/api/discovery/keywords/coverage?"))
+      return emptyCoverage;
+    if (path.startsWith("/api/discovery/keywords/aso-library?"))
+      return {
+        total: 101,
+        counts: { reports: 2, apps: 2 },
+        note: "自然搜索词",
+        items: [
+          {
+            keyword: "<script>natural</script>",
+            candidate_id: 22,
+            best_report_position: null,
+            apps: 2,
+            reports: 2,
+            latest_report_at: 100,
+          },
+        ],
+      };
+    if (path === "/api/discovery/keywords/track") {
+      submitted = JSON.parse(options.body);
+      return { targets: 1, existing: 0 };
+    }
+  });
+  try {
+    window.location.hash = "keywords";
+    await tick();
+    window.document.querySelector('[data-keyword-tab="aso-library"]').click();
+    await tick();
+    assert.equal(window.document.querySelectorAll("#content script").length, 0);
+    window.document.querySelector("#candidate-all").click();
+    window.document.querySelector("#candidate-track").click();
+    await tick();
+    assert.deepEqual(submitted.ids, [22]);
+    window.document.querySelector("#candidate-next").click();
+    await tick();
+    assert.ok(
+      calls.some(
+        (c) => c.path.includes("aso-library?") && c.path.includes("offset=100"),
+      ),
+    );
   } finally {
     await window.happyDOM.close();
   }

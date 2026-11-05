@@ -286,7 +286,58 @@ export function createResearchPages(ctx) {
       `<div class="callout">公开文案最近成功：${esc(stamp(data.last_success))} · 基准快照 ${data.snapshot?.id || "暂无"} · 未提供字段：${data.unavailable_fields.map((k) => esc(fieldNames[k] || k)).join("、") || "无"}</div><div class="research-grid"><section class="panel"><h2>文案编辑</h2><form id="aso-editor">${field("草稿名称", "draft_name", "文案优化草稿", "text", 'required maxlength="120"')}${fields.map((f) => `<label class="spacer">${esc(f.label)}<textarea data-aso-field="${f.field}" name="${f.field}" rows="${f.field === "description" ? 7 : 2}">${esc(data.metadata[f.field])}</textarea><span class="field-counter" data-counter="${f.field}"></span></label>`).join("")}<label class="spacer">本次修改说明<textarea name="note" rows="2" maxlength="4000"></textarea></label><div class="toolbar spacer"><button type="submit">保存本地草稿</button><button type="button" class="secondary" id="aso-check">核查文案</button><button type="button" class="secondary" id="aso-new">另存新草稿</button></div></form></section><section class="panel"><h2>商店文案预览</h2><div class="listing-preview">${appLink(m.store, m.app_id, data.metadata.name || m.app_id, data.creative?.icon, m.country, m.language)}<div><h3 id="preview-title"></h3><p id="preview-summary" class="sub"></p><span class="badge neutral">本地草稿 · 未发布</span></div></div><h3 class="spacer">核查词库</h3><label>每行一个关键词<textarea id="aso-words">${esc(data.keywords.map((w) => w.keyword).join("\n"))}</textarea></label><p class="sub">文本命中不代表被商店索引；排名来自当前已跟踪词库。</p><div id="aso-findings"></div><div id="aso-coverage"></div></section></div>${panel(
         "草稿版本库",
         '<div id="aso-draft-list"></div>',
-      )}<div id="aso-versions"></div>`;
+      )}<div id="aso-versions"></div>${panel("ASO报告词库", '<div id="aso-library"></div>')}`;
+    let libraryQuery = "",
+      libraryOffset = 0,
+      libraryRequest = 0;
+    async function loadLibrary() {
+      const request = ++libraryRequest;
+      const words = await api(
+        "/research/aso/keywords?" +
+          query({ ...m, q: libraryQuery, offset: libraryOffset }),
+      );
+      if (rev !== currentRevision() || request !== libraryRequest) return;
+      $("#aso-library").innerHTML =
+        `<p class="sub">当前应用共 ${words.total} 个自然搜索词。${esc(words.note)}</p><form id="aso-library-search" class="toolbar">${field("筛选报告词", "q", libraryQuery)}<button type="submit">筛选</button></form><div class="toolbar"><button type="button" id="aso-library-add">本页加入核查词库</button><button type="button" id="aso-library-prev" class="secondary" ${libraryOffset ? "" : "disabled"}>上一页</button><button type="button" id="aso-library-next" class="secondary" ${libraryOffset + words.limit < words.total ? "" : "disabled"}>下一页</button><span>每页 ${words.limit} 词，核查最多500词</span></div>${table(
+          ["关键词", "最佳报告排名", "最近报告日期"],
+          words.items.map((r) => [
+            esc(r.keyword),
+            r.best_report_position,
+            stamp(r.latest_report_at),
+          ]),
+        )}`;
+      bindForm("#aso-library-search", async (v) => {
+        libraryQuery = v.q;
+        libraryOffset = 0;
+        await loadLibrary();
+      });
+      bindButton("#aso-library-prev", async () => {
+        libraryOffset = Math.max(0, libraryOffset - words.limit);
+        await loadLibrary();
+      });
+      bindButton("#aso-library-next", async () => {
+        libraryOffset += words.limit;
+        await loadLibrary();
+      });
+      bindButton("#aso-library-add", () => {
+        const current = $("#aso-words")
+          .value.split(/\r?\n/)
+          .map((v) => v.trim())
+          .filter(Boolean);
+        const merged = [
+          ...new Set([...current, ...words.items.map((r) => r.keyword)]),
+        ];
+        if (merged.length > 500) {
+          toast("核查词库最多500词，请先减少现有词或筛选报告词");
+          return;
+        }
+        $("#aso-words").value = merged.join("\n");
+        toast(`核查词库已更新，共 ${merged.length} 词`);
+      });
+    }
+    loadLibrary().catch((e) => {
+      if (rev === currentRevision()) toast(e.message);
+    });
     function renderDraftList() {
       $("#aso-draft-list").innerHTML = data.drafts.length
         ? table(

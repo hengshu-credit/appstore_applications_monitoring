@@ -318,6 +318,11 @@ def create_app(cfg):
     @api.post('/discovery/keywords/candidates')
     def candidate_import(value:dict=Body(...),db=DB):return keyword_discovery.import_candidates(db,value)
 
+    @api.get('/discovery/keywords/aso-library')
+    def aso_library(store:str,country:str='us',language:str='en',app_id:str='',q:str=Query('',max_length=255),offset:int=0,db=DB):
+        m=intel.market(dict(store=store,country=country,language=language,app_id=app_id),require_app=bool(app_id))
+        return keyword_reports.library(db,m,q,offset)
+
     @api.get('/discovery/keywords/candidates/{identifier}/sources')
     def candidate_source_list(identifier:int,db=DB):return keyword_discovery.candidate_sources(db,identifier)
 
@@ -534,6 +539,11 @@ def create_app(cfg):
     @api.get('/research/aso')
     def aso_workspace(store:str,app_id:str,country:str='us',language:str='en',db=DB):
         return aso.workspace(db,dict(store=store,app_id=app_id,country=country,language=language))
+
+    @api.get('/research/aso/keywords')
+    def aso_report_keywords(store:str,app_id:str,country:str='us',language:str='en',q:str=Query('',max_length=255),offset:int=0,db=DB):
+        m=intel.market(dict(store=store,app_id=app_id,country=country,language=language))
+        return keyword_reports.library(db,m,q,offset)
 
     @api.post('/research/aso/check')
     def aso_check(value:dict=Body(...)):

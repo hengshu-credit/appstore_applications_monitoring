@@ -190,6 +190,39 @@ def rejections(db,identifier,offset=0):
     return {'items':rows,'total':total,'offset':offset,'limit':100}
 
 
+def library(db, m, q='', offset=0, limit=100):
+    """Natural-search vocabulary, with historical report evidence kept separate."""
+    if type(offset) is not int or not 0 <= offset <= 1000000 or not 1 <= limit <= 100:
+        raise ValueError('词库分页参数无效')
+    where = "r.store=%s AND r.country=%s AND r.language=%s AND k.sheet='ASO关键词'"
+    args = [m[k] for k in ('store', 'country', 'language')]
+    if m.get('app_id'):
+        where += ' AND r.app_id=%s'
+        args.append(m['app_id'])
+    if q:
+        where += ' AND LOCATE(LOWER(%s),LOWER(k.keyword))>0'
+        args.append(q)
+    base = ' FROM keyword_report_rows k JOIN keyword_reports r ON r.id=k.report_id WHERE ' + where
+    counts = db.execute('SELECT count(*) records,count(DISTINCT k.keyword) terms,'
+                        'count(DISTINCT r.id) reports,count(DISTINCT r.app_id) apps' + base, args).fetchone()
+    rows = db.execute('''SELECT k.keyword,MIN(k.position) best_report_position,
+        count(*) source_records,count(DISTINCT r.id) reports,count(DISTINCT r.app_id) apps,
+        MAX(r.observed_at) latest_report_at''' + base +
+        ' GROUP BY k.keyword ORDER BY k.keyword LIMIT %s OFFSET %s', (*args, limit, offset)).fetchall()
+    # Resolve only this page; do not scan or queue the full vocabulary on a read.
+    ids = {}
+    if rows:
+        ids = {r['keyword']: r['id'] for r in db.execute('''SELECT keyword,MIN(id) id FROM keyword_candidates
+            WHERE store=%s AND country=%s AND language=%s AND keyword IN (''' +
+            ','.join('%s' for _ in rows) + ') GROUP BY keyword',
+            (*[m[k] for k in ('store','country','language')], *[r['keyword'] for r in rows])).fetchall()}
+    for row in rows:
+        row['candidate_id'] = ids.get(row['keyword'])
+    return {'items': rows, 'total': counts['terms'], 'counts': counts, 'offset': offset, 'limit': limit,
+            'note': '仅含本市场报告中的ASO自然搜索词，按规范化关键词去重。最佳报告排名取所选报告历史最小值，'
+                    '日期为最近报告日期，两者不代表同一条观察或当前排名。追踪语言沿用导入配置。'}
+
+
 def promote(db,value):
     from .keyword_discovery import import_candidates
     identifier=value.get('report_id');sheet=value.get('sheet','ASO关键词'); source_rows=value.get('source_rows')
