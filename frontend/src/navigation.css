@@ -18,7 +18,8 @@
   display: none;
 }
 .app-sidebar .brand {
-  margin-bottom: 22px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
 }
 .workspace-context {
   padding: 18px 38px 0;
@@ -32,7 +33,7 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  margin-top: 14px;
+  margin: 0 0 12px;
   border-bottom: 1px solid var(--line);
 }
 #workspace-pages a {
@@ -46,11 +47,18 @@
   border-color: var(--accent);
   font-weight: 600;
 }
-#workspace-scope {
-  font-size: 12px;
-  color: var(--muted);
-  flex-basis: 100%;
-  text-align: right;
+.workspace-intro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+#workspace-actions {
+  flex: none;
+}
+.shell > header {
+  padding-block: 8px;
 }
 .shell > header .market {
   flex-wrap: wrap;
@@ -96,9 +104,6 @@
   #workspace-pages a {
     flex-shrink: 0;
     padding: 9px 12px;
-  }
-  #workspace-scope {
-    text-align: left;
   }
   .shell > header .market {
     justify-content: flex-start;

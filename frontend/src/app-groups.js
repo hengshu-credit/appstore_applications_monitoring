@@ -65,6 +65,7 @@ export function createGroupWorkspace(ctx) {
     tab = "overview",
     generation = 0,
     root;
+  let clearCountryHints = () => {};
   const storeName = (s) => (s === "apple" ? "App Store" : "Google Play");
   const dateValue = (v) =>
     v == null ? "—" : typeof v === "number" ? stamp(v) : esc(v);
@@ -116,6 +117,16 @@ export function createGroupWorkspace(ctx) {
       )
       .join("");
 
+  const compactCount = (value) => {
+    const count = Number(value);
+    if (count >= 1e12) return count.toExponential(1);
+    return count >= 10000
+      ? new Intl.NumberFormat("zh-CN", {
+          notation: "compact",
+          maximumFractionDigits: 1,
+        }).format(count)
+      : num(value);
+  };
   function countryCard(country) {
     const states = [
       ["available", "在架"],
@@ -131,20 +142,95 @@ export function createGroupWorkspace(ctx) {
     const segments = states
       .map((s) => {
         const width = total ? (s.count / total) * 1000 : 0;
-        const rect = `<rect x="${start}" y="0" width="${width}" height="8" class="country-state-${s.key}"><title>${esc(stateNames[s.key])} ${num(s.count)}</title></rect>`;
+        const rect = `<rect x="${start}" y="0" width="${width}" height="8" class="country-state-${s.key}"></rect>`;
         start += width;
         return rect;
       })
       .join("");
     return `<button data-group-country="${esc(country.country)}" class="content-card group-country" aria-label="${esc(countryName(country.country))}，${num(country.apps)} 款应用，${num(country.targets)} 个目标，${esc(summary)}。查看应用矩阵">
-      <span class="country-heading"><strong>${esc(countryName(country.country))}</strong><small>${esc(country.country.toUpperCase())}</small></span>
-      <span class="country-total"><b>${num(country.apps)}</b><small>APP</small>${country.targets !== country.apps ? `<small class="country-targets" title="按国家 / 语言统计的观察目标">${num(country.targets)} 目标</small>` : ""}</span>
-      <svg class="country-status-bar" viewBox="0 0 1000 8" preserveAspectRatio="none" role="img" aria-label="目标状态占比：${esc(summary)}"><rect width="1000" height="8" class="country-state-empty"/>${segments}</svg>
-      <span class="country-status-counts">${states.map((s) => `<span class="country-status country-state-${s.key}" title="${esc(stateNames[s.key])}：${num(s.count)}"><b>${num(s.count)}</b><small>${s.label}</small></span>`).join("")}</span>
+      <span class="country-heading"><span class="country-name"><img class="country-flag" src="/flags/${esc(country.country)}.svg" alt="" loading="lazy"><strong>${esc(countryName(country.country))}</strong></span><small>${esc(country.country.toUpperCase())}</small></span>
+      <span class="country-total"><b title="${num(country.apps)}">${compactCount(country.apps)}</b><small>APP</small></span>
+      <svg class="country-status-bar" viewBox="0 0 1000 8" preserveAspectRatio="none" aria-hidden="true"><rect width="1000" height="8" class="country-state-empty"/>${segments}</svg>
+      <span class="country-status-counts">${states.map((s) => `<span class="country-status" title="${esc(stateNames[s.key])}：${num(s.count)}"><b>${compactCount(s.count)}</b><small>${s.label}</small></span>`).join("")}</span>
+      <template class="country-detail"><div class="country-hint-heading"><strong>${esc(countryName(country.country))}</strong><span>${num(country.apps)} APP · ${num(country.targets)} 个观察目标</span></div>${states.map((s) => `<div class="country-hint-row"><i class="country-state-${s.key}" aria-hidden="true"></i><span>${esc(stateNames[s.key])}</span><b>${num(s.count)}</b><small>${total ? ((s.count / total) * 100).toFixed(1) + "%" : "—"}</small></div>`).join("")}<p>状态按国家 / 语言目标统计</p></template>
     </button>`;
   }
 
+  function bindCountryHints(host) {
+    const tip = document.createElement("div");
+    tip.id = "group-country-hint";
+    tip.className = "country-hint";
+    tip.setAttribute("role", "tooltip");
+    tip.setAttribute("popover", "manual");
+    tip.hidden = true;
+    host.append(tip);
+    let active = null,
+      opened = false;
+    const hide = () => {
+      active?.removeAttribute("aria-describedby");
+      active = null;
+      if (opened && tip.isConnected) tip.hidePopover();
+      opened = false;
+      tip.hidden = true;
+    };
+    const show = (card) => {
+      if (!card.isConnected) return;
+      hide();
+      active = card;
+      tip.replaceChildren(
+        card.querySelector(".country-detail").content.cloneNode(true),
+      );
+      tip.hidden = false;
+      if (tip.showPopover) {
+        tip.showPopover();
+        opened = true;
+      }
+      card.setAttribute("aria-describedby", tip.id);
+      const r = card.getBoundingClientRect(),
+        box = tip.getBoundingClientRect();
+      tip.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - box.width - 8))}px`;
+      const top =
+        r.top - box.height - 8 >= 8 ? r.top - box.height - 8 : r.bottom + 8;
+      tip.style.top = `${Math.max(8, Math.min(top, window.innerHeight - box.height - 8))}px`;
+    };
+    host.querySelectorAll(".group-country").forEach((card) => {
+      card.addEventListener("pointerenter", () => show(card));
+      card.addEventListener("pointerleave", () => {
+        if (document.activeElement !== card) hide();
+      });
+      card.addEventListener("focus", () => show(card));
+      card.addEventListener("blur", hide);
+      card.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") hide();
+      });
+    });
+    const onScroll = () => {
+      const card = active;
+      const rect = card?.getBoundingClientRect();
+      if (
+        card &&
+        document.activeElement === card &&
+        rect.bottom > 0 &&
+        rect.top < window.innerHeight
+      )
+        show(card);
+      else hide();
+    };
+    const cleanup = () => {
+      hide();
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", hide);
+      window.removeEventListener("hashchange", cleanup);
+      tip.remove();
+    };
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", hide);
+    window.addEventListener("hashchange", cleanup, { once: true });
+    clearCountryHints = cleanup;
+  }
+
   async function render(revision) {
+    clearCountryHints();
     const listing = await api("/groups");
     groups = listing.items;
     const requested = Number(
@@ -157,7 +243,7 @@ export function createGroupWorkspace(ctx) {
         : groups[0]?.id;
     if (
       !mount(
-        `<div class="group-workspace"><aside class="panel group-sidebar"><div class="panel-heading"><h2>我的应用分组</h2>${can("groups", "write") ? '<button id="group-create" class="secondary">新建</button>' : ""}</div><div id="group-list"></div></aside><section id="group-dashboard" aria-live="polite"></section></div>`,
+        `<div class="group-workspace"><aside class="panel group-sidebar"><div class="group-sidebar-content"><div class="panel-heading"><h2>我的应用分组</h2>${can("groups", "write") ? '<button id="group-create" class="secondary">新建</button>' : ""}</div><div id="group-list"></div></div></aside><section id="group-dashboard" aria-live="polite"></section></div>`,
         revision,
       )
     )
@@ -467,6 +553,7 @@ export function createGroupWorkspace(ctx) {
       id = selected,
       host = root?.querySelector("#group-dashboard");
     if (!host) return;
+    clearCountryHints();
     const query =
       `/groups/${id}/dashboard?` + qs({ ...filters, offset, limit: 50 });
     let data;
@@ -532,7 +619,7 @@ export function createGroupWorkspace(ctx) {
           <div class="group-health"><span>48 小时内取得详情：${num(s.fresh)} / ${num(s.targets)}</span><span>采集异常：${num(s.errors)}</span><span>${data.collection.paused ? "采集已全局暂停" : data.collection.cooldown_seconds ? `距离下次可请求：${data.collection.cooldown_seconds} 秒` : "采集开关已启用"}</span><span>看板更新：${stamp(data.observed_at)}</span></div>
           ${panel(
             "各国家应用分布",
-            `<p class="sub">点击国家查看应用；色条与状态数字按观察目标统计。</p><div class="group-countries">${data.countries
+            `<p class="sub">悬停或聚焦卡片查看状态分布，点击进入应用矩阵。</p><div class="group-countries">${data.countries
               .filter((c) => !filters.country || c.country === filters.country)
               .map(countryCard)
               .join("")}</div>`,
@@ -567,6 +654,7 @@ export function createGroupWorkspace(ctx) {
               `${tab === "permissions" ? '<p class="sub">Android 商店声明权限按英文说明采集，并非用户实际授予权限。失败时保留上次清单；App Store 未提供同类公开清单。</p>' : tab === "rankings" ? '<p class="sub">仅显示已配置词库与榜单中的有效采样命中；点击应用可看各关键词、榜单及历史时间。</p>' : tab === "money" ? `<p class="sub">所选期间、当前国家范围内已取得的下载量与商店收入；实际与估算、币种分别汇总。</p>${metricCells(data.money)}${can("groups", "write") ? '<button id="group-import-metrics" class="secondary">导入下载 / 收入 CSV</button>' : ""}` : '<p class="sub">当前观察、导入参考与未验证状态分别显示。点击应用打开全部指标。</p>'}${memberTable(data, tab)}`,
             )
       }</div><p class="sub">${esc(data.scope)} 事件和经营指标按商店、国家及期间汇总，不随列表搜索或状态筛选改变。</p>`;
+    if (tab === "overview") bindCountryHints(host);
     host
       .querySelector("#group-edit-button")
       ?.addEventListener("click", () => editGroup(data.group));

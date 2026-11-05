@@ -13,6 +13,7 @@
   --accent: #2639e9;
   --accent-text: #2030bb;
   --chart-accent: var(--accent-text);
+  --chart-secondary: var(--accent-text);
   --on-accent: #ffffff;
   --on-brand: #ffffff;
   --brand-background: var(--accent);

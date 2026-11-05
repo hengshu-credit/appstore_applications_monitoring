@@ -1,0 +1,52 @@
+{
+  "finalThemeMetrics": {
+    "barHeight": 10,
+    "dashboardHeight": 2536.275146484375,
+    "flags": true,
+    "headerHeight": 50,
+    "height": 1080,
+    "hint": "巴西\n50 APP · 50 个观察目标\n已验证在架\n14\n28.0%\n尚未验证\n34\n68.0%\n缺失待确认\n2\n4.0%\n地区不可用\n0\n0.0%\n\n状态按国家 / 语言目标统计",
+    "hintHidden": false,
+    "overflow": false,
+    "sidebarHeight": 2536.275146484375,
+    "width": 1920
+  },
+  "finalMobileMetrics": {
+    "barHeight": 10,
+    "hint": {
+      "bottom": 512.6000213623047,
+      "height": 230.8000030517578,
+      "left": 34.79999923706055,
+      "right": 314.79999923706055,
+      "top": 281.8000183105469,
+      "width": 280,
+      "x": 34.79999923706055,
+      "y": 281.8000183105469
+    },
+    "hintHidden": false,
+    "pageWidth": 381,
+    "stateNumbers": true,
+    "width": 390
+  },
+  "collectionLayout": {
+    "actionInDescription": "workspace-actions",
+    "descriptionTop": 135.5,
+    "duplicate": false,
+    "footerBelowViewport": true,
+    "headerHeight": 50,
+    "scopeRemoved": true,
+    "tabsBottom": 114.40000534057616
+  },
+  "endFooter": {
+    "atEnd": true,
+    "bottom": 1502.8125,
+    "height": 1503,
+    "orphanHint": false
+  },
+  "shortFooter": {
+    "bottom": 1503.2000732421875,
+    "pageHeight": 1503,
+    "viewportHeight": 1503
+  },
+  "consoleErrors": []
+}

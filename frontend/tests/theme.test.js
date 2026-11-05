@@ -142,3 +142,38 @@ test("gradient colors and direction can be configured without typing color codes
     await win.happyDOM.close();
   }
 });
+
+test("chart colors follow presets and custom palettes in both modes", async () => {
+  const win = new Window();
+  try {
+    for (const colorScheme of ["LIGHT", "DARK"]) {
+      for (const value of [
+        ...PRESETS.map(([accentPreset]) => ({ accentPreset })),
+        { accentMode: "CUSTOM_SOLID", customSolidColor: "#ffffee" },
+        {
+          accentMode: "CUSTOM_GRADIENT",
+          customGradientColors: ["#17654b", "#e869a2"],
+        },
+      ]) {
+        const config = { ...DEFAULT_THEME, ...value, colorScheme };
+        const state = resolveTheme(config);
+        applyTheme(config, win);
+        assert.equal(
+          win.document.documentElement.style.getPropertyValue(
+            "--chart-secondary",
+          ),
+          state.chartSecondary,
+        );
+        assert.ok(
+          contrast(state.chartSecondary, state.dark ? "#151d31" : "#ffffff") >=
+            4.5,
+        );
+      }
+    }
+    const blue = resolveTheme({ ...DEFAULT_THEME, accentPreset: "THEME_BLUE" });
+    const pink = resolveTheme({ ...DEFAULT_THEME, accentPreset: "PEACH_PINK" });
+    assert.notEqual(blue.chartSecondary, pink.chartSecondary);
+  } finally {
+    await win.happyDOM.close();
+  }
+});

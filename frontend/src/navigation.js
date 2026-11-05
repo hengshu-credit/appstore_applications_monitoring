@@ -86,7 +86,7 @@ export const pageInfo = {
   collection: [
     "采集任务",
     "collection",
-    "统一配置任务、运行周期和限速，查看队列、日志与数据质量。",
+    "按类型查看采集任务，配置周期与限速，查看进度、日志并处理异常。",
   ],
   watchlist: [
     "详情监控任务",
@@ -159,15 +159,6 @@ export function updateWorkspace(document, name, can) {
     !globalMarket && !["store", "countries"].includes(current.scope);
   document.querySelector(".country-field").hidden = !globalMarket;
   document.querySelector(".language-field").hidden = !globalMarket;
-  const note = document.querySelector("#workspace-scope");
-  note.textContent = {
-    group: "范围：看板内的商店与国家筛选",
-    store: "当前商店 · 全部国家",
-    countries: "当前商店 · 国家范围在榜单内筛选",
-    none: "全平台配置",
-    detail: "范围：当前档案所记录的市场",
-    collection: "列表按商店筛选 · 新建默认使用所选地区",
-    market: "范围：当前商店、国家与请求语言",
-  }[current.scope];
+  document.querySelector("#workspace-actions")?.replaceChildren();
   return current;
 }

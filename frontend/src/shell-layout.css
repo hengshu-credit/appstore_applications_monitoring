@@ -1,10 +1,11 @@
-/* Keep the footer in its own viewport row, never over the scrollable content. */
+/* Short pages fill the viewport; long pages reveal the footer at their end. */
 body {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  height: 100dvh;
-  overflow: hidden;
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: auto;
+  overflow: visible;
 }
 .shell {
   display: flex;
@@ -21,8 +22,8 @@ body {
   flex: 1;
   min-height: 0;
   width: 100%;
-  overflow: auto;
-  scrollbar-gutter: stable;
+  overflow: visible;
+  padding-top: 16px;
 }
 .app-sidebar {
   overflow: hidden;
@@ -176,8 +177,7 @@ body {
 }
 @media (max-height: 600px) and (max-width: 750px) {
   .app-sidebar .brand,
-  #workspace-description,
-  #workspace-scope {
+  #workspace-description {
     display: none;
   }
   .app-sidebar {

@@ -244,10 +244,34 @@ test("country charts show observed status proportions and keep imported referenc
   try {
     await c.workspace.render(1);
     const card = c.doc.querySelector(".group-country");
+    assert.equal(
+      card.querySelector(".country-flag").getAttribute("src"),
+      "/flags/th.svg",
+    );
+    assert.match(card.querySelector(".country-name").textContent, /泰国/);
+    const children = [...card.children];
+    assert.ok(
+      children.indexOf(card.querySelector(".country-total")) <
+        children.indexOf(card.querySelector(".country-status-bar")),
+    );
+    assert.ok(
+      children.indexOf(card.querySelector(".country-status-bar")) <
+        children.indexOf(card.querySelector(".country-status-counts")),
+    );
     assert.equal(card.querySelector(".country-total b").textContent, "8");
-    assert.equal(card.querySelector(".country-targets").textContent, "10 目标");
+    assert.equal(card.querySelector(".country-targets"), null);
     assert.deepEqual(
       [...card.querySelectorAll(".country-status b")].map((e) => e.textContent),
+      ["4", "3", "2", "1"],
+    );
+    card.dispatchEvent(new c.window.Event("pointerenter"));
+    const hint = c.doc.querySelector("#group-country-hint");
+    assert.equal(hint.hidden, false);
+    assert.match(hint.textContent, /10 个观察目标/);
+    assert.deepEqual(
+      [...hint.querySelectorAll(".country-hint-row b")].map(
+        (e) => e.textContent,
+      ),
       ["4", "3", "2", "1"],
     );
     const bars = [
@@ -263,6 +287,63 @@ test("country charts show observed status proportions and keep imported referenc
     );
     assert.match(card.getAttribute("aria-label"), /已验证在架 4/);
     assert.ok(!card.textContent.includes("99"));
+    assert.deepEqual(
+      [...hint.querySelectorAll(".country-hint-row small")].map(
+        (e) => e.textContent,
+      ),
+      ["40.0%", "30.0%", "20.0%", "10.0%"],
+    );
+    card.dispatchEvent(new c.window.Event("pointerleave"));
+    assert.equal(hint.hidden, true);
+    card.focus();
+    assert.equal(hint.hidden, false);
+    assert.equal(card.getAttribute("aria-describedby"), hint.id);
+    card.dispatchEvent(
+      new c.window.KeyboardEvent("keydown", { key: "Escape" }),
+    );
+    assert.equal(hint.hidden, true);
+    assert.equal(card.hasAttribute("aria-describedby"), false);
+    card.blur();
+    card.focus();
+    assert.equal(hint.hidden, false);
+    c.doc.querySelector('[data-group-tab="matrix"]').click();
+    await tick();
+    assert.equal(hint.isConnected, false);
+  } finally {
+    await c.window.happyDOM.close();
+  }
+});
+
+test("large country counts stay compact while hints retain exact values", async () => {
+  const c = setup((path) => {
+    if (!path.includes("/dashboard?")) return;
+    const data = dashboard();
+    data.countries = [
+      {
+        country: "th",
+        apps: 123456789,
+        targets: 123456789,
+        states: { available: 123456789 },
+        reference: {},
+      },
+    ];
+    return data;
+  });
+  try {
+    await c.workspace.render(1);
+    const card = c.doc.querySelector(".group-country");
+    assert.ok(card.querySelector(".country-total b").textContent.length < 8);
+    assert.equal(card.querySelector(".country-total b").title, "123,456,789");
+    assert.ok(card.querySelector(".country-status b").textContent.length < 8);
+    card.dispatchEvent(new c.window.Event("pointerenter"));
+    assert.match(
+      c.doc.querySelector("#group-country-hint").textContent,
+      /123,456,789/,
+    );
+    assert.match(
+      c.doc.querySelector("#group-country-hint").textContent,
+      /100.0%/,
+    );
   } finally {
     await c.window.happyDOM.close();
   }

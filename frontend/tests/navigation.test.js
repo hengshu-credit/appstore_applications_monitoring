@@ -30,7 +30,7 @@ test("every existing page has exactly one workspace and detail routes return to 
 test("workspace tabs respect individual permissions and hide filters that do not apply", async () => {
   const window = new Window(),
     doc = window.document;
-  doc.body.innerHTML = `<nav id="navigation">${navigationMarkup(() => "")}</nav><h1 id="page-title"></h1><p id="workspace-description"></p><nav id="workspace-pages"></nav><div class="store-field"></div><div class="country-field"></div><div class="language-field"></div><p id="workspace-scope"></p>`;
+  doc.body.innerHTML = `<nav id="navigation">${navigationMarkup(() => "")}</nav><h1 id="page-title"></h1><p id="workspace-description"></p><nav id="workspace-pages"></nav><div class="store-field"></div><div class="country-field"></div><div class="language-field"></div>`;
   try {
     updateWorkspace(doc, "groups", () => true);
     assert.equal(doc.querySelector(".store-field").hidden, true);
@@ -56,10 +56,8 @@ test("workspace tabs respect individual permissions and hide filters that do not
     updateWorkspace(doc, "globalcharts", () => true);
     assert.equal(doc.querySelector(".store-field").hidden, false);
     assert.equal(doc.querySelector(".country-field").hidden, true);
-    assert.match(
-      doc.querySelector("#workspace-scope").textContent,
-      /榜单内筛选/,
-    );
+    assert.equal(workspacePage("globalcharts").scope, "countries");
+    assert.equal(doc.querySelector("#workspace-scope"), null);
     updateWorkspace(doc, "datasources", (page) => page === "datasources");
     assert.equal(doc.querySelector("#workspace-pages").hidden, true);
     assert.equal(doc.querySelector(".store-field").hidden, true);

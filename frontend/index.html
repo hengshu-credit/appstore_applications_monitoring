@@ -71,7 +71,6 @@
           ></button>
         </div>
         <div class="market">
-          <span id="workspace-scope"></span>
           <div class="market-field store-field">
             <span id="store-label">应用商店</span
             ><input id="global-store" type="hidden" value="google" />
@@ -206,8 +205,11 @@
         </div>
       </header>
       <section class="workspace-context" aria-label="当前工作区">
-        <p id="workspace-description"></p>
         <nav id="workspace-pages" aria-label="工作区页面" hidden></nav>
+        <div class="workspace-intro">
+          <p id="workspace-description"></p>
+          <div id="workspace-actions"></div>
+        </div>
       </section>
       <main id="content" aria-live="polite">
         <div class="empty">正在连接数据工作台…</div>

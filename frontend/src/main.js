@@ -285,6 +285,13 @@ function metric(label, value, caption) {
 function mount(html, rev) {
   if (rev != null && rev !== revision) return false;
   $("#content").innerHTML = html;
+  const collectionHeading = $("#content .collection-heading");
+  if (collectionHeading && $("#workspace-actions")) {
+    $("#workspace-actions").replaceChildren(
+      collectionHeading.querySelector("#new-collection"),
+    );
+    collectionHeading.remove();
+  }
   return true;
 }
 

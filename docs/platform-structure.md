@@ -38,4 +38,4 @@
 
 页面清单及范围统一在 `frontend/src/navigation.js` 维护；浏览器验收记录见 [UI 验收](ui-restructure-verification.md)。
 
-侧栏底部提供折叠按钮，页脚独立贴合视口底边，正文单独滚动。国家卡片使用应用总数与状态占比图；详细参考信息在应用矩阵和档案查看。实现及浏览器测量见 [侧栏与页脚验收](shell-cards-verification.md)。
+侧栏底部提供折叠按钮。页脚位于文档末尾，长页滚动到底显示，短页贴底；页签说明置于页签下方。国家卡片显示国旗、总数、10px主题占比条及状态数字，悬停显示完整明细；左侧分组框与右侧看板等高。最新浏览器测量见 [主题卡片与布局验收](theme-layout-verification.md)，此前的布局记录保留在 [侧栏与页脚验收](shell-cards-verification.md)。

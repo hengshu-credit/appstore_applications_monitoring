@@ -131,6 +131,7 @@ export function resolveTheme(value, systemDark = false) {
     dark,
     accent: colors[0],
     accentText: readableAccent(colors[0], surface),
+    chartSecondary: readableAccent(colors.at(-1), surface),
     background: safeBackground,
     onAccent: foreground(colors[0]),
     onBrand:
@@ -160,6 +161,7 @@ export function applyTheme(value, win = window) {
     "--on-accent": state.onAccent,
     "--on-brand": state.onBrand,
     "--chart-accent": state.accentText,
+    "--chart-secondary": state.chartSecondary,
     "--radius": "0px",
   }))
     root.style.setProperty(key, value);
