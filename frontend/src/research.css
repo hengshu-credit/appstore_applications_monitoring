@@ -143,6 +143,34 @@
   font-size: 12px;
   color: var(--muted);
 }
+.review-market {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: auto;
+}
+.review-market .country-flag {
+  width: 22px;
+  height: 16px;
+  object-fit: contain;
+}
+.review-card-foot small {
+  display: block;
+  margin-top: 5px;
+}
+.review-card-foot .actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.review-public-reply {
+  border-left: 2px solid var(--accent);
+  padding: 12px;
+  margin-bottom: 16px;
+  background: var(--soft);
+}
 .source-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

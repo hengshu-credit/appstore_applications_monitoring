@@ -17,7 +17,7 @@ export const navigationSections = [
       { label: "排行榜", pages: ["globalcharts", "charts", "featured"] },
       { label: "关键词与 ASO", pages: ["keywords", "aso"] },
       { label: "市场研究", pages: ["compare", "developers", "market", "ads"] },
-      { label: "评论工作台", pages: ["reviews"] },
+      { label: "评论记录", pages: ["reviews"] },
     ],
   },
   {
@@ -82,7 +82,11 @@ export const pageInfo = {
   developers: ["开发者", "store", "按开发者查看已知应用及关联资料。"],
   market: ["市场分布", "market", "分析已观察应用的分类、开发者与事件分布。"],
   ads: ["广告观察", "store", "管理广告观察证据与自有账户报表。"],
-  reviews: ["评论工作台", "market", "检索已采集评论，分派问题并记录处理结果。"],
+  reviews: [
+    "评论记录",
+    "market",
+    "按应用收集和检索商店评论，查看原文、星级及采集历史。",
+  ],
   collection: [
     "采集任务",
     "collection",

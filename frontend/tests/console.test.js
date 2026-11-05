@@ -948,7 +948,7 @@ test("ASO workbench edits a versioned local draft and never submits to a store",
   }
 });
 
-test("review desk keeps unknown reply state separate and saves internal workflow revision", async () => {
+test("review records provide original content and history without handling controls", async () => {
   const row = {
     store: "google",
     app_id: "com.example.app",
@@ -959,53 +959,105 @@ test("review desk keeps unknown reply state separate and saves internal workflow
     content: "<img src=x onerror=alert(1)>",
     title: "Problem",
     version: "1",
-    labels: [],
-    workflow_status: "open",
-    public_reply_status: "unknown",
-    owner: "",
-    note: "",
-    reply_draft: "",
-    revision: 0,
     first_seen: 100,
-    last_seen: 100,
+    last_seen: 200,
+    public_reply: "Observed reply",
+    owner: "must-not-show",
+    workflow_status: "open",
+    labels: ["must-not-show"],
+    reply_draft: "must-not-show",
   };
-  let saved;
-  const { window } = await setup((path, options) => {
+  const { window, calls } = await setup((path, options) => {
     if (path.startsWith("/api/research/reviews?"))
       return {
         items: [row],
-        summary: { total: 1, mean_review_rating: 1 },
-        ratings: [{ rating: 1, count: 1 }],
+        summary: { total: 51, apps: 1, mean_review_rating: 1 },
+        ratings: [{ rating: 1, count: 51 }],
         daily: [],
-        next_offset: null,
+        next_offset: path.includes("offset=50") ? null : 50,
         scope: "sample",
       };
-    if (path === "/api/research/reviews/workflow") {
-      saved = JSON.parse(options.body);
-      return { revision: 1, published: false };
-    }
+    if (path === "/api/research/reviews/history")
+      return {
+        items: [
+          {
+            observed_at: 100,
+            payload: {
+              rating: 1,
+              version: "1",
+              content: "<script>original</script>",
+              reply: "Historical public reply",
+            },
+          },
+        ],
+      };
   });
   try {
     window.location.hash = "reviews";
     await tick();
+    const doc = window.document;
+    assert.equal(doc.querySelector("#page-title").textContent, "评论记录");
+    assert.ok(!doc.querySelector("main").textContent.includes("must-not-show"));
+    assert.equal(doc.querySelector("[name=status]"), null);
+    assert.equal(doc.querySelector("[name=label]"), null);
+    assert.equal(doc.querySelector("img[onerror]"), null);
+    doc.querySelector("[data-review-detail]").click();
+    assert.equal(doc.querySelector("#review-case-form"), null);
+    assert.equal(doc.querySelector("[name=reply_draft]"), null);
     assert.match(
-      window.document.querySelector("main").textContent,
-      /来源未提供回复状态/,
+      doc.querySelector("#research-dialog").textContent,
+      /Observed reply/,
     );
-    assert.equal(window.document.querySelector("img[onerror]"), null);
-    window.document.querySelector("[data-review-case]").click();
-    const form = window.document.querySelector("#review-case-form");
-    form.elements.status.value = "closed";
-    form.elements.reply_draft.value = "Draft response";
-    form.elements.labels.value = "bug,login";
-    form.dispatchEvent(
-      new window.Event("submit", { bubbles: true, cancelable: true }),
-    );
+    doc.querySelector("#review-revisions").click();
     await tick();
-    assert.equal(saved.revision, 0);
-    assert.equal(saved.reply_draft, "Draft response");
-    assert.deepEqual(saved.labels, ["bug", "login"]);
-    assert.match(window.document.querySelector("#toast").textContent, /未发布/);
+    assert.match(doc.querySelector("#review-history").textContent, /original/);
+    assert.equal(doc.querySelector("#review-history script"), null);
+    assert.deepEqual(
+      JSON.parse(
+        calls.find((c) => c.path === "/api/research/reviews/history").options
+          .body,
+      ),
+      {
+        store: "google",
+        app_id: "com.example.app",
+        country: "us",
+        language: "en",
+        review_id: "r1",
+      },
+    );
+    doc.querySelector("#research-dialog").close();
+    doc.querySelector("#reviews-next").click();
+    await tick();
+    assert.ok(
+      calls.some(
+        (c) => c.path.includes("/reviews?") && c.path.includes("offset=50"),
+      ),
+    );
+    assert.equal(doc.querySelector("#reviews-next").disabled, true);
+    doc.querySelector("#reviews-prev").click();
+    await tick();
+    doc.querySelector("[data-review-app]").click();
+    await tick();
+    assert.equal(
+      doc.querySelector("#review-record-filter").elements.app_id.value,
+      "com.example.app",
+    );
+    assert.equal(doc.querySelector("#reviews-prev").disabled, true);
+    doc.querySelector("#configure-reviews").click();
+    assert.equal(
+      window.location.hash,
+      "#collection?new=reviews&app=com.example.app",
+    );
+    assert.equal(
+      calls.filter(
+        (c) =>
+          c.options?.method &&
+          c.options.method !== "GET" &&
+          c.path.startsWith("/api/research/reviews") &&
+          c.path !== "/api/research/reviews/history",
+      ).length,
+      0,
+    );
   } finally {
     await window.happyDOM.close();
   }

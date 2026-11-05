@@ -6,7 +6,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 from appmon.db import add_apps, dump, connect
 from appmon.aso import check_metadata, save_draft, draft_detail, workspace
-from appmon.review_desk import desk, save_case
+from appmon.review_desk import desk, review_history
 from appmon.insights import event_feed, add_annotation, save_comparison, comparison_detail, developers, developer_apps
 from appmon.collection import preview_plan, create_plan, work_plans, quality
 from appmon.web import create_app
@@ -65,20 +65,50 @@ class WorkbenchTest(MySQLTestCase):
         self.assertIsNotNone(report['baseline_snapshot_id'])
         self.assertEqual(json.loads(self.db.execute('SELECT payload FROM listings').fetchone()['payload'])['name'],'Observed app')
 
-    def test_review_workflow_reopens_changed_text_but_not_thumb_count(self):
+    def test_review_archive_ignores_legacy_workflow_and_disables_writes(self):
         key=self.seed_review(reply=None,thumbs_up=1)
-        result=save_case(self.db,key|{'revision':0,'status':'closed','owner':'Analyst','labels':['bug'],'note':'checked','reply_draft':'Local only'})
-        self.assertFalse(result['published'])
-        row=desk(self.db,key)['items'][0]
-        self.assertEqual((row['workflow_status'],row['public_reply_status']),('closed','not_observed'))
-        self.db.execute('UPDATE reviews SET payload=%s',(dump({'reply':None,'thumbs_up':99}),))
-        self.assertEqual(desk(self.db,key)['items'][0]['workflow_status'],'closed')
-        self.db.execute("UPDATE reviews SET content='New report',rating=1")
-        reopened=desk(self.db,key|{'status':'reopened','label':'bug'})
-        self.assertEqual(reopened['summary']['total'],1)
-        self.assertEqual(reopened['items'][0]['workflow_status'],'reopened')
-        with self.assertRaises(ValueError):save_case(self.db,key|{'revision':0,'status':'open'})
-        self.assertEqual(self.db.execute('SELECT reply_draft FROM review_workflow').fetchone()['reply_draft'],'Local only')
+        identity=tuple(key[k] for k in ('store','app_id','country','language','review_id'))
+        self.db.execute('INSERT INTO review_workflow VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
+            (*identity,'closed','Legacy owner',dump(['old']), 'Historical note','Historical draft','d'*64,1,time.time()))
+        before=self.db.execute('SELECT * FROM review_workflow').fetchone()
+        report=desk(self.db,key)
+        self.assertEqual(report['summary']['apps'],1)
+        row=report['items'][0]
+        self.assertEqual(row['content'],'App crashes')
+        self.assertEqual(row['public_reply_status'],'not_observed')
+        self.assertTrue({'workflow_status','owner','labels','note','reply_draft','revision'}.isdisjoint(row))
+        self.db.execute("UPDATE reviews SET content='Updated review',rating=1")
+        self.assertEqual(desk(self.db,key)['items'][0]['content'],'Updated review')
+        with patch.dict(os.environ,{'APPMON_API_TOKEN':''}):client=self.login_admin(TestClient(create_app(self.cfg)))
+        self.assertEqual(client.post('/api/research/reviews/workflow',json=key|{'status':'open','revision':1}).status_code,404)
+        self.assertEqual(client.get('/api/research/reviews',params=key).json()['items'][0]['content'],'Updated review')
+        schema=client.get('/api/openapi.json').json()
+        self.assertNotIn('/api/research/reviews/workflow',schema['paths'])
+        params={p['name'] for p in schema['paths']['/api/research/reviews']['get']['parameters']}
+        self.assertTrue({'status','label'}.isdisjoint(params))
+        from appmon.exports import request_export
+        with self.assertRaisesRegex(ValueError,'Invalid export kind'):
+            request_export(self.db,'review_workflow',{})
+        self.assertEqual(request_export(self.db,'reviews',{'app_id':key['app_id']})['status'],'queued')
+        self.assertEqual(self.db.execute('SELECT * FROM review_workflow').fetchone(),before)
+
+    def test_collected_reviews_keep_revisions_with_exact_market_and_app_scope(self):
+        from appmon.intelligence import add_observation_target, claim_observation, save_observation
+        from appmon.observation_stores import ObservationResult
+        key=dict(store='google',app_id='com.example.app',country='th',language='th',review_id='r1')
+        add_observation_target(self.db,dict(kind='reviews',refresh_hours=1,**{k:v for k,v in key.items() if k!='review_id'}))
+        for now,content in [(100,'original'),(200,'edited')]:
+            self.db.execute('UPDATE observation_targets SET due=0')
+            target=claim_observation(self.db,60,now)
+            result=ObservationResult([dict(id='r1',rating=2,content=content,version='1')],b'fixture','fixture','recent')
+            self.assertTrue(save_observation(self.db,self.cfg,target,result,now=now))
+        self.assertEqual(desk(self.db,key)['items'][0]['content'],'edited')
+        self.assertEqual([r['payload']['content'] for r in review_history(self.db,key)['items']],['edited','original'])
+        self.assertEqual(review_history(self.db,key|{'country':'us'})['items'],[])
+        self.assertEqual(review_history(self.db,key|{'app_id':'com.another.app'})['items'],[])
+        self.assertEqual(self.db.execute('SELECT count(*) n FROM review_workflow').fetchone()['n'],0)
+        from appmon.auth import requirements
+        self.assertEqual(requirements('/api/research/reviews/history','POST'),['reviews:read'])
 
     def test_review_reply_unknown_is_not_unreplied_and_statistics_share_filters(self):
         key=self.seed_review('r1',1)
@@ -88,6 +118,11 @@ class WorkbenchTest(MySQLTestCase):
         self.assertEqual(low['summary']['total'],1)
         self.assertEqual(float(low['summary']['mean_review_rating']),1)
         self.assertEqual(low['ratings'],[{'rating':1,'count':1}])
+        from appmon.scoped_views import reviews as review_records
+        all_stores=review_records(self.db,dict(store='all',country='us',language='en'))
+        self.assertEqual((all_stores['summary']['apps'],all_stores['summary']['total']),(1,2))
+        self.assertEqual(float(all_stores['summary']['mean_review_rating']),3)
+
 
     def test_collection_preview_no_side_effects_and_replay_preserves_pause(self):
         value=dict(name='Research',store='google',country='th',language='th',app_ids=['com.a.app','com.a.app'],keywords=['เงินกู้'],details=True,reviews=True,chart=True,category='FINANCE',refresh_hours=6)

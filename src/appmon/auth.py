@@ -16,7 +16,7 @@ RESOURCES = {
     'overview': '监控概览', 'groups': '应用分组', 'events': '事件中心', 'availability': '上下架观察',
     'apps': '应用库', 'watchlist': '重点监控', 'charts': '榜单中心',
     'globalcharts': '全球排行榜', 'featured': '精品推荐', 'keywords': '关键词中心',
-    'aso': 'ASO 工作台', 'compare': '竞品集合', 'reviews': '评论工作台',
+    'aso': 'ASO 工作台', 'compare': '竞品集合', 'reviews': '评论记录',
     'market': '市场分布', 'developers': '开发者', 'collection': '采集中心',
     'ads': '广告观察', 'alerts': '告警与日报', 'exports': '数据导出',
     'administration': '账户管理',

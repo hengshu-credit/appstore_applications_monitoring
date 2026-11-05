@@ -103,7 +103,7 @@ def reviews(db,filters):
         for r in p['ratings']:ratings[r['rating']]=ratings.get(r['rating'],0)+r['count']
         for r in p['daily']:daily[r['day']]=daily.get(r['day'],0)+r['count']
     return {'items':sorted([r for p in reports for r in p['items']],key=lambda r:r['last_seen'],reverse=True),
-            'summary':{'total':total,'mean_review_rating':sum(float(p['summary']['mean_review_rating'] or 0)*p['summary']['total'] for p in reports)/total if total else None},
+            'summary':{'total':total,'apps':sum(p['summary']['apps'] for p in reports),'mean_review_rating':sum(float(p['summary']['mean_review_rating'] or 0)*p['summary']['total'] for p in reports)/total if total else None},
             'ratings':[{'rating':k,'count':v} for k,v in sorted(ratings.items())],
             'daily':[{'day':k,'count':v} for k,v in sorted(daily.items())],
             'next_offset':filters.get('offset',0)+50 if any(p['next_offset'] is not None for p in reports) else None,

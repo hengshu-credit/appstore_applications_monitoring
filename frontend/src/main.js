@@ -1297,7 +1297,6 @@ async function exportPage(rev) {
           ["ad_reports", "广告日报"],
           ["aso_drafts", "ASO草稿"],
           ["aso_draft_versions", "ASO修订历史"],
-          ["review_workflow", "评论处理记录"],
           ["comparison_sets", "竞品集合"],
           ["event_annotations", "复盘注记"],
           ["collection_plans", "采集计划"],
@@ -1334,7 +1333,6 @@ async function exportPage(rev) {
       "reviews",
       "ad_observations",
       "aso_drafts",
-      "review_workflow",
       "comparison_sets",
       "event_annotations",
     ];
@@ -1386,8 +1384,10 @@ const researchPages = createResearchPages({
   controlButtons,
   currentRevision: () => revision,
   nextRevision: () => ++revision,
-  reviewTargets: () => {
-    location.hash = "collection";
+  reviewTargets: (appId = "") => {
+    location.hash =
+      "collection?new=reviews" +
+      (appId ? "&app=" + encodeURIComponent(appId) : "");
   },
 });
 const availabilityPage = createAvailabilityPage({

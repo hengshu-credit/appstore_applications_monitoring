@@ -7,7 +7,7 @@ from .db import connect, dump
 from .ingest import disk_check
 
 KINDS = {"apps", "events", "listings", "snapshots", "reviews", "alerts", "ad_observations", "ad_reports", "keyword_ranks", "observation_items",
-         "aso_drafts", "aso_draft_versions", "review_workflow", "comparison_sets", "event_annotations", "collection_plans"}
+         "aso_drafts", "aso_draft_versions", "comparison_sets", "event_annotations", "collection_plans"}
 FILTERS = {"store", "app_id", "country", "language", "kind", "run_id"}
 
 

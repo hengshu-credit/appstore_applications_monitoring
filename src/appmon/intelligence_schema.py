@@ -20,6 +20,7 @@ TABLES = {
         INDEX aso_market(store,app_id,country,language)''',
     'aso_draft_versions': '''draft_id BIGINT NOT NULL, revision INT NOT NULL, metadata LONGTEXT NOT NULL,
         note TEXT NOT NULL, checks LONGTEXT NOT NULL, saved_at DOUBLE NOT NULL, PRIMARY KEY(draft_id,revision)''',
+    # Retired workflow storage retained for existing databases/backups; no runtime writes.
     'review_workflow': f'''{APP_KEY}, {REGION}, review_id VARCHAR(255) CHARACTER SET ascii NOT NULL,
         status VARCHAR(20) NOT NULL, owner VARCHAR(120) NOT NULL DEFAULT '', labels LONGTEXT NOT NULL,
         note TEXT NOT NULL, reply_draft TEXT NOT NULL, review_digest CHAR(64) NOT NULL,

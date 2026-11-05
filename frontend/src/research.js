@@ -30,9 +30,6 @@ export function createResearchPages(ctx) {
       Object.entries(obj).filter(([, v]) => v !== "" && v != null),
     ).toString();
   const statusNames = {
-    open: "待处理",
-    closed: "已处理",
-    reopened: "评论变化待复核",
     queued: "待配置",
     running: "配置中",
     complete: "已配置",
@@ -42,7 +39,7 @@ export function createResearchPages(ctx) {
     unknown: "来源未提供回复状态",
   };
   const status = (v) =>
-    `<span class="badge ${["error", "reopened"].includes(v) ? "warn" : ""}">${esc(statusNames[v] || v)}</span>`;
+    `<span class="badge ${v === "error" ? "warn" : ""}">${esc(statusNames[v] || v)}</span>`;
   const kindNames = {
     details: "应用详情",
     keywords: "关键词",
@@ -490,111 +487,106 @@ export function createResearchPages(ctx) {
       "/research/reviews?" + query({ ...market(), ...filters }),
     );
     const mean = data.summary.mean_review_rating;
+    const pageActions = `<div class="actions"><span class="sub">第 ${Math.floor((filters.offset || 0) / 50) + 1} 页 · ${num(data.items.length)} 条</span><button id="reviews-prev" class="secondary small" ${(filters.offset || 0) > 0 ? "" : "disabled"}>上一页</button><button id="reviews-next" class="secondary small" ${data.next_offset == null ? "disabled" : ""}>下一页</button></div>`;
+    const cards = data.items
+      .map(
+        (r, i) =>
+          `<article class="review-card"><div class="review-card-head">${appLink(r.store, r.app_id, r.app_name)}<span class="review-stars">${esc(r.rating)} ★</span><span class="review-market"><img class="country-flag" src="/flags/${esc(r.country)}.svg" alt="">${esc(selectors.countryName(r.country))} · ${esc(r.country.toUpperCase())} / ${esc(r.language)}</span></div>${r.title ? `<strong>${esc(r.title)}</strong>` : ""}<p class="review-body">${esc(r.content)}</p><div class="review-card-foot"><span>${esc(r.version || "版本未知")} · 发表 ${esc(r.published_at || "未知")}<small class="sub">首次观察 ${stamp(r.first_seen)} · 最近观察 ${stamp(r.last_seen)}</small></span><div class="actions"><button class="secondary small" data-review-app="${i}">仅看此应用</button><button class="secondary small" data-review-detail="${i}">查看记录</button></div></div></article>`,
+      )
+      .join("");
     if (
       !mount(
-        `<p class="lead">从评论中识别问题、分派处理并保存复盘记录。内部处理状态与商店公开回复分别展示。</p><div class="cards">${metric("匹配评论", data.summary.total, "当前筛选的已采集样本")}${metric("评论平均星级", mean == null ? null : Number(mean).toFixed(2), "不是商店累计评分")}${metric("当前页", data.items.length, market().store === "all" ? "每店每页最多50条" : "每页最多50条")}${metric("当前页待处理", data.items.filter((r) => r.workflow_status !== "closed").length, "包含评论变化后待复核的记录")}</div>${panel(
-          "评论筛选",
-          `<form id="review-desk-filter" class="toolbar">${field("应用ID", "app_id", filters.app_id || "")}${select(
-            "处理状态",
-            "status",
-            [
-              ["", "全部"],
-              ["open", "待处理"],
-              ["closed", "已处理"],
-              ["reopened", "评论变化待复核"],
-            ],
-          )}${select("星级", "rating", [["", "全部"], ...["1", "2", "3", "4", "5"].map((v) => [v, v + "星"])])}${field("应用版本", "version", filters.version || "")}${field("文本包含", "q", filters.q || "")}${field("标签", "label", filters.label || "")}${select(
-            "商店回复",
-            "reply_status",
-            [
-              ["", "全部"],
-              ["replied", "已观察到回复"],
-              ["not_observed", "未观察到回复"],
-              ["unknown", "来源未提供"],
-            ],
-          )}${field("首次观察开始日（UTC）", "since_day", dateInput(filters.since), "date")}<button type="submit">查询</button><button type="button" class="secondary" id="configure-reviews">配置评论采集</button></form><p class="sub">${esc(data.scope)}</p>`,
-        )}<div class="grid2">${panel("星级分布", bars(data.ratings))}${panel(
+        `<div class="cards">${metric("匹配评论", data.summary.total, "当前筛选的已采集记录")}${metric("评论平均星级", mean == null ? null : Number(mean).toFixed(2), "评论样本均值，非商店累计评分")}${metric("覆盖应用", data.summary.apps, "当前筛选内按商店区分应用")}${metric("当前页记录", data.items.length, market().store === "all" ? "每店每页最多50条" : "每页最多50条")}</div>${panel("评论筛选", `<form id="review-record-filter" class="toolbar">${field("应用 ID", "app_id", filters.app_id || "")}${select("星级", "rating", [["", "全部"], ...["1", "2", "3", "4", "5"].map((v) => [v, v + "星"])], filters.rating || "")}${field("应用版本", "version", filters.version || "")}${field("评论内容 / 标题", "q", filters.q || "")}${field("首次观察开始日（UTC）", "since_day", dateInput(filters.since), "date")}<button type="submit">查询</button><button type="button" class="secondary" id="configure-reviews">配置评论采集</button></form><p class="sub">${esc(data.scope)}</p>`)}<div class="grid2">${panel("星级分布", bars(data.ratings))}${panel(
           "首次观察趋势（UTC日期）",
           chart(
             data.daily.map((r) => ({ at: r.day, value: r.count })),
             false,
             dateInput,
           ),
-        )}</div>${panel("评论收件箱", data.items.map((r, i) => `<article class="review-card"><div class="review-card-head">${appLink(r.store, r.app_id, r.app_name)}<span class="review-stars">${r.rating} ★</span>${status(r.workflow_status)}</div><strong>${esc(r.title || "")}</strong><p class="review-body">${esc(r.content)}</p><div class="review-card-foot"><span>${esc(r.version || "版本未知")} · 发表 ${esc(r.published_at || "未知")} · ${statusNames[r.public_reply_status]} · ${esc(r.owner || "未分配负责人")}</span><button class="secondary small" data-review-case="${i}">处理 / 查看详情</button></div><div class="pillrow">${r.labels.map((l) => `<span class="pill">${esc(l)}</span>`).join("")}</div></article>`).join("") || empty("当前筛选没有评论", "可调整筛选或先配置评论采集。"), data.next_offset ? '<button class="secondary small" id="reviews-next">下一页</button>' : "")}`,
+        )}</div>${panel("已采集评论", cards || empty("当前筛选没有评论", "可调整筛选或先配置该应用的评论采集。"), pageActions)}`,
         rev,
       )
     )
       return;
-    const form = $("#review-desk-filter");
-    form.elements.status.value = filters.status || "";
-    form.elements.rating.value = filters.rating || "";
-    form.elements.reply_status.value = filters.reply_status || "";
-    bindForm("#review-desk-filter", (v) => {
+    bindForm("#review-record-filter", (v) => {
       const { since_day, ...rest } = v;
       return reviews(nextRevision(), {
         ...rest,
         since: since_day ? Date.parse(since_day + "T00:00:00Z") / 1000 : null,
       });
     });
+    bindButton("#reviews-prev", () =>
+      reviews(nextRevision(), {
+        ...filters,
+        offset: Math.max(0, (filters.offset || 0) - 50),
+      }),
+    );
     bindButton("#reviews-next", () =>
       reviews(nextRevision(), { ...filters, offset: data.next_offset }),
     );
-    bindButton("#configure-reviews", ctx.reviewTargets);
-    $("#content").addEventListener("click", function handler(event) {
-      if (rev !== currentRevision()) {
-        this.removeEventListener("click", handler);
-        return;
-      }
-      const b = event.target.closest("[data-review-case]");
-      if (!b) return;
-      const r = data.items[Number(b.dataset.reviewCase)];
-      const key = {
-        store: r.store,
-        app_id: r.app_id,
-        country: r.country,
-        language: r.language,
-        review_id: r.review_id,
-      };
-      dialog(
-        "评论处理",
-        `<p class="sub">${esc(marketCaption(r))} · 首次观察 ${esc(stamp(r.first_seen))}</p><p class="review-body">${esc(r.content)}</p><div class="callout">商店回复：${esc(statusNames[r.public_reply_status])}${r.public_reply ? "<p>" + esc(r.public_reply) + "</p>" : ""}</div><form id="review-case-form" class="form-grid">${select(
-          "内部处理状态",
-          "status",
-          [
-            ["open", "待处理"],
-            ["closed", "已处理"],
-            ["reopened", "待复核"],
-          ],
-        )}${field("负责人", "owner", r.owner, "text", 'maxlength="120"')}${field("标签（逗号分隔）", "labels", r.labels.join(","))}<label class="full">内部备注<textarea name="note" maxlength="4000">${esc(r.note)}</textarea></label><label class="full">回复草稿（仅本地保存）<textarea name="reply_draft" maxlength="4000">${esc(r.reply_draft)}</textarea></label><button type="submit">保存处理记录</button><button class="secondary" id="review-revisions" type="button">查看采集修订</button></form><div id="review-history"></div>`,
-      );
-      $("#review-case-form").elements.status.value = r.workflow_status;
-      bindForm("#review-case-form", async (value) => {
-        await api("/research/reviews/workflow", {
-          ...key,
-          ...value,
-          labels: value.labels
-            .split(/[,，]/)
-            .map((x) => x.trim())
-            .filter(Boolean),
-          revision: r.revision,
-        });
-        $("#research-dialog").close();
-        toast("处理记录已保存，回复草稿未发布");
-        await reviews(nextRevision(), filters);
+    bindButton("#configure-reviews", () =>
+      ctx.reviewTargets(
+        $("#review-record-filter").elements.app_id.value.trim(),
+      ),
+    );
+    $("#content")
+      .querySelectorAll("[data-review-app]")
+      .forEach((button) => {
+        button.onclick = () =>
+          reviews(nextRevision(), {
+            ...filters,
+            app_id: data.items[Number(button.dataset.reviewApp)].app_id,
+            offset: 0,
+          }).catch((e) => toast(e.message));
       });
-      bindButton("#review-revisions", async () => {
-        const history = await api("/research/reviews/history", key);
-        $("#review-history").innerHTML = table(
-          ["观察时间", "星级", "版本", "原文"],
-          history.items.map((v) => [
-            stamp(v.observed_at),
-            v.payload.rating,
-            esc(v.payload.version),
-            esc(v.payload.content),
-          ]),
-        );
+    $("#content")
+      .querySelectorAll("[data-review-detail]")
+      .forEach((button) => {
+        button.onclick = () => {
+          const r = data.items[Number(button.dataset.reviewDetail)];
+          const key = {
+            store: r.store,
+            app_id: r.app_id,
+            country: r.country,
+            language: r.language,
+            review_id: r.review_id,
+          };
+          const el = dialog(
+            "评论记录详情",
+            `<dl class="detail-facts">${[
+              ["应用", r.app_name || r.app_id],
+              ["应用 ID", r.app_id],
+              ["市场", marketCaption(r)],
+              ["评论 ID", r.review_id],
+              ["星级", r.rating],
+              ["应用版本", r.version || "未知"],
+              ["发表时间", r.published_at || "未知"],
+              ["首次观察", stamp(r.first_seen)],
+              ["最近观察", stamp(r.last_seen)],
+            ]
+              .map(
+                ([label, value]) => `<dt>${label}</dt><dd>${esc(value)}</dd>`,
+              )
+              .join(
+                "",
+              )}</dl>${r.title ? `<h3>${esc(r.title)}</h3>` : ""}<p class="review-body">${esc(r.content)}</p>${r.public_reply ? `<section class="review-public-reply"><h3>商店公开回复（采集记录）</h3><p class="review-body">${esc(r.public_reply)}</p></section>` : ""}<button class="secondary" id="review-revisions">查看采集历史</button><p class="sub">最近100次采集记录，按应用、商店、国家、语言和评论 ID 区分。</p><div id="review-history"></div>`,
+          );
+          bindButton("#review-revisions", async () => {
+            const history = await api("/research/reviews/history", key);
+            if (!el.isConnected || !el.open) return;
+            el.querySelector("#review-history").innerHTML = table(
+              ["观察时间", "星级", "版本", "标题 / 原文", "公开回复"],
+              history.items.map((v) => [
+                stamp(v.observed_at),
+                esc(v.payload.rating),
+                esc(v.payload.version || "—"),
+                `${esc(v.payload.title || "")}<p class="review-body">${esc(v.payload.content || "")}</p>`,
+                esc(v.payload.reply || "—"),
+              ]),
+            );
+          });
+        };
       });
-    });
   }
 
   async function competitors(rev) {

@@ -599,12 +599,9 @@ def create_app(cfg):
     def draft_get(identifier:int,db=DB):return aso.draft_detail(db,identifier)
 
     @api.get('/research/reviews')
-    def review_inbox(store:str,country:str='us',language:str='en',app_id:str='',status:str='',q:str='',version:str='',label:str='',reply_status:str='',
+    def review_records(store:str,country:str='us',language:str='en',app_id:str='',q:str='',version:str='',reply_status:str='',
                      rating:int|None=Query(None,ge=1,le=5),since:float|None=Query(None,ge=0),offset:int=Query(0,ge=0,le=100000),db=DB):
-        return scoped_views.reviews(db,dict(store=store,country=country,language=language,app_id=app_id,status=status,q=q,version=version,label=label,reply_status=reply_status,rating=rating,since=since,offset=offset))
-
-    @api.post('/research/reviews/workflow')
-    def review_save(value:dict=Body(...),db=DB):return review_desk.save_case(db,value)
+        return scoped_views.reviews(db,dict(store=store,country=country,language=language,app_id=app_id,q=q,version=version,reply_status=reply_status,rating=rating,since=since,offset=offset))
 
     @api.post('/research/reviews/history')
     def review_versions(value:dict=Body(...),db=DB):return review_desk.review_history(db,value)

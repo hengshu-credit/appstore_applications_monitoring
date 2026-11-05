@@ -1,0 +1,30 @@
+{
+  "desktop": {
+    "cards": 50,
+    "oldText": false,
+    "pageWidth": 1910,
+    "store": "App Store",
+    "title": "评论记录",
+    "width": 1920,
+    "workflowControls": 0
+  },
+  "mobile": {
+    "cards": 50,
+    "pageWidth": 381,
+    "width": 390
+  },
+  "readOnlyDetail": {
+    "editableFields": 0,
+    "historyRows": 1
+  },
+  "verified": {
+    "googleRecords": 100,
+    "appleRecords": 100,
+    "bothStoresRecords": 200,
+    "nextPageRecords": 50,
+    "appFilter": "com.openai.chatgpt",
+    "collectionPreset": "reviews",
+    "submittedCollection": false
+  },
+  "browserLogs": []
+}
