@@ -486,7 +486,7 @@ export function createDiscoveryPages(ctx) {
           )
         : { items: [], total: 0 };
       const report = reports.find((r) => String(r.id) === reportId);
-      content = `<div class="cards">${metric("已导入报告", totals.counts.reports, "当前商店、市场、追踪语言")}${metric("关键词记录", totals.counts.records, "保留应用、词表和日期")}${metric("去重词数", totals.counts.unique_keywords, "NFKC与空白规范化")}${metric("多应用重合词", totals.shared_between_apps, "不同应用报告共享的关键词")}</div><p class="sub">${esc(totals.note)} ASO/竞价词表间重合 ${totals.shared_between_types} 词。另有 ${totals.rejected_rows || 0} 行不可追踪字符，原文已单独留存，不计入词库。</p><details><summary>导入点点应用报告（xlsx）</summary><form id="report-upload" class="toolbar"><label>报告文件（最多3.5MB）<input name="file" type="file" accept=".xlsx" required></label>${field("应用商店ID", "app_id", "", "text", "required")}<button type="submit">预览报告</button></form><div id="report-preview"></div></details><p class="callout">第三方报告与衡枢·观星实采排名分别保留。ASO自然搜索词、ASA竞价词独立展示；报告日期不等于每个关键词的更新时间。</p><form id="report-filter" class="toolbar">${select(
+      content = `<div class="cards">${metric("已导入报告", totals.counts.reports, "当前商店、市场、追踪语言")}${metric("关键词记录", totals.counts.records, "保留应用、词表和日期")}${metric("去重词数", totals.counts.unique_keywords, "NFKC与空白规范化")}${metric("多应用重合词", totals.shared_between_apps, "不同应用报告共享的关键词")}</div><p class="sub">${esc(totals.note)} ASO/竞价词表间重合 ${totals.shared_between_types} 词。另有 ${totals.rejected_rows || 0} 行不可追踪字符，原文已单独留存，不计入词库。</p><details><summary>导入应用报告（xlsx）</summary><form id="report-upload" class="toolbar"><label>报告文件（最多3.5MB）<input name="file" type="file" accept=".xlsx" required></label>${field("应用商店ID", "app_id", "", "text", "required")}<button type="submit">预览报告</button></form><div id="report-preview"></div></details><p class="callout">第三方报告与衡枢·观星实采排名分别保留。ASO自然搜索词、ASA竞价词独立展示；报告日期不等于每个关键词的更新时间。</p><form id="report-filter" class="toolbar">${select(
         "已导入报告",
         "report_id",
         reports.map((r) => [r.id, r.app_id + " / " + r.filename]),
@@ -562,7 +562,7 @@ export function createDiscoveryPages(ctx) {
           : "";
       content =
         official +
-        `<p class="callout">${esc(data.note)} 点点报告中的搜索指数属于单应用词表指标，不自动转为全市场热搜榜。</p><form id="signal-select" class="toolbar">${select(
+        `<p class="callout">${esc(data.note)} 外部报告中的搜索指数属于单应用词表指标，不自动转为全市场热搜榜。</p><form id="signal-select" class="toolbar">${select(
           "来源快照",
           "run_id",
           data.runs.map((r) => [r.id, r.source + " / " + stamp(r.observed_at)]),

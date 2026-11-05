@@ -37,7 +37,7 @@ def worker(cfg, db):
     # A slow chart or review request must not block visible-app icon requests.
     from threading import Thread
     Thread(target=icon_worker,args=(cfg,),daemon=True,name='app-icons').start()
-    Thread(target=appfigures_worker,args=(cfg,),daemon=True,name='appfigures').start()
+    Thread(target=marketdata_worker,args=(cfg,),daemon=True,name='marketdata').start()
     while True:
         try:
             log.info("Console cycle %s", run_once(cfg, db,include_icons=False))
@@ -46,16 +46,16 @@ def worker(cfg, db):
         time.sleep(10)
 
 
-def appfigures_worker(cfg):
+def marketdata_worker(cfg):
     from .db import connect
-    from .appfigures_source import work
+    from .marketdata_source import work
     while True:
         db=None
         try:
             db=connect(cfg,initialize=False)
             result=work(cfg,db)
-            if result['processed'] or result['error']:log.info('Appfigures cycle %s',result)
-        except Exception as exc:log.error('Appfigures cycle failed: %s',type(exc).__name__)
+            if result['processed'] or result['error']:log.info('市场数据 cycle %s',result)
+        except Exception as exc:log.error('市场数据 cycle failed: %s',type(exc).__name__)
         finally:
             if db is not None:db.close()
         time.sleep(3)

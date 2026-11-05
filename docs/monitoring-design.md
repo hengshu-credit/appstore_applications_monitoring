@@ -4,12 +4,11 @@
 
 ## 参考与复用判断
 
-实际浏览了用户提供的 [点点应用详情](https://app.diandian.com/app/nd2u6uk3oxje7bd/ios?market=1&country=75&system=4) 和 [乐见市场动态](https://97lejian.com/#/rank)。只参考信息组织，不复制页面代码、品牌、图形、文案或业务数据库；以下关于网站后台的方案属于本项目设计，不能据公开页面断言对方内部实现。
 
 | 来源 | 观察到的能力 / 可借鉴点 | 衡枢·观星的选择 |
 |---|---|---|
-| 点点 | 应用档案、全球市场、排名与评分趋势、版本与素材、开发者、下载收入模块 | 档案与趋势分层，保留当前市场与来源时间；无数据的下载收入明确缺少来源 |
-| 乐见 | 双商店状态卡、每日快照趋势、近期上下架名单、评分分布与国家统计 | 增加一级“上下架观察”；状态卡、采集质量、复核队列和事件入口形成工作闭环 |
+| 外部报告 | 应用档案、全球市场、排名与评分趋势、版本与素材、开发者、下载收入模块 | 档案与趋势分层，保留当前市场与来源时间；无数据的下载收入明确缺少来源 |
+| 关注名单 | 双商店状态卡、每日快照趋势、近期上下架名单、评分分布与国家统计 | 增加一级“上下架观察”；状态卡、采集质量、复核队列和事件入口形成工作闭环 |
 | [app-store-scraper](https://github.com/facundoolano/app-store-scraper) | MIT；详情、搜索、榜单、评论。[搜索源码](https://github.com/facundoolano/app-store-scraper/blob/master/lib/search.js) 使用 storefront header 与 native search，分页是对已返回数组切片 | 复用已有 Python 协议适配，记录实际返回深度；不能把请求200条当作真实返回200条 |
 | [google-play-scraper](https://github.com/facundoolano/google-play-scraper) | MIT；公开详情、搜索、榜单和评论接口 | 保留已有解析器与错误检测，不为接入另一个 Node 服务重复构建采集层 |
 | [aso](https://github.com/facundoolano/aso) | MIT；基于 scraper 的 ASO 研究工具，有请求限流提醒 | 参考候选词研究思路；候选词和启发式分数不能伪装成官方搜索量 |

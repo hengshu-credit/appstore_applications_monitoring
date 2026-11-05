@@ -1,4 +1,4 @@
-"""Read Diandian XLSX reports without executing formulas or merging external ranks into observations."""
+"""Read Keyword report XLSX reports without executing formulas or merging external ranks into observations."""
 import base64
 import binascii
 import hashlib
@@ -140,7 +140,7 @@ def import_report(cfg,db,value):
             if old:return old|{'duplicate':True,'rows':len(prepared),'rejected_rows':len(rejected)}
             db.execute('''INSERT INTO keyword_reports(store,app_id,country,language,digest,filename,source,observed_at,imported_at,raw_path,summary)
                 VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',(m['store'],m['app_id'],m['country'],m['language'],parsed['digest'],filename,
-                 '点点应用报告',at,time.time(),dest.relative_to(cfg['data_dir']).as_posix(),dump(parsed['summary'])))
+                 '应用报告',at,time.time(),dest.relative_to(cfg['data_dir']).as_posix(),dump(parsed['summary'])))
             identifier=db.cursor.lastrowid
             for start in range(0,len(prepared),1000):
                 db.executemany('INSERT INTO keyword_report_rows VALUES(%s,%s,%s,%s,%s,%s,%s,%s)',[(identifier,*r) for r in prepared[start:start+1000]])
@@ -200,6 +200,6 @@ def promote(db,value):
     rows=db.execute('SELECT keyword FROM keyword_report_rows WHERE report_id=%s AND sheet=%s AND source_row IN ('+
         ','.join('%s' for _ in source_rows)+')',(identifier,sheet,*source_rows)).fetchall()
     if len(rows)!=len(set(source_rows)):raise ValueError('所选报告行不存在')
-    return import_candidates(db,{'markets':[report],'words':[r['keyword'] for r in rows], 'source':'点点报告 / '+sheet,
-        'source_url':'https://app.diandian.com/vip/download/app-report','license':'用户授权导入，不公开再分发',
-        'attribution':'点点数据 / '+report['app_id'],'source_period':report['digest']})
+    return import_candidates(db,{'markets':[report],'words':[r['keyword'] for r in rows], 'source':'外部报告 / '+sheet,
+        'source_url':'','license':'用户授权导入，不公开再分发',
+        'attribution':'外部报告数据 / '+report['app_id'],'source_period':report['digest']})

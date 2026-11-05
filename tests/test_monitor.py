@@ -42,6 +42,12 @@ class MySQLTestCase(unittest.TestCase):
         self.cfg = load(Path(__file__).parents[1] / "config.toml")
         self.cfg.update(data_dir=self.folder, min_free_gb=0)
         self.cfg['mysql'] = self.options
+        self.cfg['source_profiles'] = {
+            'community': {'origin':'https://community.example','hosts':['community.example']},
+            'directory': {'origin':'https://www.directory.example','hosts':['www.directory.example','developers.directory.example','directory.example']},
+            'marketdata': {'origin':'https://market.example/v2','hosts':['market.example']},
+            'web_feed': {'origin':'https://feed.example/rss','hosts':['feed.example']},
+        }
         self.db = connect(self.cfg, allow_migration=True)
         for table in TABLES:
             self.db.execute(f'TRUNCATE TABLE `{table}`')

@@ -20,13 +20,13 @@ const labels = {
   csv: "CSV 数据集",
 };
 
-export function appfiguresPanel(panel, esc, state = {}) {
+export function marketDataPanel(panel, esc, state = {}) {
   const end = new Date().toISOString().slice(0, 10);
   const start = new Date(Date.now() - 365 * 86400000)
     .toISOString()
     .slice(0, 10);
   return panel(
-    "Appfigures 试用期采集",
+    "市场数据采集",
     `
     <p id="figures-state" role="status">${esc(state.message || "未配置账户")}</p>
     <form id="figures-account" class="toolbar">
@@ -36,17 +36,16 @@ export function appfiguresPanel(panel, esc, state = {}) {
       <button type="submit">保存并检查 API 授权</button>
       <button type="button" id="figures-authorize" class="secondary" ${state.configured ? "" : "disabled"}>检查授权</button>
     </form>
-    <p class="sub">账密及 Token 加密保存、不回显。可单独填写 Token；每次保存替换全部 Appfigures 凭据。官方 API 已停用账密登录，仅保存账密不会启用采集。</p>
-    <p><a href="https://app.appfigures.com/account/units" target="_blank" rel="noreferrer">账户页面</a> · <a href="https://appfigures.com/developers/keys" target="_blank" rel="noreferrer">创建只读 Personal Access Token</a> · <a href="https://appfigures.com/top-apps" target="_blank" rel="noreferrer">公开榜单</a></p>
-    <p class="sub">网页 14 天试用与 API 权限分开。第三方应用数据受 Public Data API 权限及余额限制；遇到限制保留断点。不会自动购买套餐或额度。</p>
+    <p class="sub">账密及 Token 加密保存、不回显。可单独填写 Token；每次保存替换全部 市场数据 凭据。官方 API 已停用账密登录，仅保存账密不会启用采集。</p>
+    <p class="sub">采集范围由账户权限及剩余额度决定，遇到限制时保留续采进度。</p>
     <form id="figures-plan" class="toolbar">
       <label>历史开始日期<input name="start_date" type="date" required value="${start}"></label>
       <label>历史结束日期<input name="end_date" type="date" required value="${end}"></label>
       <label>试用截止时间（本机时区）<input name="stop_at" type="datetime-local" required></label>
       <label>每日请求上限<input name="daily_limit" type="number" min="1" max="50000" value="1000" required></label>
       <label class="wide">国家代码<input name="countries" placeholder="留空为全部国家；或 us,cn,th"></label>
-      <label class="wide">Appfigures 分类 ID<input name="categories" placeholder="留空为全部 Apple / Google 分类"></label>
-      <label class="wide">Appfigures 应用 ID<input name="products" placeholder="可留空，从账户应用和榜单发现；逗号分隔"></label>
+      <label class="wide">市场数据 分类 ID<input name="categories" placeholder="留空为全部 Apple / Google 分类"></label>
+      <label class="wide">市场数据 应用 ID<input name="products" placeholder="可留空，从账户应用和榜单发现；逗号分隔"></label>
       <label><input type="checkbox" name="charts" checked>采集各国免费、付费、畅销榜</label>
       <label><input type="checkbox" name="daily_charts" checked>试用期每日追加榜单</label>
       <label><input type="checkbox" name="expand_products" checked>为发现的应用补采历史</label>
@@ -56,14 +55,14 @@ export function appfiguresPanel(panel, esc, state = {}) {
     <p class="sub">默认回溯一年，可调整日期。先归档目录，再采集榜单和应用历史；保存逐日、分国家数据。空国家范围会显著增加请求量。由观星采集服务执行，关闭页面后继续；达到实际 API 配额或截止时间后停止请求。</p>
     <div class="toolbar"><button id="figures-refresh" class="secondary">刷新进度与归档</button></div>
     <div id="figures-progress" role="status"></div>
-    <form id="figures-import" class="toolbar"><label class="wide">导入 Appfigures 导出的 CSV<input name="dataset" type="file" accept=".csv,text/csv" required></label><button>归档数据集</button></form>
+    <form id="figures-import" class="toolbar"><label class="wide">导入 市场数据 导出的 CSV<input name="dataset" type="file" accept=".csv,text/csv" required></label><button>归档数据集</button></form>
     <p class="sub">可在网页导出后导入 UTF-8 CSV（单文件最多 10 MB），完整保留原始列、行数与校验值。来源估算和官方实测数据分别保存。</p>
     <div id="figures-import-result" role="status"></div>
   `,
   );
 }
 
-export async function bindAppfigures({ $, api, esc, table, toast, root }) {
+export async function bindMarketData({ $, api, esc, table, toast, root }) {
   const find = (selector) => root.querySelector(selector);
   const anchor = find("#figures-account");
   const run = async (button, action) => {
@@ -78,8 +77,8 @@ export async function bindAppfigures({ $, api, esc, table, toast, root }) {
   };
   const updateAccount = (data) => {
     if (!anchor.isConnected) return;
-    find("#figures-state").textContent = data.appfigures.message;
-    find("#figures-authorize").disabled = !data.appfigures.configured;
+    find("#figures-state").textContent = data.marketdata.message;
+    find("#figures-authorize").disabled = !data.marketdata.configured;
   };
   find("#figures-account").onsubmit = (event) => {
     event.preventDefault();
@@ -94,7 +93,7 @@ export async function bindAppfigures({ $, api, esc, table, toast, root }) {
     form.elements.access_token.value = "";
     run(form.querySelector("button"), async () => {
       try {
-        updateAccount(await api("/data-sources/appfigures", value, "PUT"));
+        updateAccount(await api("/data-sources/marketdata", value, "PUT"));
       } finally {
         value.password = "";
         value.access_token = "";
@@ -103,10 +102,10 @@ export async function bindAppfigures({ $, api, esc, table, toast, root }) {
   };
   find("#figures-authorize").onclick = (event) =>
     run(event.currentTarget, async () =>
-      updateAccount(await api("/data-sources/appfigures/authorize", {})),
+      updateAccount(await api("/data-sources/marketdata/authorize", {})),
     );
   const refresh = async () => {
-    const data = await api("/data-sources/appfigures/collection");
+    const data = await api("/data-sources/marketdata/collection");
     if (!anchor.isConnected) return;
     const budget = data.budget;
     find("#figures-progress").innerHTML =
@@ -162,7 +161,7 @@ export async function bindAppfigures({ $, api, esc, table, toast, root }) {
           esc(labels[a.kind] || a.kind),
           esc(a.records),
           esc(new Date(a.created_at * 1000).toLocaleString()),
-          `<a href="/api/data-sources/appfigures/artifacts/${a.id}" title="${esc(a.sha256)}">下载 GZIP</a>`,
+          `<a href="/api/data-sources/marketdata/artifacts/${a.id}" title="${esc(a.sha256)}">下载 GZIP</a>`,
         ]),
       )}`;
     find("#figures-progress")
@@ -171,7 +170,7 @@ export async function bindAppfigures({ $, api, esc, table, toast, root }) {
         button.onclick = () =>
           run(button, async () => {
             await api(
-              `/data-sources/appfigures/collection/${button.dataset.afRun}/control`,
+              `/data-sources/marketdata/collection/${button.dataset.afRun}/control`,
               { action: button.dataset.afAction },
             );
             await refresh();
@@ -204,7 +203,7 @@ export async function bindAppfigures({ $, api, esc, table, toast, root }) {
     value.stop_at = stop.toISOString();
     value.daily_limit = Number(form.elements.daily_limit.value);
     run(form.querySelector("button"), async () => {
-      await api("/data-sources/appfigures/collection", value);
+      await api("/data-sources/marketdata/collection", value);
       await refresh();
     });
   };
@@ -215,7 +214,7 @@ export async function bindAppfigures({ $, api, esc, table, toast, root }) {
     run(form.querySelector("button"), async () => {
       if (!file || file.size > 10 * 1024 * 1024)
         throw new Error("请选择不超过 10 MB 的 CSV");
-      const result = await api("/data-sources/appfigures/datasets", {
+      const result = await api("/data-sources/marketdata/datasets", {
         content: await file.text(),
       });
       if (!anchor.isConnected) return;

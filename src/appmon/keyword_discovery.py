@@ -21,9 +21,7 @@ def source_catalog():
             'sources':[{'name':'FrequencyWords','url':'https://github.com/hermitdave/FrequencyWords',
                         'license':'CC BY-SA 4.0（内容）','period':'OpenSubtitles 2018','kind':'corpus_frequency'},
                        {'name':'wordfreq','url':'https://github.com/rspeer/wordfreq','license':'Apache-2.0代码 / CC BY-SA 4.0数据',
-                        'period':'约2021年语料快照','kind':'research_only'},
-                       {'name':'点点应用报告','url':'https://app.diandian.com/vip/download/app-report',
-                        'license':'用户合法取得的报告，保留来源，不公开再分发','kind':'external_report'}],
+                        'period':'约2021年语料快照','kind':'research_only'}],
             'note':'词频用于候选词筛选，不是国家搜索量或商店热搜。多语言市场需分别建设词库。'}
 
 
@@ -115,7 +113,7 @@ def candidate_sources(db,identifier):
         tuple(candidate[k] for k in ('store','country','language','keyword'))).fetchall()
     reports=db.execute('SELECT app_id,digest,observed_at FROM keyword_reports WHERE store=%s AND country=%s AND language=%s',
         tuple(candidate[k] for k in ('store','country','language'))).fetchall()
-    evidence={(r['digest'],'点点数据 / '+r['app_id']):r for r in reports}
+    evidence={(r['digest'],'外部报告数据 / '+r['app_id']):r for r in reports}
     for row in rows:
         report=evidence.get((row['source_period'],row['attribution']),{})
         row['source_app_id']=report.get('app_id');row['report_observed_at']=report.get('observed_at')

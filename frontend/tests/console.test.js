@@ -86,7 +86,7 @@ const newModules = (
     wrappedModule("app-insights.js", "createAppInsights"),
     wrappedModule("discovery.js", "createDiscoveryPages"),
     wrappedModule("global-chart-hover.js", "bindGlobalChartHover"),
-    wrappedModule("appfigures.js", "appfiguresPanel,bindAppfigures"),
+    wrappedModule("marketdata.js", "marketDataPanel,bindMarketData"),
     wrappedModule("data-sources.js", "createDataSourcePage"),
     wrappedModule("global-charts.js", "createGlobalCharts"),
     wrappedModule("chart-detail.js", "createChartDetail"),
@@ -261,7 +261,13 @@ async function setup(responder) {
     if (data === undefined && path === "/api/research/collection/pipelines")
       data = [];
     if (data === undefined && path === "/api/research/collection/limits")
-      data = {global_interval_seconds:5,google_interval_seconds:2.5,apple_interval_seconds:3.5,cooldown_seconds:900,paused:false};
+      data = {
+        global_interval_seconds: 5,
+        google_interval_seconds: 2.5,
+        apple_interval_seconds: 3.5,
+        cooldown_seconds: 900,
+        paused: false,
+      };
     if (
       data === undefined &&
       path.split("?")[0] === "/api/research/collection/activity"
@@ -581,25 +587,49 @@ test("keyword-only plan sends multilingual words and configured depth", async ()
 });
 
 test("cross-page selection sends scope and filters without enumerating pages", async () => {
-  const bodies=[];
-  const {window}=await setup((path,options)=> {
-    if (path.startsWith('/api/research/collection/tasks?')) return {items:[],total:175,summary:{running:0,pending:175,error:0,paused:0},has_more:true};
-    if (path==='/api/research/collection/tasks/batch') { bodies.push(JSON.parse(options.body)); return {updated:175}; }
+  const bodies = [];
+  const { window } = await setup((path, options) => {
+    if (path.startsWith("/api/research/collection/tasks?"))
+      return {
+        items: [],
+        total: 175,
+        summary: { running: 0, pending: 175, error: 0, paused: 0 },
+        has_more: true,
+      };
+    if (path === "/api/research/collection/tasks/batch") {
+      bodies.push(JSON.parse(options.body));
+      return { updated: 175 };
+    }
   });
   try {
-    window.confirm=()=>true;
-    window.location.hash='collection'; await tick();
-    window.document.querySelector('#select-filtered-tasks').click();
-    assert.match(window.document.querySelector('#selected-count').textContent,/175/);
-    assert.equal(window.document.querySelector('[data-batch="refresh"]').disabled,true);
-    window.document.querySelector('[data-batch="pause"]').click(); await tick();
-    assert.equal(bodies[0].scope,'filtered');
-    assert.equal(bodies[0].action,'pause');
-    assert.equal('tasks' in bodies[0],false);
-    window.document.querySelector('#select-every-task').click();
-    window.document.querySelector('[data-batch="resume"]').click(); await tick();
-    assert.deepEqual(bodies[1],{scope:'all',action:'resume',filters:{}});
-  } finally { await window.happyDOM.close(); }
+    window.confirm = () => true;
+    window.location.hash = "collection";
+    await tick();
+    window.document.querySelector("#select-filtered-tasks").click();
+    assert.match(
+      window.document.querySelector("#selected-count").textContent,
+      /175/,
+    );
+    assert.equal(
+      window.document.querySelector('[data-batch="refresh"]').disabled,
+      true,
+    );
+    window.document.querySelector('[data-batch="pause"]').click();
+    await tick();
+    assert.equal(bodies[0].scope, "filtered");
+    assert.equal(bodies[0].action, "pause");
+    assert.equal("tasks" in bodies[0], false);
+    window.document.querySelector("#select-every-task").click();
+    window.document.querySelector('[data-batch="resume"]').click();
+    await tick();
+    assert.deepEqual(bodies[1], {
+      scope: "all",
+      action: "resume",
+      filters: {},
+    });
+  } finally {
+    await window.happyDOM.close();
+  }
 });
 
 test("pending task controls block editing and cannot replace a newly selected page", async () => {
@@ -1027,7 +1057,7 @@ test("external report rows preserve missing rank and source metrics when promote
           id: 7,
           app_id: "123",
           filename: "report.xlsx",
-          source: "点点",
+          source: "外部报告",
           observed_at: 1,
           summary: [{ sheet: "ASO关键词", rows: 1 }],
         },
@@ -1576,7 +1606,7 @@ test("global countries are independent of an unsupported header Apple market", a
 
 test("admin source configuration submits secrets in the request body, clears password and shows authorization", async () => {
   const result = {
-    appgoblin: {
+    community: {
       configured: false,
       status: "not_configured",
       message: "未配置",
@@ -1585,18 +1615,19 @@ test("admin source configuration submits secrets in the request body, clears pas
   };
   const { window, calls } = await setup((path) => {
     if (path === "/api/data-sources") return result;
-    if (path === "/api/data-sources/appfigures/collection") return {runs:[],artifacts:[],errors:[],budget:null};
-    if (path === "/api/data-sources/appbrain")
+    if (path === "/api/data-sources/marketdata/collection")
+      return { runs: [], artifacts: [], errors: [], budget: null };
+    if (path === "/api/data-sources/directory")
       return {
-        appbrain: {
+        directory: {
           configured: true,
           status: "authorized",
-          message: "AppBrain授权有效",
+          message: "安装指标授权有效",
         },
       };
-    if (path === "/api/data-sources/appgoblin")
+    if (path === "/api/data-sources/community")
       return {
-        appgoblin: {
+        community: {
           configured: true,
           status: "authorized",
           message: "授权有效",
@@ -1614,7 +1645,7 @@ test("admin source configuration submits secrets in the request body, clears pas
     );
     assert.equal(form.elements.password.value, "");
     await tick();
-    const call = calls.find((c) => c.path === "/api/data-sources/appgoblin");
+    const call = calls.find((c) => c.path === "/api/data-sources/community");
     assert.equal(call.options.method, "PUT");
     assert.deepEqual(JSON.parse(call.options.body), {
       email: "fixture@example.com",
@@ -1639,12 +1670,12 @@ test("admin source configuration submits secrets in the request body, clears pas
     await tick();
     assert.match(
       window.document.querySelector("#brain-state").textContent,
-      /AppBrain授权有效/,
+      /安装指标授权有效/,
     );
     assert.ok(
       calls.some(
         (c) =>
-          c.path === "/api/data-sources/appbrain" &&
+          c.path === "/api/data-sources/directory" &&
           JSON.parse(c.options.body).email === "brain@example.com",
       ),
     );

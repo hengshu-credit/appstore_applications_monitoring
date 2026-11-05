@@ -1,0 +1,108 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { Window } from "happy-dom";
+
+const source = (
+  await readFile(new URL("../src/availability.js", import.meta.url), "utf8")
+).replace(/^export /gm, "");
+const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+test("availability shows classified watches across countries and paginates all records", async () => {
+  const window = new Window({ url: "http://localhost" }),
+    doc = window.document,
+    calls = [];
+  doc.body.innerHTML = "<main></main>";
+  window.eval(source + ";window.createPage=createAvailabilityPage;");
+  const esc = (v) =>
+    String(v ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll('"', "&quot;");
+  const page = window.createPage({
+    api: async (path) => {
+      calls.push(path);
+      if (path.startsWith("/availability/watched?")) {
+        const offset = Number(
+          new URL("http://local" + path).searchParams.get("offset"),
+        );
+        return {
+          items: [
+            {
+              store: "google",
+              app_id: "com.loan.app",
+              name: "<img src=x>",
+              country: "th",
+              language: "th",
+              group_name: "现金贷类APP",
+              state: null,
+              enabled: 1,
+            },
+          ],
+          groups: ["现金贷类APP"],
+          countries: ["th", "vn"],
+          total: 2132,
+          offset,
+          limit: 100,
+          has_more: true,
+        };
+      }
+      return {
+        scope: "test",
+        counts: [],
+        unobserved_watched: 0,
+        history: [],
+        attempts: [],
+        pending: [],
+        events: [],
+        market: { store: "google", language: "en" },
+      };
+    },
+    market: () => ({ store: "all", country: "us", language: "en" }),
+    qs: (value) => new URLSearchParams(value).toString(),
+    mount: (html) => {
+      doc.querySelector("main").innerHTML = html;
+      return true;
+    },
+    panel: (title, body) => `<section><h2>${title}</h2>${body}</section>`,
+    metric: () => "",
+    table: (headers, rows) =>
+      `<table>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</table>`,
+    chart: () => "",
+    bars: () => "",
+    esc,
+    stamp: (v) => v || "—",
+    num: (v) => v,
+    appLink: (store, id, name) => esc(name),
+    toast: (e) => {
+      throw new Error(e);
+    },
+    nextRevision: () => 2,
+  });
+  try {
+    await page(1);
+    await tick();
+    const panel = doc.querySelector("#availability-watched");
+    assert.match(panel.textContent, /2132/);
+    assert.match(panel.textContent, /现金贷类APP/);
+    assert.match(panel.textContent, /未验证/);
+    assert.equal(panel.querySelector("img"), null);
+    assert.equal(panel.querySelector("[name=country]").value, "");
+    panel.querySelector("#watched-next").click();
+    await tick();
+    assert.ok(calls.some((p) => p.includes("offset=100")));
+    const form = doc.querySelector("#watched-filter");
+    form.elements.group_name.value = "现金贷类APP";
+    form.elements.store.value = "apple";
+    form.elements.country.value = "th";
+    form.dispatchEvent(new window.Event("submit", { cancelable: true }));
+    await tick();
+    const last = new URL("http://local" + calls.at(-1));
+    assert.equal(last.searchParams.get("group_name"), "现金贷类APP");
+    assert.equal(last.searchParams.get("store"), "apple");
+    assert.equal(last.searchParams.get("country"), "th");
+    assert.equal(last.searchParams.get("offset"), "0");
+  } finally {
+    await window.happyDOM.close();
+  }
+});

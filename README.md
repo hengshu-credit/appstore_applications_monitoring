@@ -1,6 +1,8 @@
 # 衡枢·观星
 
-新增：[Appfigures 试用期 API 采集与 CSV 归档](docs/appfigures.md)，支持加密账密/Token 配置、分页续采、额度退避、截止时间与归档下载。
+新增：[分类观察名单](docs/watchlist-import.md)，支持双商店、跨国家分页查看和现金贷分类标记。数据接入采用中性标识，连接配置保存在服务器私有目录。
+
+新增：[市场数据 试用期 API 采集与 CSV 归档](docs/market-data.md)，支持加密账密/Token 配置、分页续采、额度退避、截止时间与归档下载。
 
 新增：[离线备份、空库恢复与 Docker Compose 离线部署](docs/offline-deployment.md)。采集中心支持跨页全选暂停/恢复、所有商店统一请求间隔与共享冷却配置。
 
@@ -10,13 +12,13 @@ Google Play / Apple App Store 应用池监控平台。
 
 支持首次启动注册超级管理员、外部用户账号密码注册登录、恢复码找回与账密修改。超管可配置普通用户/会员及单用户的页面和操作权限、会员到期时间。详见 [账户与权限](docs/accounts-and-permissions.md)。
 
-新增榜单历史比较、每日公开指标与增长发现、多国家关键词覆盖榜、开源候选词库，以及点点应用报告的预览/导入/选词追踪。新增“全球排行榜”同页查看多国多榜，并支持多报告关键词去重汇总。入口为“榜单中心”“全球排行榜”和“关键词中心”；详细数据口径、来源研究与报告实测见 [榜单增长与关键词发现](docs/discovery-and-keywords.md)。
+新增榜单历史比较、每日公开指标与增长发现、多国家关键词覆盖榜、开源候选词库，以及外部报告应用报告的预览/导入/选词追踪。新增“全球排行榜”同页查看多国多榜，并支持多报告关键词去重汇总。入口为“榜单中心”“全球排行榜”和“关键词中心”；详细数据口径、来源研究与报告实测见 [榜单增长与关键词发现](docs/discovery-and-keywords.md)。
 
 复盘优化增加了按榜种横向对比、筛选记忆、关键词去重追踪与完整分页、历史指标回放、Apple搜索名称修复及官方周/月热度接入。已完成实屏和窄屏检查；授权数据依赖与剩余模块见 [复盘与修正记录](docs/discovery-review.md)。
 
 全球榜单应用名采用固定两行省略与悬停全文，点击榜单标题可进入完整榜单及应用资料页。见 [榜单排版与详情入口](docs/chart-detail.md)。
 
-新增“上下架观察”、库外商店搜索入库、可悬停/键盘查看的监控图表和丰富的应用详情。指标来源、开源研究、点点/乐见参考及实现边界见 [衡枢·观星监控研究与实现](docs/monitoring-design.md)。
+新增“上下架观察”、库外商店搜索入库、可悬停/键盘查看的监控图表和丰富的应用详情。指标来源、开源研究、指标口径及实现边界见 [衡枢·观星监控研究与实现](docs/monitoring-design.md)。
 
 现已增加**独立前端项目 `frontend/` + Python HTTP API + 重点池采集 worker**。前端展示应用池、关键词、榜单、ASO 核查、竞品、评论、素材变更和告警；Python 负责抓取、调度、MySQL 存储及数据接口。主题参考天枢，支持预设/自定义、深浅色和布局配置，矩形组件统一直角。详见 [控制台使用与边界](docs/console.md)、[前端项目](frontend/README.md)、[开发规范](docs/frontend-guidelines.md)。
 
@@ -26,7 +28,7 @@ Google Play / Apple App Store 应用池监控平台。
 
 应用详情支持当前市场的一键采集及榜单/关键词排名汇总；Apple 市场扩展为175项，榜单中心提供七种直接或明确标注的派生榜单。详见 [应用研究与榜单口径](docs/app-research.md)。
 
-参考点点、七麦、AppTweak、Appark、AppFollow新增事件中心、ASO版本化草稿、评论处理工作台、竞品集合、开发者下钻和采集计划/质量中心，并扩展应用库高级筛选与批量操作。页面设计、证据来源与采集方案见 [五平台研究与设计](docs/platform-research-and-design.md)。
+新增事件中心、ASO版本化草稿、评论处理工作台、竞品集合、开发者下钻和采集计划/质量中心，并扩展应用库高级筛选与批量操作。页面设计、证据来源与采集方案见 [研究工作台设计](docs/platform-research-and-design.md)。
 
 ```powershell
 # 后端 API：在仓库根目录运行
@@ -54,9 +56,9 @@ Google Play / Apple App Store 应用池监控平台。
 - [逐文件行数、时间范围和校验值](docs/data-manifest.json)
 - [MySQL 迁移和验收记录](docs/mysql-verification.md)
 - [首次基线的历史验收记录](docs/verification.md)
-- 数据来源：[AppGoblin](https://appgoblin.info)，CC BY 4.0；**Data provided by AppGoblin. https://appgoblin.info**
+- 数据来源：[appgoblin-data 开源仓库](https://github.com/appgoblin-dev/appgoblin-data)，CC BY 4.0；**Data provided by AppGoblin. https://github.com/appgoblin-dev/appgoblin-data**
 
-公开主数据包共 **5,440,809 行**：Google 3,044,766，Apple 2,396,043。源记录更新日期范围是 **2025-04-08 至 2025-11-17**。文件名称中的 `live` 仅描述上游导出时的状态，导入后不会自动标记为当前在架。最新托管下载需在 [AppGoblin 免费数据页面](https://appgoblin.info/free-app-datasets) 登录免费账号取得；此项目可以导入合法取得的新版 TSV/XZ。
+公开主数据包共 **5,440,809 行**：Google 3,044,766，Apple 2,396,043。源记录更新日期范围是 **2025-04-08 至 2025-11-17**。文件名称中的 `live` 仅描述上游导出时的状态，导入后不会自动标记为当前在架。此项目可以导入合法取得的新版 TSV/XZ，并保留开源数据的许可与署名。
 
 ## 安装与运行
 

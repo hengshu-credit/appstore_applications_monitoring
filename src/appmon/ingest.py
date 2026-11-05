@@ -143,7 +143,7 @@ def sync_seed(cfg, db, progress=None):
     manifest = {"repository_tree": tree["sha"], "git_blob": item["sha"],
                 "sha256": file_hash(target), "bytes": target.stat().st_size,
                 "download_checked_at": time.time(), "license": "CC-BY-4.0",
-                "attribution": "Data provided by AppGoblin. https://appgoblin.info"}
+                "attribution": "Data provided by AppGoblin. https://github.com/appgoblin-dev/appgoblin-data"}
     target.with_suffix(".json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     if progress: progress('importing', '开始校验或续传应用池导入；相同文件会复用已有结果')
     return import_file(db, target, f"appgoblin-tree:{tree['sha']}", cfg["min_free_gb"], progress=progress)

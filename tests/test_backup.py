@@ -13,7 +13,7 @@ class BackupTest(MySQLTestCase):
     def test_streamed_roundtrip_all_tables_assets_and_empty_destination_guard(self):
         add_apps(self.db,[('google','com.example.app','多语言 ไทย',None)],'fixture')
         secret=cipher(self.cfg,create=True).encrypt(b'{"email":"test@example.com","password":"fixture"}').decode()
-        self.db.execute("INSERT INTO source_accounts(provider,secret,status,updated_at) VALUES('appgoblin',%s,'saved',0)",(secret,))
+        self.db.execute("INSERT INTO source_accounts(provider,secret,status,updated_at) VALUES('community',%s,'saved',0)",(secret,))
         self.db.execute("""INSERT INTO ad_reports(fingerprint,report_date,app_id,country,campaign,keyword,impressions,taps,installs,spend,currency,source,imported_at)
             VALUES(%s,'2026-01-01','com.example.app','us','campaign','word',2,1,0,123456.123456,'USD','fixture',0)""",('a'*64,))
         for folder in ('responses','icons','secrets','raw','exports'):

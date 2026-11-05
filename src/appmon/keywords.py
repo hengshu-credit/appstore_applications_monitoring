@@ -272,7 +272,7 @@ def configure_cli(sub):
     add.add_argument("--refresh-hours", type=float, default=24)
     imp = commands.add_parser("import", help="Import a JSON array of keyword targets")
     imp.add_argument("path")
-    report = commands.add_parser('report-import', help='Import an authorized Diandian XLSX app report')
+    report = commands.add_parser('report-import', help='Import an authorized Keyword report XLSX app report')
     report.add_argument('path')
     report.add_argument('--store',choices=['google','apple'],required=True)
     report.add_argument('--app-id',required=True)

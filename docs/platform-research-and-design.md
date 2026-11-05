@@ -1,30 +1,4 @@
-# 五平台研究与应用情报模块设计
-
-研究及实现日期：2026-11-03。沿用“暂不做预估”、官方商店分类、国家分组选择、前后端分离、可配置主题、直角控件和离线方圆体字体。
-
-## 研究证据与取舍
-
-| 平台 | 本次可核实的内容 | 采用到本项目 | 证据边界 |
-|---|---|---|---|
-| 点点数据 | 国家/版本矩阵、应用变化、关键词组、关注合集、评分评论、排名变化 | 地区版本矩阵、事件日历、字段前后对照、竞品集合、质量标识 | 使用官方导航与版本说明；不声称查看了所有会员数据 |
-| 七麦 | 行业版本更新监控、关键词覆盖和竞品复盘思路 | 事件按地区/版本/字段筛选、关键词与元数据复盘 | 主站返回页面空壳；细节使用下述公开历史功能稿与七麦研究院授权文章补充，不能视为2026会员页完整实查 |
-| AppTweak | 元数据模拟器、草稿覆盖、ASO影响复盘、不同数据类型更新计划 | ASO双栏编辑/预览、长度与重复检查、草稿版本、数据采集中心 | 热度、下载贡献、难度和可见度估算未采用 |
-| Appark | 监控动态、新旧值比较、高级搜索、批量进入监控和竞品 | 高级应用筛选、批量操作、保存集合、事件复盘 | 其指南的全球事件口径没有照搬，本项目保留商店/国家/语言粒度 |
-| AppFollow | 评论筛选、状态、备注、标签、回复、竞品应用与评论分析 | 评论收件箱、负责人/标签/备注、本地回复草稿、修改后待复核 | 开发者回复发布和私有后台需要额外授权，本次没有连接这些账户 |
-
-### 核实的主要资料
-
-**点点官方**：[导航](https://vip.diandian.com/map)、[5.4版本：地区版本和评论比较](https://www.diandian.com/news/GnC93JoBTJwgNVBESr6T)、[5.5版本：变化榜单与筛选](https://vip.diandian.com/news/AhV6O614RBTSSLGU9rUh)、[5.7版本：合集与关键词组](https://www.diandian.com/zh/news/11Uk8lO5oy4B91Yp1MpY)。
-
-**七麦的补充公开资料**：[2021版本更新监控功能稿，历史媒体资料](https://youxichaguan.com/archives/140690)、[七麦研究院2019年36氪授权文章，历史覆盖分析](https://www.36kr.com/p/1724741713921)、[七麦研究院2025年授权文章，关键词与产品页复盘](https://eu.36kr.com/zh/p/3401458959534213)。未使用搜索中的无来源导航文章作为事实依据。
-
-**AppTweak 官方帮助**：[Metadata Simulator](https://help.apptweak.com/en/articles/400809-test-your-keyword-selection-to-optimize-your-metadata)、[ASO Agent数据与授权边界](https://help.apptweak.com/en/articles/13762384-aso-agent-your-ai-expert-for-organic-keyword-optimization)、[ASO Impact](https://help.apptweak.com/en/articles/4861898-analyze-aso-impact-monitor-the-impact-of-your-work)、[数据更新计划](https://help.apptweak.com/en/articles/9755509-data-delivery-schedule)。
-
-**Appark 官方指南**：[监控列表](https://appark.ai/cn/guide/app-monitoring)、[高级搜索](https://appark.ai/cn/guide/advanced-search)、[竞品对比](https://appark.ai/cn/guide/app-comparison)。
-
-**AppFollow 官方帮助**：[评论筛选与操作](https://support.appfollow.io/hc/en-us/articles/360020978758-Filter-and-Sort-Reviews)、[评论状态](https://support.appfollow.io/hc/en-us/articles/360020831537-Review-Statuses)、[评论分析](https://support.appfollow.io/hc/en-us/articles/4413719325969-Reviews-Analysis)、[竞品应用](https://support.appfollow.io/hc/en-us/articles/360020832857-Competitor-Apps)。
-
-公开文章用于理解产品流程，不直接作为应用下载、收入、热度或排名的业务数据源。界面和代码独立实现，没有复制上述商业平台的源码、Logo或数据集。
+# 观星研究工作台设计
 
 ## 页面内容和展示方式
 

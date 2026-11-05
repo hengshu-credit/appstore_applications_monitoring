@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
-import { appfiguresPanel, bindAppfigures } from "../src/appfigures.js";
+import { marketDataPanel, bindMarketData } from "../src/marketdata.js";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
 function setup(respond = () => undefined) {
@@ -12,7 +12,7 @@ function setup(respond = () => undefined) {
       .replaceAll("&", "&amp;")
       .replaceAll("<", "&lt;")
       .replaceAll('"', "&quot;");
-  doc.body.innerHTML = `<main>${appfiguresPanel((name, body) => `<section><h2>${name}</h2>${body}</section>`, esc)}</main>`;
+  doc.body.innerHTML = `<main>${marketDataPanel((name, body) => `<section><h2>${name}</h2>${body}</section>`, esc)}</main>`;
   const calls = [],
     errors = [];
   const api = async (path, value, method) => {
@@ -26,7 +26,7 @@ function setup(respond = () => undefined) {
       }
     );
   };
-  const bind = bindAppfigures({
+  const bind = bindMarketData({
     $: (s) => doc.querySelector(s),
     api,
     esc,
@@ -42,10 +42,10 @@ function setup(respond = () => undefined) {
   return { window, doc, calls, errors, bind, submit };
 }
 
-test("Appfigures accepts token-only configuration and immediately clears secrets", async () => {
+test("市场数据 accepts token-only configuration and immediately clears secrets", async () => {
   const ctx = setup((path) =>
-    path === "/data-sources/appfigures"
-      ? { appfigures: { message: "授权有效", configured: true } }
+    path === "/data-sources/marketdata"
+      ? { marketdata: { message: "授权有效", configured: true } }
       : undefined,
   );
   try {
@@ -56,7 +56,7 @@ test("Appfigures accepts token-only configuration and immediately clears secrets
     assert.equal(form.elements.access_token.value, "");
     await tick();
     assert.equal(
-      ctx.calls.find((c) => c.path === "/data-sources/appfigures").value
+      ctx.calls.find((c) => c.path === "/data-sources/marketdata").value
         .access_token,
       "fixture-private-token",
     );
@@ -72,7 +72,7 @@ test("Appfigures accepts token-only configuration and immediately clears secrets
   }
 });
 
-test("Appfigures sends explicit scope and UTC deadline", async () => {
+test("市场数据 sends explicit scope and UTC deadline", async () => {
   const ctx = setup();
   try {
     await ctx.bind;
@@ -94,7 +94,7 @@ test("Appfigures sends explicit scope and UTC deadline", async () => {
   }
 });
 
-test("a stale Appfigures response cannot modify a replacement page", async () => {
+test("a stale 市场数据 response cannot modify a replacement page", async () => {
   let resolve;
   const ctx = setup(
     () =>

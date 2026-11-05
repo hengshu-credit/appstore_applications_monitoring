@@ -26,6 +26,90 @@ export function createAvailabilityPage(ctx) {
     reappeared: "重新出现",
     region_unavailable: "地区不可用",
   };
+  let watchedFilters = { store: "all", country: "", group_name: "", q: "" },
+    watchedOffset = 0,
+    watchedRevision = 0;
+  async function bindWatched() {
+    const revision = ++watchedRevision;
+    const anchor = document.querySelector("#availability-watched");
+    const data = await api(
+      "/availability/watched?" +
+        qs({ ...watchedFilters, offset: watchedOffset, limit: 100 }),
+    );
+    if (!anchor?.isConnected || revision !== watchedRevision) return;
+    const options = (values, selected, empty) =>
+      `<option value="">${empty}</option>` +
+      values
+        .map(
+          (v) =>
+            `<option value="${esc(v)}" ${selected === v ? "selected" : ""}>${esc(v)}</option>`,
+        )
+        .join("");
+    anchor.innerHTML = `<p class="sub">按下方商店、国家和分类查看关注应用；每个应用按国家独立复核。未验证不代表下架。</p>
+      <form id="watched-filter" class="toolbar"><label>商店<select name="store">${[
+        ["all", "全部商店"],
+        ["google", "Google Play"],
+        ["apple", "App Store"],
+      ]
+        .map(
+          ([v, n]) =>
+            `<option value="${v}" ${watchedFilters.store === v ? "selected" : ""}>${n}</option>`,
+        )
+        .join("")}</select></label>
+      <label>国家<select name="country">${options(data.countries, watchedFilters.country, "全部国家")}</select></label>
+      <label>分类标记<select name="group_name">${options(data.groups, watchedFilters.group_name, "全部分类")}</select></label>
+      <label class="wide">应用名称 / ID<input name="q" value="${esc(watchedFilters.q)}" placeholder="搜索关注应用"></label><button>筛选</button></form>
+      <p>共 ${num(data.total)} 条国家观察记录 · 当前 ${data.total ? data.offset + 1 : 0}–${data.offset + data.items.length}</p>
+      ${table(
+        [
+          "应用",
+          "商店 / 国家 / 语言",
+          "分类标记",
+          "观星复核状态",
+          "监控",
+          "最近检查",
+        ],
+        data.items.map((row) => [
+          appLink(
+            row.store,
+            row.app_id,
+            row.name,
+            null,
+            row.country,
+            row.language,
+          ),
+          `${row.store === "apple" ? "App Store" : "Google Play"} · ${esc(row.country.toUpperCase())} / ${esc(row.language)}`,
+          `<span class="badge">${esc(row.group_name)}</span>`,
+          esc(labels[row.state] || row.state || "未验证") +
+            (row.last_error
+              ? `<div class="sub">${esc(row.last_error)}</div>`
+              : ""),
+          row.enabled ? "监控中" : "已暂停",
+          stamp(row.checked_at),
+        ]),
+      )}
+      <div class="toolbar"><button id="watched-prev" class="secondary" ${data.offset === 0 ? "disabled" : ""}>上一页</button><button id="watched-next" class="secondary" ${data.has_more ? "" : "disabled"}>下一页</button><a class="button secondary" href="#collection">管理采集与复核</a></div>`;
+    anchor.querySelector("#watched-filter").onsubmit = (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      watchedFilters = Object.fromEntries(
+        ["store", "country", "group_name", "q"].map((k) => [
+          k,
+          form.elements[k].value,
+        ]),
+      );
+      watchedOffset = 0;
+      bindWatched().catch((e) => toast(e.message));
+    };
+    for (const [selector, direction] of [
+      ["#watched-prev", -1],
+      ["#watched-next", 1],
+    ])
+      anchor.querySelector(selector).onclick = () => {
+        watchedOffset = Math.max(0, data.offset + direction * data.limit);
+        bindWatched().catch((e) => toast(e.message));
+      };
+  }
   async function render(rev, days = 30) {
     const m = { ...market() },
       r = await api("/availability?" + qs({ ...m, days }));
@@ -100,7 +184,7 @@ export function createAvailabilityPage(ctx) {
               stamp(e.observed_at),
             ]),
           )}`,
-        )}`,
+        )}${panel("分类观察名单", '<div id="availability-watched" role="status">正在读取关注应用…</div>')}`,
         rev,
       )
     )
@@ -114,6 +198,7 @@ export function createAvailabilityPage(ctx) {
           Number(new FormData(e.target).get("days")),
         ).catch((e) => toast(e.message));
       });
+    bindWatched().catch((e) => toast(e.message));
   }
   return render;
 }

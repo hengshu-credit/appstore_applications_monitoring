@@ -5,6 +5,30 @@ from .db import dump
 from .intelligence import market
 
 
+def watched(db, store='all', country='', group_name='', q='', offset=0, limit=100):
+    from .locales import stores
+    import re
+    selected=stores(store)
+    if country and not re.fullmatch('[a-zA-Z]{2}',country):raise ValueError('国家代码无效')
+    if len(group_name)>120 or len(q)>255:raise ValueError('筛选条件过长')
+    if type(offset) is not int or offset<0 or type(limit) is not int or not 1<=limit<=200:raise ValueError('分页参数无效')
+    clauses=['w.store IN ('+','.join('%s' for _ in selected)+')'];args=list(selected)
+    for column,value in [('country',country.lower()),('group_name',group_name)]:
+        if value:clauses.append('w.'+column+'=%s');args.append(value)
+    if q:
+        clauses.append('(LOCATE(%s,w.app_id)>0 OR LOCATE(%s,a.name)>0)');args.extend([q,q])
+    where=' AND '.join(clauses)
+    base=' FROM watchlist w LEFT JOIN apps a USING(store,app_id) '
+    total=db.execute('SELECT COUNT(*) n'+base+'WHERE '+where,args).fetchone()['n']
+    rows=db.execute('''SELECT w.*,a.name,l.state,l.checked_at,l.last_success,j.due,j.failures,j.last_error'''+base+'''
+        LEFT JOIN listings l USING(store,app_id,country,language)
+        LEFT JOIN jobs j USING(store,app_id,country,language) WHERE '''+where+'''
+        ORDER BY w.group_name,w.store,w.country,w.app_id,w.language LIMIT %s OFFSET %s''',(*args,limit,offset)).fetchall()
+    groups=[r['group_name'] for r in db.execute('SELECT DISTINCT group_name FROM watchlist ORDER BY group_name').fetchall()]
+    countries=[r['country'] for r in db.execute('SELECT DISTINCT country FROM watchlist ORDER BY country').fetchall()]
+    return dict(items=rows,total=total,offset=offset,limit=limit,has_more=offset+len(rows)<total,groups=groups,countries=countries)
+
+
 def record_daily(db, now=None):
     now = time.time() if now is None else now
     with db:
