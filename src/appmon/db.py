@@ -164,6 +164,8 @@ from .auth_schema import TABLES as AUTH_TABLES
 TABLES.update(AUTH_TABLES)
 from .source_schema import TABLES as SOURCE_TABLES
 TABLES.update(SOURCE_TABLES)
+from .group_schema import TABLES as GROUP_TABLES
+TABLES.update(GROUP_TABLES)
 
 
 def add_apps(db, rows, source, now=None):

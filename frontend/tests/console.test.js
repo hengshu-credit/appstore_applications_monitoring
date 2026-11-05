@@ -91,6 +91,7 @@ const newModules = (
     wrappedModule("global-charts.js", "createGlobalCharts"),
     wrappedModule("chart-detail.js", "createChartDetail"),
     wrappedModule("availability.js", "createAvailabilityPage"),
+    wrappedModule("app-groups.js", "createGroupWorkspace"),
     wrappedModule(
       "market-scope.js",
       "effectiveLanguage,autoCaption,languageChoices,recommendedLanguage,selectedStores,languageName",
@@ -328,8 +329,9 @@ test("navigation queries the API and escapes upstream application content", asyn
     );
     assert.equal(window.document.querySelector("img[onerror]"), null);
     assert.ok(calls.some((c) => c.path.startsWith("/api/apps?")));
-    assert.equal(window.document.querySelectorAll("nav a").length, 20);
-    assert.equal(window.document.querySelectorAll("nav a .ui-icon").length, 20);
+    assert.equal(window.document.querySelectorAll("nav a").length, 21);
+    assert.equal(window.document.querySelectorAll("nav a .ui-icon").length, 21);
+    assert.ok(window.document.querySelector('[data-nav="groups"]'));
     assert.ok(window.document.querySelector('[data-nav="datasources"]'));
     assert.equal(window.document.querySelector('[data-nav="account"]'), null);
     assert.equal(

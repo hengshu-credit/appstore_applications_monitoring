@@ -7,6 +7,7 @@ const paths = {
   events:
     '<rect x="3" y="5" width="18" height="16"/><path d="M7 3v4m10-4v4M3 11h18m-13 5h3m3 0h3"/>',
   apps: '<rect x="4" y="3" width="16" height="18"/><path d="M8 8h2m4 0h2M8 12h2m4 0h2M8 16h2m4 0h2"/>',
+  groups:'<rect x="3" y="8" width="18" height="13"/><path d="M3 8V4h7l3 4M7 12h3m4 0h3M7 16h3m4 0h3"/>',
   watchlist:
     '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
   charts: '<path d="M4 3v17h17M8 15l4-5 4 2 5-7"/>',

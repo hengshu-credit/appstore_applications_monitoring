@@ -316,19 +316,23 @@ def schedule(db, cfg, run):
 
 
 def import_products(db, products):
-    rows = []
+    rows = [];links=[]
     for p in products:
         store = {'apple':'apple', 'google_play':'google'}.get(p.get('store'))
         identifier = str(p.get('ref_no') or p.get('vendor_identifier') or '') if store == 'apple' else str(p.get('package_name') or p.get('vendor_identifier') or '')
         if store and valid_id(store, identifier):
             rows.append((store, identifier, p.get('name'), None))
+            if re.fullmatch(r'[1-9][0-9]{0,19}',str(p.get('id',''))):links.append((str(p['id']),store,identifier))
+    if links:db.executemany('''INSERT INTO marketdata_product_links VALUES(%s,%s,%s) AS incoming
+        ON DUPLICATE KEY UPDATE store=incoming.store,app_id=incoming.app_id''',links)
     return add_apps(db, rows, 'marketdata') if rows else 0
 
 
-def expand(db, run, settings, job, value):
+def expand(db, run, settings, job, value, currency=None):
     params = json.loads(job['params'])
     kind = job['kind']
     products = []
+    if kind=='estimates':save_estimate_facts(db,params.get('products'),value,currency)
     if kind == 'charts':
         if not isinstance(value, dict) or not {'entries','page_start','total_count'} <= value.keys():
             raise SourceError('source_changed', '榜单响应缺少列表或分页信息')
@@ -372,6 +376,29 @@ def expand(db, run, settings, job, value):
         for product in products:
             product_jobs(db, run['id'], settings, product.get('id'))
     return record_count(kind, value)
+
+
+def save_estimate_facts(db, product_id, value, currency=None):
+    from . import metric_facts
+    product=db.execute('SELECT store,app_id FROM marketdata_product_links WHERE product_id=%s',(str(product_id),)).fetchone()
+    if not product:return 0
+    rows=[]
+    def walk(node,day=None,country=None):
+        if not isinstance(node,dict):return
+        day=node.get('date',day);country=node.get('iso',country)
+        if ('downloads' in node or 'revenue' in node) and re.fullmatch(r'\d{4}-\d{2}-\d{2}',str(day or '')) and re.fullmatch('[A-Za-z]{2}',str(country or '')):
+            row=product|dict(country=country.lower(),date=day,is_estimate=True)
+            if node.get('downloads') is not None:row['downloads']=node['downloads']
+            unit=node.get('currency',currency)
+            # Do not label an unspecified revenue currency as USD or sum it with known currencies.
+            if node.get('revenue') is not None and isinstance(unit,str) and re.fullmatch('[A-Z]{3}',unit):row.update(revenue=node['revenue'],currency=unit)
+            if 'downloads' in row or 'revenue' in row:rows.append(row)
+            return
+        for key,child in node.items():
+            walk(child,key if re.fullmatch(r'\d{4}-\d{2}-\d{2}',key) else day,key if re.fullmatch('[A-Z]{2}',key) else country)
+    walk(value)
+    if rows:metric_facts.save(db,metric_facts.prepare({'rows':rows}))
+    return len(rows)
 
 
 def record_count(kind, value):
@@ -426,7 +453,7 @@ def work(cfg, db, limit=5):
                         value = get(db, client, job['path'], {k:v for k,v in params.items() if not k.startswith('_')}, settings['daily_limit'])
                         raw = getattr(client, '_marketdata_raw', None)
                     with db:
-                        records = expand(db, run, settings, job, value)
+                        records = expand(db, run, settings, job, value, client.source_profile.get('currency'))
                         artifact = archive(db, cfg, job['kind'], value, dict(route=job['path'], params=params, run_id=run['id']), records, raw_bytes=raw)
                         db.execute("UPDATE marketdata_jobs SET status='done',artifact_id=%s,error=NULL,attempts=attempts+1 WHERE id=%s", (artifact, job['id']))
                     result['processed'] += 1

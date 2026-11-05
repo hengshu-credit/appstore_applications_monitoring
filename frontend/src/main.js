@@ -24,6 +24,8 @@ import "./accounts.css";
 import { monitoringChart, bindMonitoringCharts } from "./monitoring-charts.js";
 import { createAppInsights } from "./app-insights.js";
 import { createAvailabilityPage } from "./availability.js";
+import { createGroupWorkspace } from "./app-groups.js";
+import "./app-groups.css";
 import { initTheme } from "./theme.js";
 initTheme();
 const $ = (s, root = document) => root.querySelector(s);
@@ -120,6 +122,7 @@ let revision = 0;
 const accounts = createAccounts({ esc, toast, onReady: render });
 const nav = [
   ["overview", "◈", "监控概览"],
+  ["groups", "▦", "应用分组"],
   ["events", "▥", "事件中心"],
   ["availability", "↕", "上下架观察"],
   ["apps", "▦", "应用库"],
@@ -383,6 +386,21 @@ const appInsights = createAppInsights({
   qs,
 });
 bindMonitoringCharts();
+const groupWorkspace = createGroupWorkspace({
+  api,
+  esc,
+  qs,
+  panel,
+  table,
+  metric,
+  chart,
+  stamp,
+  num,
+  mount,
+  toast,
+  can: (resource, action) => accounts.can(resource, action),
+  countryName: (code) => selectors.countryName(code),
+});
 async function applications(rev, filters = {}) {
   const data = await api("/apps?" + qs({ ...market(), ...filters }));
   if (
@@ -435,12 +453,19 @@ async function applications(rev, filters = {}) {
   )
     return;
   if (market().store === "all") {
-    document
-      .querySelectorAll("[data-pool-select],#pool-select-all")
-      .forEach((n) => (n.disabled = true));
     $("#pool-selection-count").textContent =
-      "选择单个商店后可批量创建同市场监控或竞品集合。";
+      "可跨商店加入应用分组；独立监控和竞品集合需选择单个商店。";
   }
+  const groupButton = document.createElement("button");
+  groupButton.type = "button";
+  groupButton.id = "bulk-group";
+  groupButton.className = "secondary";
+  groupButton.disabled = true;
+  groupButton.textContent = "加入应用分组";
+  groupButton.hidden = !(
+    accounts.can("groups", "write") && accounts.can("watchlist", "write")
+  );
+  $(".bulk-toolbar").prepend(groupButton);
   appInsights.discovery();
   $("[name=state]", $("#app-search")).value = filters.state || "";
   $("[name=pricing]", $("#app-search")).value = filters.pricing || "";
@@ -451,8 +476,11 @@ async function applications(rev, filters = {}) {
   function selection() {
     const count = picked().length;
     $("#pool-selection-count").textContent = "已选 " + count + " 个应用";
-    $("#bulk-monitor").disabled = count < 1 || count > 50;
-    $("#bulk-compare").disabled = count < 2 || count > 6;
+    $("#bulk-monitor").disabled =
+      market().store === "all" || count < 1 || count > 50;
+    $("#bulk-compare").disabled =
+      market().store === "all" || count < 2 || count > 6;
+    groupButton.disabled = count < 1;
   }
   $("#pool-select-all")?.addEventListener("change", (event) => {
     document
@@ -469,6 +497,19 @@ async function applications(rev, filters = {}) {
   $("#bulk-compare").addEventListener("click", () =>
     researchPages.setForApps(picked()),
   );
+  groupButton.onclick = () =>
+    groupWorkspace
+      .addSelected(
+        data.items
+          .filter((row) => picked().includes(row.app_id))
+          .map((row) => ({
+            store: row.store,
+            app_id: row.app_id,
+            country: row.country || market().country,
+            language: row.language || market().language,
+          })),
+      )
+      .catch((e) => toast(e.message));
 
   selectors.mountSidebar(market().store, filters.category || "", (category) =>
     applications(++revision, { ...formData($("#app-search")), category }).catch(
@@ -1439,6 +1480,7 @@ const routes = {
     currentRevision: () => revision,
   }),
   availability: availabilityPage,
+  groups: groupWorkspace.render,
   overview,
   events: researchPages.events,
   aso: researchPages.aso,
@@ -1457,32 +1499,59 @@ const routes = {
   ads: adPage,
   alerts: alertPage,
   exports: exportPage,
-  datasources: createDataSourcePage({ $, api, esc, panel, table, mount, toast }),
+  datasources: createDataSourcePage({
+    $,
+    api,
+    esc,
+    panel,
+    table,
+    mount,
+    toast,
+  }),
 };
 async function render() {
   if (!accounts.user) return;
-  try { await accounts.refresh(); } catch { accounts.show(); return; }
-  const resource = routeResource((location.hash.slice(1) || "overview").split("?")[0]);
-  if (resource === 'account') { location.hash = 'administration?own=1'; return; }
+  try {
+    await accounts.refresh();
+  } catch {
+    accounts.show();
+    return;
+  }
+  const resource = routeResource(
+    (location.hash.slice(1) || "overview").split("?")[0],
+  );
+  if (resource === "account") {
+    location.hash = "administration?own=1";
+    return;
+  }
   clearTimeout(appProgressTimer);
   $("#task-logs")?.close();
   $("#collection-editor")?.remove();
   $("#research-dialog")?.close();
-  document.querySelectorAll('[data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === resource));
-  const ownAccount = resource === 'administration' && new URLSearchParams(location.hash.split('?')[1] || '').get('own') === '1';
+  $("#group-dialog")?.remove();
+  document
+    .querySelectorAll("[data-nav]")
+    .forEach((a) => a.classList.toggle("active", a.dataset.nav === resource));
+  const ownAccount =
+    resource === "administration" &&
+    new URLSearchParams(location.hash.split("?")[1] || "").get("own") === "1";
   if (!accounts.can(resource) && !ownAccount) {
     ++revision;
-    $("#page-title").textContent = '暂无访问权限';
-    $("#content").innerHTML = '<div class="empty"><h2>暂无访问权限</h2><p>请联系管理员开通此功能，或从左侧选择已授权页面。</p><a href="#administration?own=1">用户设置</a></div>';
+    $("#page-title").textContent = "暂无访问权限";
+    $("#content").innerHTML =
+      '<div class="empty"><h2>暂无访问权限</h2><p>请联系管理员开通此功能，或从左侧选择已授权页面。</p><a href="#administration?own=1">用户设置</a></div>';
     return;
   }
-  if (resource === 'administration') {
+  if (resource === "administration") {
     ++revision;
-    $("#page-title").textContent = '账户管理';
-    const accountRoot = document.createElement('div');
+    $("#page-title").textContent = "账户管理";
+    const accountRoot = document.createElement("div");
     $("#content").replaceChildren(accountRoot);
-    try { await accounts.management(accountRoot); }
-    catch (error) { toast(error.message); }
+    try {
+      await accounts.management(accountRoot);
+    } catch (error) {
+      toast(error.message);
+    }
     return;
   }
   clearTimeout(appProgressTimer);
@@ -1525,7 +1594,10 @@ async function render() {
     }
     await selectors.ready();
     selectors.syncCountry();
-    if (!["globalcharts", "datasources"].includes(name) && !selectors.supportsMarket(market().store, market().country)) {
+    if (
+      !["globalcharts", "datasources"].includes(name) &&
+      !selectors.supportsMarket(market().store, market().country)
+    ) {
       mount(
         '<div class="callout">该地区没有独立的 App Store 市场，请选择可用国家或地区。</div><button id="choose-supported-country" class="secondary">选择国家 / 地区</button>',
         rev,
@@ -1663,4 +1735,6 @@ document.addEventListener(
   true,
 );
 window.addEventListener("hashchange", render);
-accounts.start().then((ready) => { if (ready) render(); });
+accounts.start().then((ready) => {
+  if (ready) render();
+});

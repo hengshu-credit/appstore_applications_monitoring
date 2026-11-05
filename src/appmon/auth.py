@@ -13,7 +13,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 RESOURCES = {
-    'overview': '监控概览', 'events': '事件中心', 'availability': '上下架观察',
+    'overview': '监控概览', 'groups': '应用分组', 'events': '事件中心', 'availability': '上下架观察',
     'apps': '应用库', 'watchlist': '重点监控', 'charts': '榜单中心',
     'globalcharts': '全球排行榜', 'featured': '精品推荐', 'keywords': '关键词中心',
     'aso': 'ASO 工作台', 'compare': '竞品集合', 'reviews': '评论工作台',
@@ -187,6 +187,10 @@ def requirements(path, method, params=None):
                 action = 'read'
             result = [f'{resource}:{action}']
             if p.endswith('/collect') or p == '/charts/global/plan':
+                result.append('collection:write')
+            if p.startswith('/groups/') and p.endswith('/members') and action=='write':
+                result.append('watchlist:write')
+            if p.startswith('/groups/') and p.endswith('/monitoring/control'):
                 result.append('collection:write')
             return result
     return ['admin']

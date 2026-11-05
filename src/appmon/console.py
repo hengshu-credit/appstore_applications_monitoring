@@ -38,6 +38,7 @@ def worker(cfg, db):
     from threading import Thread
     Thread(target=icon_worker,args=(cfg,),daemon=True,name='app-icons').start()
     Thread(target=marketdata_worker,args=(cfg,),daemon=True,name='marketdata').start()
+    Thread(target=permission_worker,args=(cfg,),daemon=True,name='permissions').start()
     while True:
         try:
             log.info("Console cycle %s", run_once(cfg, db,include_icons=False))
@@ -59,6 +60,21 @@ def marketdata_worker(cfg):
         finally:
             if db is not None:db.close()
         time.sleep(3)
+
+
+def permission_worker(cfg):
+    from .db import connect
+    from .app_permissions import work
+    while True:
+        db=None
+        try:
+            db=connect(cfg,initialize=False)
+            result=work(cfg,db)
+            if result['processed']:log.info('Permission cycle %s',result)
+        except Exception as exc:log.error('Permission cycle failed: %s',type(exc).__name__)
+        finally:
+            if db is not None:db.close()
+        time.sleep(5)
 
 
 def icon_worker(cfg):

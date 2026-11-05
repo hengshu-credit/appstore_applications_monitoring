@@ -26,6 +26,7 @@ from . import global_charts
 from . import data_sources
 from . import apple_popularity
 from . import app_discovery, app_metrics, availability
+from . import app_groups
 from .stores import FetchError
 from datetime import date, datetime, timezone
 from . import keywords, intelligence as intel, analytics, alerts, exports
@@ -38,7 +39,8 @@ def create_app(cfg):
     @asynccontextmanager
     async def lifespan(app):
         db = connect(cfg)
-        db.close()
+        try:app_groups.bootstrap(db)
+        finally:db.close()
         yield
 
     app = FastAPI(title="衡枢·观星 API", version="0.4.0", lifespan=lifespan,
@@ -173,6 +175,45 @@ def create_app(cfg):
     @api.get('/availability/watched')
     def watched_availability(store:str='all',country:str='',group_name:str='',q:str='',offset:int=0,limit:int=100,db=DB):
         return availability.watched(db,store,country,group_name,q,offset,limit)
+
+    @api.get('/groups')
+    def groups(db=DB):return {'items':app_groups.list_groups(db)}
+
+    @api.post('/groups')
+    def create_group(value:dict=Body(...),db=DB):return app_groups.create(db,value)
+
+    @api.put('/groups/{identifier}')
+    def update_group(identifier:int,value:dict=Body(...),db=DB):return app_groups.update(db,identifier,value)
+
+    @api.post('/groups/{identifier}/members')
+    def add_group_members(identifier:int,value:dict=Body(...),db=DB):return app_groups.add_members(db,identifier,value)
+
+    @api.post('/groups/{identifier}/members/remove')
+    def remove_group_members(identifier:int,value:dict=Body(...),db=DB):return app_groups.remove_members(db,identifier,value)
+
+    @api.get('/groups/{identifier}/dashboard')
+    def group_dashboard(identifier:int,store:str='all',country:str='',state:str='',q:str='',days:int=30,offset:int=0,limit:int=50,db=DB):
+        return app_groups.dashboard(db,cfg,identifier,store,country,state,q,days,offset,limit)
+
+    @api.get('/groups/{identifier}/members/{member_id}')
+    def group_member(identifier:int,member_id:int,days:int=30,db=DB):return app_groups.member_detail(db,identifier,member_id,days)
+
+    @api.get('/groups/{identifier}/members/{member_id}/rank-history')
+    def group_rank_history(identifier:int,member_id:int,kind:str,target_id:int,days:int=30,db=DB):
+        return app_groups.rank_history(db,identifier,member_id,kind,target_id,days)
+
+    @api.get('/groups/{identifier}/members/{member_id}/report')
+    def group_reference_report(identifier:int,member_id:int,report_id:int,sheet:str='ASO关键词',offset:int=0,db=DB):
+        return app_groups.reference_report(db,identifier,member_id,report_id,sheet,offset)
+
+    @api.post('/groups/{identifier}/collect')
+    def collect_group(identifier:int,value:dict=Body(...),db=DB):return app_groups.collect(db,identifier,value)
+
+    @api.post('/groups/{identifier}/monitoring/control')
+    def control_group(identifier:int,value:dict=Body(...),db=DB):return app_groups.control_monitoring(db,identifier,value)
+
+    @api.post('/groups/{identifier}/metrics')
+    def import_group_metrics(identifier:int,value:dict=Body(...),db=DB):return app_groups.import_metrics(db,identifier,value)
 
     @api.post('/discovery/import')
     def import_store_app(value:dict=Body(...),db=DB):

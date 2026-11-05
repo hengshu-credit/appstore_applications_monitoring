@@ -40,6 +40,9 @@ class WatchlistImportTest(MySQLTestCase):
         self.assertEqual(self.db.execute('SELECT * FROM watchlist WHERE id=%s',(old['id'],)).fetchone(),old)
         again=watchlist_import.import_watchlists(self.db,self.cfg,snapshots(),{'google':'a','apple':'b'})
         self.assertEqual((again['added'],again['existing']),(0,3))
+        self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM app_group_members').fetchone()['n'],3)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM app_reference_states').fetchone()['n'],3)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM app_permission_targets').fetchone()['n'],2)
         for table in ('listings','events','snapshots'):
             self.assertEqual(self.db.execute(f'SELECT COUNT(*) n FROM {table}').fetchone()['n'],0)
         rows=availability.watched(self.db,group_name=watchlist_import.GROUP)

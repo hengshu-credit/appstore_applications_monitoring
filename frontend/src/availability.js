@@ -117,7 +117,7 @@ export function createAvailabilityPage(ctx) {
       r.counts.find((c) => c.state === state)?.count || 0;
     if (
       !mount(
-        `<p class="lead">上下架观察 · ${esc(m.country.toUpperCase())} / ${esc(m.language)}</p><p class="sub">${esc(r.scope)}</p><div class="cards">${Object.entries(
+        `<p><a class="button secondary" href="#groups">应用分组看板：按国家查看全部指标</a></p><p class="lead">上下架观察 · ${esc(m.country.toUpperCase())} / ${esc(m.language)}</p><p class="sub">${esc(r.scope)}</p><div class="cards">${Object.entries(
           labels,
         )
           .map(([s, label]) =>

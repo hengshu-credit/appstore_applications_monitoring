@@ -78,7 +78,11 @@ def import_watchlists(db, cfg, snapshots, source_hashes):
             raise ValueError('导入行数或分类校验失败')
         if any(after[k] != v for k,v in previous.items() if k not in targets):
             raise ValueError('非目标监控配置发生改变')
+        from .app_groups import import_references, sync_watch_category
+        import_references(db,source_rows)
+        group_id=sync_watch_category(db,GROUP)
         result = dict(group_name=GROUP, imported_at=now, source_hashes=source_hashes, stores=summaries,
+                      group_id=group_id,
                       source_rows=len(source_rows), targets=len(targets),
                       added=len(set(targets)-set(previous)), existing=len(set(targets)&set(previous)),
                       unrelated_preserved=len(set(previous)-set(targets)),
