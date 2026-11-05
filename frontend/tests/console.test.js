@@ -86,6 +86,7 @@ const newModules = (
     wrappedModule("app-insights.js", "createAppInsights"),
     wrappedModule("discovery.js", "createDiscoveryPages"),
     wrappedModule("global-chart-hover.js", "bindGlobalChartHover"),
+    wrappedModule("appfigures.js", "appfiguresPanel,bindAppfigures"),
     wrappedModule("data-sources.js", "createDataSourcePage"),
     wrappedModule("global-charts.js", "createGlobalCharts"),
     wrappedModule("chart-detail.js", "createChartDetail"),
@@ -1584,6 +1585,7 @@ test("admin source configuration submits secrets in the request body, clears pas
   };
   const { window, calls } = await setup((path) => {
     if (path === "/api/data-sources") return result;
+    if (path === "/api/data-sources/appfigures/collection") return {runs:[],artifacts:[],errors:[],budget:null};
     if (path === "/api/data-sources/appbrain")
       return {
         appbrain: {

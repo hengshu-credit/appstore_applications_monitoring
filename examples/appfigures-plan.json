@@ -1,0 +1,13 @@
+{
+  "start_date": "2025-11-05",
+  "end_date": "2026-11-05",
+  "stop_at": "REPLACE_WITH_ACTUAL_TRIAL_DEADLINE_WITH_TIMEZONE",
+  "countries": [],
+  "categories": [],
+  "products": [],
+  "kinds": ["metadata", "estimates", "ranks", "reviews"],
+  "charts": true,
+  "daily_charts": true,
+  "expand_products": true,
+  "daily_limit": 1000
+}

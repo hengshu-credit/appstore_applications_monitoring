@@ -56,14 +56,15 @@ def create_app(cfg):
         if request.headers.get("sec-fetch-site") == "cross-site":
             return JSONResponse({"detail": "Cross-site requests are disabled"}, status_code=403)
         if request.method not in ("GET", "HEAD", "OPTIONS"):
+            body_limit = 64 * 1024 * 1024 if request.url.path == '/api/data-sources/appfigures/datasets' else 5_000_000
             length = request.headers.get("content-length", "0")
-            if not length.isdigit() or int(length) > 5_000_000:
+            if not length.isdigit() or int(length) > body_limit:
                 return JSONResponse({"detail": "Payload too large"}, status_code=413)
             # Read with a cap even for chunked requests.
             body = bytearray()
             async for chunk in request.stream():
                 body.extend(chunk)
-                if len(body) > 5_000_000:
+                if len(body) > body_limit:
                     return JSONResponse({"detail": "Payload too large"}, status_code=413)
             request._body = bytes(body)
         response = await call_next(request)
@@ -250,6 +251,36 @@ def create_app(cfg):
 
     @api.get('/data-sources/appgoblin/datasets')
     def source_datasets(db=DB):return data_sources.dataset_catalog(db,cfg)
+
+    from . import appfigures_source as figures
+
+    @api.put('/data-sources/appfigures')
+    def figures_save(value:dict=Body(...),db=DB):return data_sources.save(db,cfg,value,'appfigures')
+
+    @api.post('/data-sources/appfigures/authorize')
+    def figures_authorize(db=DB):return data_sources.authorize(db,cfg,'appfigures')
+
+    @api.get('/data-sources/appfigures/collection')
+    def figures_report(db=DB):return figures.report(db)
+
+    @api.post('/data-sources/appfigures/collection')
+    def figures_plan(value:dict=Body(...),db=DB):
+        try:return figures.create_run(db,value)
+        except RuntimeError:raise ValueError('正在建立采集计划，请稍后刷新') from None
+
+    @api.post('/data-sources/appfigures/collection/{identifier}/control')
+    def figures_control(identifier:int,value:dict=Body(...),db=DB):
+        try:return figures.control(db,identifier,value.get('action'))
+        except RuntimeError:raise ValueError('当前请求正在归档，请稍后重试操作') from None
+
+    @api.post('/data-sources/appfigures/datasets')
+    def figures_import(value:dict=Body(...),db=DB):return figures.import_csv(db,cfg,value)
+
+    @api.get('/data-sources/appfigures/artifacts/{identifier}')
+    def figures_download(identifier:int,db=DB):
+        from fastapi.responses import FileResponse
+        path=figures.artifact_path(db,cfg,identifier)
+        return FileResponse(path,filename=path.name,media_type='application/gzip')
 
     @api.post('/data-sources/app-metrics')
     def source_metrics(value:dict=Body(...),db=DB):return data_sources.app_metrics(db,cfg,value.get('store'),value.get('app_id'),value.get('provider','auto'))

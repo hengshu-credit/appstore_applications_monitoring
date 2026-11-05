@@ -18,7 +18,7 @@ AppGoblin适配按其[开源登录实现](https://github.com/appgoblin-dev/appgo
 | [AppGoblin免费数据](https://appgoblin.info/free-app-datasets) | 免费账户可下载元数据、描述、生态报告 | 页面展示的应用指标文件列不含国家下载/收入；配置支持授权后读取目录，不能据此宣称已获取国家拆分 |
 | [AppBrain](https://www.appbrain.com/app/chatgpt/com.openai.chatgpt) | Android安装量与页面可见的近月下载 | 官网网页可查；本机匿名HTTP返回403。已加邮箱密码配置与实际表单适配，登录挑战会明确显示，未绕过 |
 | Google Play/Apple公开观察 | 各国家榜单、搜索结果、应用资料；Google全球累计安装 | 已有采集器。自动兜底采用最近成功Google安装快照，并保留原观察时间；缺失收入不补值 |
-| [Appfigures](https://appfigures.com/top-apps) | 公开各国榜单；官方说明提供上月全球下载/收入估算 | 已读取公开榜单及应用页；本次未取得应用估算数值接口，列为候选，未宣称自动兜底已接通 |
+| [Appfigures](https://appfigures.com/top-apps) | API 元数据、榜单、历史排名、下载/收入估算和评论；CSV 数据集 | 已接入加密账密/Token配置、断点归档和额度控制；实际账户尚待 Token 试采，网页试用不等于公共数据 API 权限，见 [接入说明](appfigures.md) |
 | [Google Trends RSS](https://trends.google.com/trending/rss?geo=US) | 国家网页搜索热点 | 美国、泰国各10条已保存；日本曾取得RSS但后续连接不稳定。不是Google Play/App Store官方热搜 |
 | [app-store-operator](https://github.com/meyusufdemirci/app-store-operator) | 开源客户端 | 下载收入工具依赖SensorTower登录，不满足匿名条件；未执行其登录或购买流程 |
 

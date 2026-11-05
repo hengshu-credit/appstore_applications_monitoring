@@ -20,6 +20,10 @@ def main():
     parser = argparse.ArgumentParser(description="Global known app pool and regional store monitoring")
     parser.add_argument("--config", default="config.toml")
     sub = parser.add_subparsers(dest="command", required=True)
+    figures=sub.add_parser('appfigures',help='Appfigures resumable API archive')
+    figures.add_argument('action',choices=['status','plan','run','import-csv'])
+    figures.add_argument('--file',help='Plan JSON or exported UTF-8 CSV file')
+    figures.add_argument('--limit',type=int,default=5)
     configure_cli(sub)
     accounts = sub.add_parser('accounts', help='Local operator account recovery')
     accounts.add_argument('action', choices=['recover-admin'])
@@ -96,6 +100,15 @@ def main():
                 worker(cfg, db)
                 return 0
             result = run_once(cfg, db, args.limit)
+        elif args.command == 'appfigures':
+            from . import appfigures_source as af
+            try:
+                if args.action=='status':result=af.report(db)
+                elif args.action=='run':result=af.work(cfg,db,args.limit)
+                elif not args.file:parser.error('--file is required')
+                elif args.action=='plan':result=af.create_run(db,json.loads(Path(args.file).read_text(encoding='utf-8')))
+                else:result=af.import_csv(db,cfg,{'content':Path(args.file).read_text(encoding='utf-8-sig')})
+            except ValueError as exc:parser.error(str(exc))
         elif args.command == "keywords":
             try:
                 result = execute_cli(args, cfg, db)
@@ -147,6 +160,7 @@ def main():
             temp.replace(target)
             result = {"rows": count, "path": str(target)}
         print(json.dumps(result, ensure_ascii=False, indent=2))
+        if args.command == 'appfigures' and result.get('error'):return 2
         if args.command == "run" and result["error"]:
             return 2
         if args.command == "console" and any(result.get(k,{}).get("error",0) for k in ("plans", "watchlist", "observations", "keywords", "icons")):

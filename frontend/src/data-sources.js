@@ -1,3 +1,5 @@
+import { appfiguresPanel, bindAppfigures } from "./appfigures.js";
+
 export function createDataSourcePage({
   $,
   api,
@@ -34,12 +36,13 @@ export function createDataSourcePage({
               esc(s.limits),
             ]),
           ),
-        )}`,
+        )}${appfiguresPanel(panel, esc, data.appfigures)}`,
         revision,
       )
     )
       return;
     const root = $("#provider-account").closest("main");
+    bindAppfigures({ $, api, esc, table, toast, root });
     const update = (result) => {
       if (!root.querySelector("#provider-state")) return;
       root.querySelector("#provider-state").textContent =

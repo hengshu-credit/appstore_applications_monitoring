@@ -1,5 +1,7 @@
 # 衡枢·观星
 
+新增：[Appfigures 试用期 API 采集与 CSV 归档](docs/appfigures.md)，支持加密账密/Token 配置、分页续采、额度退避、截止时间与归档下载。
+
 新增：[离线备份、空库恢复与 Docker Compose 离线部署](docs/offline-deployment.md)。采集中心支持跨页全选暂停/恢复、所有商店统一请求间隔与共享冷却配置。
 
 星河璀璨，万象浮沉。

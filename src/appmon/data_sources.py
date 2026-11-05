@@ -10,14 +10,17 @@ from cryptography.fernet import Fernet, InvalidToken
 from .db import dump
 
 ORIGIN='https://appgoblin.info'
-PROVIDERS=('appgoblin','appbrain')
+PROVIDERS=('appgoblin','appbrain','appfigures')
 def provider_name(provider):
     if provider not in PROVIDERS:raise ValueError('未知数据源')
     return provider
 def cookie_allowed(provider,domain):
+    if provider=='appfigures':return False
     domain=domain.lstrip('.')
     return domain=='appgoblin.info' if provider=='appgoblin' else domain in ('appbrain.com','www.appbrain.com','developers.appbrain.com')
 MESSAGES={'not_configured':'未配置账户','saved':'已保存，等待授权','authorized':'授权有效',
+    'api_token_required':'账密已保存；API 采集需填写 Personal Access Token',
+    'invalid_token':'API Token 无效或已过期','access_denied':'当前账户无 API 权限或额度不足',
     'invalid_credentials':'登录失败，请检查邮箱和密码','action_required':'需要在来源网站完成邮箱、验证码或二次验证',
     'rate_limited':'来源限制请求，请稍后重试','network_error':'来源连接失败，稍后可重试',
     'source_changed':'来源响应不符合预期，请检查登录方式','key_unavailable':'凭据密钥不可用，请恢复原密钥后重试'}
@@ -28,8 +31,9 @@ CATALOG=[
      'capabilities':'Android累计安装与页面可见的近月下载指标','limits':'支持邮箱密码表单授权；本机匿名请求403，需配置后实测。验证码/SSO需要人工处理'},
     {'id':'store_public','name':'Google Play / Apple公开接口','access':'免登录','url':'https://apps.apple.com',
      'capabilities':'各国榜单、应用资料、搜索结果；Google累计安装','limits':'已接入观星采集器；不是分国家下载量或收入'},
-    {'id':'appfigures','name':'Appfigures','access':'公开榜单 / 免费账户','url':'https://appfigures.com/top-apps',
-     'capabilities':'各国榜单；官方说明提供上月全球下载与收入估算','limits':'具体应用估算接口尚未实测接通，不作为自动收入兜底'},
+    {'id':'appfigures','name':'Appfigures','access':'试用账户 / API Token / CSV 导出','url':'https://app.appfigures.com/account/units',
+     'capabilities':'应用元数据、国家分类目录、榜单、历史排名、下载/收入估算、评论；支持断点归档与CSV数据集',
+     'limits':'14天网页试用不等于第三方数据API权限；实际范围取决于套餐、Public Data API和额度。API已停用账密Basic Auth'},
     {'id':'google_trends','name':'Google Trends RSS','access':'免登录','url':'https://trends.google.com/trending',
      'capabilities':'各国网页搜索热点','limits':'已实现RSS采集；不是应用商店热搜，连通性因网络而异'},
 ]
@@ -59,13 +63,18 @@ def status(db):
 def save(db,cfg,value,provider="appgoblin"):
     provider_name(provider)
     email=value.get('email');password=value.get('password')
-    if not isinstance(email,str) or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',email) or len(email)>254:raise ValueError('请输入有效的 来源账户邮箱')
-    if not isinstance(password,str) or not 1<=len(password)<=1024:raise ValueError('请输入 来源账户密码')
+    token=value.get('access_token','') if provider=='appfigures' else ''
+    token_only=provider=='appfigures' and token and not email and not password
+    if not token_only and (not isinstance(email,str) or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',email) or len(email)>254):raise ValueError('请输入有效的 来源账户邮箱')
+    if not token_only and (not isinstance(password,str) or not 1<=len(password)<=1024):raise ValueError('请输入 来源账户密码')
+    if not isinstance(token,str) or len(token)>4096 or any(c.isspace() or ord(c)<32 for c in token):raise ValueError('API Token 格式无效')
     with db.named_lock('data-source-'+provider):
         with db.named_lock('data-sources-key'):
             has_secrets=bool(db.execute('SELECT 1 FROM source_accounts LIMIT 1').fetchone())
             encryption=cipher(cfg,create=not has_secrets)
-        secret=encryption.encrypt(dump({'email':email,'password':password,'cookies':[]}).encode()).decode()
+        saved={'email':email,'password':password,'cookies':[]}
+        if provider=='appfigures':saved['access_token']=token
+        secret=encryption.encrypt(dump(saved).encode()).decode()
         db.execute("INSERT INTO source_accounts(provider,secret,status,updated_at) VALUES(%s,%s,'saved',%s) AS incoming ON DUPLICATE KEY UPDATE secret=incoming.secret,status='saved',checked_at=NULL,retry_after=0,updated_at=incoming.updated_at",(provider,secret,time.time()))
     return authorize(db,cfg,provider)
 
@@ -118,7 +127,10 @@ def _authorize(db,cfg,provider):
             for cookie in saved.get('cookies',[]):
                 if cookie_allowed(provider,cookie.get('domain','')):
                     client.cookies.set(cookie['name'],cookie['value'],domain=cookie['domain'],path=cookie.get('path','/'),secure=True)
-            if provider=='appbrain':
+            if provider=='appfigures':
+                from .appfigures_source import authorize as figures_authorize
+                outcome=figures_authorize(db,client,saved)
+            elif provider=='appbrain':
                 from .appbrain_source import authorize as brain_authorize
                 outcome=brain_authorize(client,saved)
             elif saved.get('cookies') and authorized_user(request(client,'GET','/auth/me')):outcome='authorized'
@@ -148,6 +160,9 @@ def account_session(db,cfg,provider="appgoblin"):
     if state['status']!='authorized':raise ValueError(state['message'])
     row=db.execute("SELECT secret FROM source_accounts WHERE provider=%s",(provider,)).fetchone()
     saved=json.loads(cipher(cfg).decrypt(row['secret'].encode()));client=session(cfg)
+    if provider=='appfigures':
+        from .appfigures_source import configure
+        configure(client,saved)
     for c in saved['cookies']:client.cookies.set(c['name'],c['value'],domain=c['domain'],path=c['path'],secure=True)
     return client
 
@@ -182,6 +197,7 @@ def app_metrics(db,cfg,store,app_id,provider='auto'):
     from .ingest import valid_id
     if not isinstance(app_id,str) or not valid_id(store,app_id):raise ValueError('应用ID无效')
     if provider not in ('auto',*PROVIDERS):raise ValueError('未知数据源')
+    if provider=='appfigures':raise ValueError('请在 Appfigures 试用期采集面板建立计划并查看来源归档')
     if provider=='appbrain':
         try:return brain_metrics(db,cfg,store,app_id)
         except requests.RequestException:raise ValueError('AppBrain连接失败，请稍后重试') from None
