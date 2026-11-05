@@ -196,6 +196,9 @@ def work_watchlist(cfg, db, limit=10, client=None, *, max_requests=None):
 def work_observations(cfg, db, limit=10, client=None):
     from .observation_stores import ObservationClient
     client = client or ObservationClient(cfg, db)
+    if callable(getattr(client,'fetch_observations',None)):
+        from .target_batches import work_targets
+        return work_targets(cfg,db,limit,client,table='observation_targets',resource='targets',single='fetch_observation',multiple='fetch_observations',save=save_observation)
     count = dict(processed=0, ok=0, error=0, stale=0)
     for _ in range(limit):
         from .collection_limits import blocked

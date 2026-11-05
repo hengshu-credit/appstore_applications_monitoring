@@ -18,6 +18,8 @@ cooldown_seconds = 900
 batch_size = 200
 # Same-country/language Apple detail IDs per HTTP lookup (1 disables batching).
 apple_lookup_batch_size = 50
+# Same-market Google detail/search/chart/review calls per HTTP request.
+google_rpc_batch_size = 20
 discovery_hours = 24
 seed_sync_hours = 24
 search_terms = ["finance", "business", "education", "health", "games", "shopping", "travel", "tools"]

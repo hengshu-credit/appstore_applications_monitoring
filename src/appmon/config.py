@@ -17,6 +17,9 @@ def load(path="config.toml"):
         raise ValueError("countries must contain two-letter storefront codes")
     if not re.fullmatch(r"[a-z]{2}(?:[-_][A-Za-z]{2})?", cfg["language"]):
         raise ValueError("Invalid language")
+    cfg.setdefault('google_rpc_batch_size', 20)
+    if type(cfg['google_rpc_batch_size']) is not int or not 1<=cfg['google_rpc_batch_size']<=20:
+        raise ValueError('google_rpc_batch_size must be an integer from 1 to 20')
     cfg.setdefault('apple_lookup_batch_size', 50)
     if type(cfg['apple_lookup_batch_size']) is not int or not 1<=cfg['apple_lookup_batch_size']<=50:
         raise ValueError('apple_lookup_batch_size must be an integer from 1 to 50')

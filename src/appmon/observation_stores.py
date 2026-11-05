@@ -102,6 +102,66 @@ class ObservationClient(Client):
             return self.featured(target)
         return self.reviews(target)
 
+    def fetch_observations(self, targets):
+        from .google_rpc import same_market, rpc_many, template
+        same_market(targets)
+        if len({t['kind'] for t in targets})!=1:
+            raise ValueError('Observation batch must have one kind')
+        if targets[0]['kind']=='reviews':
+            return self.review_batches(targets)
+        if targets[0]['kind']!='chart':
+            raise ValueError('Unsupported batch observation kind')
+        calls=[]
+        for t in targets:
+            payload=template('chart')
+            payload[0][1][0][1][1]=t['depth']
+            payload[0][2][1:]=[{'top-free':'topselling_free','top-paid':'topselling_paid','top-grossing':'topgrossing',
+                'new-free':'topselling_new_free','new-paid':'topselling_new_paid','trending':'movers_shakers'}[t['collection']],t['category'] or 'APPLICATION']
+            calls.append(('vyAe2',payload))
+        payloads,raw=rpc_many(self,targets[0],calls)
+        results=[]
+        for t,payload in zip(targets,payloads):
+            if isinstance(payload,FetchError):
+                results.append(payload);continue
+            try:
+                results.append(ObservationResult(google_chart(payload)[:t['depth']],raw,'google-play-chart-rpc','returned_chart_range'))
+            except (FetchError,ValueError,TypeError,KeyError,IndexError):
+                results.append(FetchError('Google chart batch item invalid; retry separately',60))
+        return results
+
+    def review_batches(self, targets):
+        from .google_rpc import rpc_many
+        results=[None]*len(targets)
+        states=[dict(items=[],seen=set(),tokens=set(),token=None,raw=[]) for _ in targets]
+        for page in range(1,11):
+            active=[i for i,result in enumerate(results) if result is None]
+            if not active:
+                break
+            calls=[]
+            for i in active:
+                t,state=targets[i],states[i]
+                calls.append(('UsvDTd',[None,None,[2,2,[min(50,t['depth']-len(state['items'])),None,state['token']],None,[]],[t['app_id'],7]]))
+            payloads,raw=rpc_many(self,targets[0],calls)
+            for i,payload in zip(active,payloads):
+                if isinstance(payload,FetchError):
+                    results[i]=payload;continue
+                state,t=states[i],targets[i]
+                try:
+                    items,token=google_reviews(payload)
+                    if token and token in state['tokens']:
+                        raise FetchError('Google review pagination cycle')
+                    state['tokens'].add(token);state['token']=token
+                    state['raw'].append(raw.decode('utf-8'))
+                    for item in items:
+                        if item['id'] not in state['seen']:
+                            state['seen'].add(item['id']);state['items'].append(item)
+                    if not token or len(state['items'])>=t['depth'] or page>=min(10,math.ceil(t['depth']/50)):
+                        results[i]=ObservationResult(state['items'][:t['depth']],json.dumps(state['raw'],ensure_ascii=False).encode(),
+                                                     'google-public-reviews','recent_reviews_bounded')
+                except (FetchError,ValueError,TypeError,KeyError,IndexError):
+                    results[i]=FetchError('Google review batch item invalid; retry separately',60)
+        return results
+
     def chart(self, t):
         if t["store"] == "google":
             payload = json.loads(files("appmon").joinpath("google_chart_request.json").read_text(encoding="utf-8"))

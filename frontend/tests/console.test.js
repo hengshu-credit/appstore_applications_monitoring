@@ -626,6 +626,33 @@ test("category cards drill into state and batch interval preserves scope", async
       window.document.querySelectorAll(".collection-category").length,
       6,
     );
+    assert.equal(
+      window.document.querySelectorAll(".collection-legend").length,
+      1,
+    );
+    const keywordCard = window.document
+      .querySelector('[data-category="keywords"]')
+      .closest(".collection-category");
+    assert.doesNotMatch(
+      keywordCard.textContent,
+      /定时采集|等待采集|失败待重试/,
+    );
+    assert.equal(
+      keywordCard.querySelectorAll(".category-counts button").length,
+      5,
+    );
+    assert.match(
+      keywordCard
+        .querySelector('[data-category-state="error"]')
+        .getAttribute("aria-label"),
+      /失败待重试.*3/,
+    );
+    assert.equal(
+      keywordCard
+        .querySelector(".category-distribution")
+        .getAttribute("aria-hidden"),
+      "true",
+    );
     window.document
       .querySelector('[data-category="keywords"][data-category-state="error"]')
       .click();
@@ -651,7 +678,7 @@ test("category cards drill into state and batch interval preserves scope", async
     assert.equal(bodies[1].scope, "filtered");
     assert.equal(
       window.document.querySelector('[name="daily_request_limit"]').value,
-      "10000",
+      "0",
     );
   } finally {
     await window.happyDOM.close();

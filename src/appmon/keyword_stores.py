@@ -65,7 +65,11 @@ def parse_google(text):
         blocks[key[1]] = json.loads(data[1])
     if len(blocks) != 1:
         raise FetchError("Google search dataset unavailable")
-    sections = path(next(iter(blocks.values())), 0, 1)
+    return parse_google_payload(next(iter(blocks.values())))
+
+
+def parse_google_payload(payload):
+    sections = path(payload, 0, 1)
     if not isinstance(sections, list):
         raise FetchError("Google search sections unavailable")
     apps, exact, recognized = [], None, False
@@ -145,6 +149,24 @@ def parse_apple_web(text, country):
 
 
 class KeywordClient(Client):
+    def search_many(self, targets):
+        from .google_rpc import same_market, template, rpc_many
+        same_market(targets)
+        calls=[]
+        for target in targets:
+            payload=template('search');payload[0][2][0]=target['keyword']
+            calls.append(('lGYRle',payload))
+        payloads,raw=rpc_many(self,targets[0],calls)
+        results=[]
+        for target,payload in zip(targets,payloads):
+            if isinstance(payload,FetchError):
+                results.append(payload);continue
+            try:
+                results.append(SearchResult(parse_google_payload(payload)[:target['depth']],raw,SOURCES['google']))
+            except (ValueError,TypeError,KeyError,IndexError,FetchError):
+                results.append(FetchError('Google batch search schema changed; retry separately',60))
+        return results
+
     def search(self, target):
         store = target["store"]
         if store == "apple":

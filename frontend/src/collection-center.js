@@ -240,8 +240,48 @@ export function createCollectionCenter(ctx) {
       api("/research/collection/activity"),
       api("/research/collection/limits"),
     ]);
-    const s = tasks.summary;
-    const categoryCards = `<div class="collection-categories" aria-label="任务分类概览">${Object.entries(
+    const stateLabels = { ...states, out_of_scope: "未启用市场" };
+    const stateSymbols = {
+      scheduled: "◷",
+      pending: "○",
+      running: "↻",
+      paused: "Ⅱ",
+      error: "!",
+      out_of_scope: "–",
+    };
+    const stateMark = (state) =>
+      `<i class="collection-state-mark" data-state="${state}" aria-hidden="true">${stateSymbols[state]}</i>`;
+    const distribution = (summary, kind = "") => {
+      const entries = Object.entries(stateLabels).filter(([state]) =>
+        kind ? state !== "out_of_scope" : true,
+      );
+      const total = entries.reduce(
+        (sum, [state]) => sum + (summary[state] || 0),
+        0,
+      );
+      return `<div class="category-distribution" aria-hidden="true">${entries
+        .filter(([state]) => summary[state] > 0)
+        .map(
+          ([state]) =>
+            `<span data-state="${state}" style="flex-grow:${summary[state] / total}"></span>`,
+        )
+        .join("")}</div><div class="category-counts">${entries
+        .map(([state, label]) => {
+          const caption = `${label}：${num(summary[state] || 0)}`;
+          const attrs = kind
+            ? `data-category="${kind}" data-category-state="${state}" aria-pressed="${filters.kind === kind && filters.state === state}"`
+            : "data-pool-card";
+          return `<button type="button" ${attrs} title="${caption}" aria-label="${caption}">${stateMark(state)}<b>${num(summary[state] || 0)}</b></button>`;
+        })
+        .join("")}</div>`;
+    };
+    const categoryCards = `<div class="collection-legend" aria-label="任务状态图例">${Object.entries(
+      stateLabels,
+    )
+      .map(([state, label]) => `<span>${stateMark(state)}${label}</span>`)
+      .join(
+        "",
+      )}</div><div class="collection-categories" aria-label="任务分类概览">${Object.entries(
       taskKinds,
     )
       .map(([kind, label]) => {
@@ -249,29 +289,13 @@ export function createCollectionCenter(ctx) {
           total: 0,
           summary: {},
         };
-        return `<article class="collection-category ${filters.kind === kind ? "active" : ""}"><button type="button" class="category-heading" data-category="${kind}" aria-pressed="${filters.kind === kind}"><span>${esc(label)}</span><strong>${num(category.total)}</strong></button><div class="category-states">${Object.entries(
-          states,
-        )
-          .map(
-            ([state, title]) =>
-              `<button type="button" data-category="${kind}" data-category-state="${state}" class="${filters.kind === kind && filters.state === state ? "active" : ""}"><span>${title}</span><b>${num(category.summary[state] || 0)}</b></button>`,
-          )
-          .join("")}</div></article>`;
+        return `<article class="collection-category ${filters.kind === kind ? "active" : ""}"><button type="button" class="category-heading" data-category="${kind}" aria-pressed="${filters.kind === kind}"><span>${esc(label)}</span><strong>${num(category.total)}</strong></button>${distribution(category.summary, kind)}</article>`;
       })
       .join("")}${pipelines
       .filter((p) => p.id === "pool")
       .map(
         (p) =>
-          `<article class="collection-category"><button class="category-heading" data-pool-card><span>全池应用详情</span><strong>${num(p.total || 0)}</strong></button><div class="category-states">${Object.entries(
-            { ...states, out_of_scope: "未启用市场" },
-          )
-            .map(
-              ([state, label]) =>
-                `<span><span>${label}</span><b>${num(p.summary?.[state] || 0)}</b></span>`,
-            )
-            .join(
-              "",
-            )}</div><p class="sub">所有商店 / 市场 · 点击管理基础流程</p></article>`,
+          `<article class="collection-category"><button type="button" class="category-heading" data-pool-card title="所有商店与市场；管理基础流程"><span>全池应用详情</span><strong>${num(p.total || 0)}</strong></button>${distribution(p.summary || {})}</article>`,
       )
       .join("")}</div>`;
     const tab = (key, label) =>
@@ -335,7 +359,7 @@ export function createCollectionCenter(ctx) {
       )}</details>`;
     if (
       !mount(
-        `<div class="collection-heading"><p class="lead">按类型查看任务规模与状态，点击卡片筛选并跨页管理。</p><button id="new-collection">${icon("plus")}新建采集计划</button></div>${categoryCards}<div class="cards collection-metrics">${metric("筛选结果", tasks.total, "已配置的独立采集目标")}${metric("采集中 / 等待", s.running + s.pending, "依照限速与队列执行")}${metric("失败待重试", s.error, "保留最近成功结果")}${metric("已暂停", s.paused, "恢复后继续按周期采集")}</div><div class="collection-status"><span class="status-dot"></span>后台最近心跳：${esc(stamp(quality.heartbeat?.next_at))}<span class="sub">所有市场独立保存 · 不改写历史</span></div><div class="collection-tabs" role="tablist" aria-label="采集管理视图">${tab("tasks", "采集任务")}${tab("pipelines", "基础采集流程")}${section === "create" ? tab("create", "新建计划") : ""}</div><details class="panel collection-limits-panel"><summary>整体采集控频 · ${limits.paused ? "已暂停请求" : (limits.daily_request_limit ?? 10000) ? "每日预算 " + num(limits.daily_request_limit ?? 10000) + " 次" : "每日预算不限"}</summary><div class="spacer"><form id="collection-limits" class="form-grid">${field("整体最小请求间隔（秒）", "global_interval_seconds", limits.global_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Google 最小间隔（秒）", "google_interval_seconds", limits.google_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Apple 最小间隔（秒）", "apple_interval_seconds", limits.apple_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("每日请求预算（UTC，0 为不限）", "daily_request_limit", limits.daily_request_limit ?? 10000, "number", 'min="0" max="10000000" step="1" required')}${field("受限后整体冷却（秒）", "cooldown_seconds", limits.cooldown_seconds, "number", 'min="60" max="86400" required')}<label class="check-label"><input type="checkbox" name="paused" ${limits.paused ? "checked" : ""}>暂停所有商店采集请求</label><p class="sub full">同市场 App Store 详情每批最多 50 个应用共用一次请求；Google 详情保持逐请求限速。每日预算耗尽后等待下一 UTC 日，所有采集 worker 共用额度，详情、关键词、榜单、评论、推荐和图标请求均计入。403 / 429 / 5xx 会触发共享冷却，并遵守更长的 Retry-After。保存后新请求生效，已发出的请求会完成。此开关不停止种子包同步和第三方数据源手动操作。</p><button type="submit">保存控频设置</button></form></div></details>${body}`,
+        `<div class="collection-heading"><p class="lead">按类型查看任务规模与状态，点击卡片筛选并跨页管理。</p><button id="new-collection">${icon("plus")}新建采集计划</button></div>${categoryCards}<div class="collection-result-count">筛选结果 <strong>${num(tasks.total)}</strong></div><div class="collection-status"><span class="status-dot"></span>后台最近心跳：${esc(stamp(quality.heartbeat?.next_at))}<span class="sub">所有市场独立保存 · 不改写历史</span></div><div class="collection-tabs" role="tablist" aria-label="采集管理视图">${tab("tasks", "采集任务")}${tab("pipelines", "基础采集流程")}${section === "create" ? tab("create", "新建计划") : ""}</div><details class="panel collection-limits-panel"><summary>整体采集控频 · ${limits.paused ? "已暂停请求" : (limits.daily_request_limit ?? 0) ? "每日预算 " + num(limits.daily_request_limit ?? 0) + " 次" : "每日预算不限"}</summary><div class="spacer"><form id="collection-limits" class="form-grid">${field("整体最小请求间隔（秒）", "global_interval_seconds", limits.global_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Google 最小间隔（秒）", "google_interval_seconds", limits.google_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Apple 最小间隔（秒）", "apple_interval_seconds", limits.apple_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("每日请求预算（UTC，0 为不限）", "daily_request_limit", limits.daily_request_limit ?? 0, "number", 'min="0" max="10000000" step="1" required')}${field("受限后整体冷却（秒）", "cooldown_seconds", limits.cooldown_seconds, "number", 'min="60" max="86400" required')}<label class="check-label"><input type="checkbox" name="paused" ${limits.paused ? "checked" : ""}>暂停所有商店采集请求</label><p class="sub full">同市场 App Store 详情每批最多 50 个，Google 详情、关键词、榜单和评论每批最多 20 个；保留原采集周期与深度。每日预算耗尽后等待下一 UTC 日，所有采集 worker 共用额度，详情、关键词、榜单、评论、推荐和图标请求均计入。403 / 429 / 5xx 会触发共享冷却，并遵守更长的 Retry-After。保存后新请求生效，已发出的请求会完成。此开关不停止种子包同步和第三方数据源手动操作。</p><button type="submit">保存控频设置</button></form></div></details>${body}`,
         rev,
       )
     )
@@ -350,12 +374,13 @@ export function createCollectionCenter(ctx) {
           refresh().catch((e) => toast(e.message));
         }),
     );
-    document
-      .querySelector("[data-pool-card]")
-      ?.addEventListener("click", () => {
-        section = "pipelines";
-        refresh().catch((e) => toast(e.message));
-      });
+    document.querySelectorAll("[data-pool-card]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          section = "pipelines";
+          refresh().catch((e) => toast(e.message));
+        }),
+    );
     bindForm("#collection-limits", async (v, f) => {
       await api(
         "/research/collection/limits",

@@ -223,7 +223,7 @@ def key(job):
     return tuple(job[k] for k in ('store', 'app_id', 'country', 'language'))
 
 
-def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=False, now=None):
+def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=False, now=None, google_limit=20, apple_limit=50):
     """Claim only the jobs served by the next HTTP request, in a short transaction."""
     now = time.time() if now is None else now
     where = 'j.due<=%s AND j.lease_until<=%s'
@@ -246,11 +246,12 @@ def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=Fa
         if not first:
             return []
         jobs = [first]
-        if first['store']=='apple' and first['failures']==0 and limit>1:
+        batch_limit=min(limit,apple_limit if first['store']=='apple' else google_limit)
+        if first['failures']==0 and batch_limit>1:
             jobs += list(db.execute(f'''SELECT {columns} FROM {source} WHERE {where}
                 AND j.store=%s AND j.country=%s AND j.language=%s AND j.app_id<>%s AND j.failures=0
                 ORDER BY j.due LIMIT %s FOR UPDATE SKIP LOCKED''',
-                (*args,first['store'],first['country'],first['language'],first['app_id'],min(50,limit)-1)).fetchall())
+                (*args,first['store'],first['country'],first['language'],first['app_id'],batch_limit-1)).fetchall())
         token = uuid.uuid4().hex
         db.execute('UPDATE jobs SET token=%s,lease_until=%s WHERE store=%s AND country=%s AND language=%s AND app_id IN ('+
                    ','.join('%s' for _ in jobs)+')',

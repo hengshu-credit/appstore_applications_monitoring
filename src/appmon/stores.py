@@ -39,6 +39,15 @@ APPLE_MAPPING = {"name": "trackName", "version": "version", "description": "desc
                        "size_bytes": "fileSizeBytes", "minimum_os": "minimumOsVersion", "age_rating": "contentAdvisoryRating",
                        "seller": "sellerName", "developer_url": "sellerUrl", "devices": "supportedDevices"}
 
+GOOGLE_MAPPING = {"name": "title", "version": "version", "description": "description",
+                       "developer": "developer", "developer_id": "developerId", "category": "genreId",
+                       "price": "price", "currency": "currency", "rating": "score", "ratings": "ratings",
+                       "installs": "minInstalls", "installs_reported": "realInstalls",
+                       "has_ads": "adSupported", "has_iap": "offersIAP",
+                       "updated": "updated", "released": "released", "url": "url",
+                       "icon": "icon", "screenshots": "screenshots", "video": "video",
+                       "release_notes": "recentChanges", "summary": "summary", "category_id": "genreId"}
+
 class Client:
     def __init__(self, cfg, db):
         self.cfg, self.db = cfg, db
@@ -121,21 +130,16 @@ class Client:
                     raise ValueError("Missing title")
             except Exception as e:
                 raise FetchError("Google parser failed; retain previous state") from e
-            mapping = {"name": "title", "version": "version", "description": "description",
-                       "developer": "developer", "developer_id": "developerId", "category": "genreId",
-                       "price": "price", "currency": "currency", "rating": "score", "ratings": "ratings",
-                       "installs": "minInstalls", "installs_reported": "realInstalls",
-                       "has_ads": "adSupported", "has_iap": "offersIAP",
-                       "updated": "updated", "released": "released", "url": "url",
-                       "icon": "icon", "screenshots": "screenshots", "video": "video",
-                       "release_notes": "recentChanges", "summary": "summary", "category_id": "genreId"}
+            mapping = GOOGLE_MAPPING
         payload = {k: app.get(v) for k, v in mapping.items()}
         return Result("ok", payload, r.content)
 
     def fetch_many(self, jobs):
-        """One Apple lookup per market. Ambiguous omissions retry singly, never mass-delist."""
+        """Bounded store-specific requests; ambiguous omissions retry singly."""
         if not jobs:
             return []
+        if jobs[0]['store']=='google':
+            return self.fetch_google_many(jobs)
         if len(jobs) > 50 or len({(j['store'],j['country'],j.get('language','en')) for j in jobs}) != 1:
             raise ValueError('A detail batch must contain at most 50 jobs in one market')
         if jobs[0]['store'] != 'apple':
@@ -165,6 +169,32 @@ class Client:
         return [Result('ok', {k:found[i].get(v) for k,v in APPLE_MAPPING.items()}, r.content) if i in found
                 else Result('missing',raw=r.content) if len(ids)==1
                 else FetchError('Apple batch omitted this ID; verify with a single lookup',60) for i in ids]
+
+    def fetch_google_many(self, jobs):
+        from .google_rpc import same_market, template, rpc_many
+        from appgoblin_play_scraper.constants.element import ElementSpecs
+        from urllib.parse import urlencode
+        same_market(jobs)
+        calls=[]
+        for job in jobs:
+            payload=template('detail');payload[-1][0][0]=job['app_id']
+            calls.append(('Ws7gDc',payload))
+        payloads,raw=rpc_many(self,jobs[0],calls)
+        results=[]
+        for job,data in zip(jobs,payloads):
+            if isinstance(data,FetchError):
+                results.append(data);continue
+            try:
+                if data[1][2][77][0]!=job['app_id']:
+                    raise ValueError('Mismatched detail identity')
+                app={name:ElementSpecs.Detail[name].extract_content({'ds:5':data}) for name in set(GOOGLE_MAPPING.values())-{'url'}}
+                if not app.get('title'):
+                    raise ValueError('Missing detail title')
+                app['url']='https://play.google.com/store/apps/details?'+urlencode({'id':job['app_id'],'gl':job['country'],'hl':job['language']})
+                results.append(Result('ok',{key:app.get(value) for key,value in GOOGLE_MAPPING.items()},raw))
+            except (ValueError,TypeError,IndexError,KeyError):
+                results.append(FetchError('Google batch detail schema changed; retry separately',60))
+        return results
 
     def discover(self, store, country, kind, term=""):
         if store == "apple":

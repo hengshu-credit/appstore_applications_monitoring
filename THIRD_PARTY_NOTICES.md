@@ -58,3 +58,11 @@ Data provided by [AppGoblin](https://appgoblin.info).
   and the public Watch Face category. Historical aliases support earlier
   AppGoblin snapshots without creating new categories. Source URLs and scope
   are documented in `docs/store-catalog.md`.
+
+- Google multi-call detail and search request projections in
+  `src/appmon/google_detail_request.json` and `google_search_request.json`
+  reflect the public Play webpage's `Ws7gDc` and `lGYRle` requests. The detail
+  projection and regression datasets are derived from the same pinned
+  `MrAdex77/google-play-scraper` MIT fixtures above; the search projection was
+  refreshed against a public search response on 2026-11-06. Portable projected
+  test datasets and their provenance are in `tests/fixtures/`.

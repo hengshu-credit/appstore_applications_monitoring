@@ -12,7 +12,7 @@ def settings(db, cfg):
                     google_interval_seconds=cfg['google_interval_seconds'],
                     apple_interval_seconds=cfg['apple_interval_seconds'],
                     cooldown_seconds=cfg.get('cooldown_seconds', 900),
-                    daily_request_limit=cfg.get('daily_request_limit',10000), paused=False)
+                    daily_request_limit=cfg.get('daily_request_limit',0), paused=False)
     row = db.execute('SELECT settings FROM collection_controls WHERE name=%s', (NAME,)).fetchone()
     return defaults | (json.loads(row['settings']) if row else {})
 

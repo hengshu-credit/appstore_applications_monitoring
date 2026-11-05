@@ -22,8 +22,9 @@ def work_details(cfg, db, limit, client, *, watchlist=False, managed=False, max_
             if not enabled:
                 break
         disk_check(cfg['data_dir'],cfg['min_free_gb'])
-        size = min(cfg.get('apple_lookup_batch_size',50),limit-counts['processed']) if callable(getattr(client,'fetch_many',None)) else 1
-        jobs = claim_details(db,cfg['countries'],cfg['language'],cfg['lease_seconds'],size,watchlist)
+        size = min(max(cfg.get('apple_lookup_batch_size',50),cfg.get('google_rpc_batch_size',20)),limit-counts['processed']) if callable(getattr(client,'fetch_many',None)) else 1
+        jobs = claim_details(db,cfg['countries'],cfg['language'],cfg['lease_seconds'],size,watchlist,
+                             google_limit=cfg.get('google_rpc_batch_size',20),apple_limit=cfg.get('apple_lookup_batch_size',50))
         if not jobs:
             break
         batches += 1
