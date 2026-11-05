@@ -79,6 +79,7 @@ async function wrappedModule(name, exports) {
 const newModules = (
   await Promise.all([
     wrappedModule("icons.js", "icon,storeLogo"),
+    wrappedModule("navigation.js", "navigationMarkup,updateWorkspace"),
     wrappedModule(
       "monitoring-charts.js",
       "monitoringChart,bindMonitoringCharts",
@@ -329,10 +330,13 @@ test("navigation queries the API and escapes upstream application content", asyn
     );
     assert.equal(window.document.querySelector("img[onerror]"), null);
     assert.ok(calls.some((c) => c.path.startsWith("/api/apps?")));
-    assert.equal(window.document.querySelectorAll("nav a").length, 21);
-    assert.equal(window.document.querySelectorAll("nav a .ui-icon").length, 21);
+    assert.equal(window.document.querySelectorAll("#navigation a").length, 12);
+    assert.equal(
+      window.document.querySelectorAll("#navigation a .ui-icon").length,
+      12,
+    );
     assert.ok(window.document.querySelector('[data-nav="groups"]'));
-    assert.ok(window.document.querySelector('[data-nav="datasources"]'));
+    assert.ok(window.document.querySelector('[data-pages~="datasources"]'));
     assert.equal(window.document.querySelector('[data-nav="account"]'), null);
     assert.equal(
       window.document.querySelectorAll('#account-menu [role="menuitem"] svg')
@@ -682,7 +686,7 @@ test("pending task controls block editing and cannot replace a newly selected pa
     await tick();
     assert.equal(
       window.document.querySelector("#page-title").textContent,
-      "关键词中心",
+      "关键词研究",
     );
     assert.equal(window.document.querySelector("#task-filters"), null);
   } finally {

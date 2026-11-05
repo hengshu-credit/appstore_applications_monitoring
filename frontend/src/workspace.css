@@ -5,9 +5,9 @@
   vertical-align: middle;
 }
 /* Common form controls share one size; text actions and choice tiles stay semantic. */
-button:not(.link):not(.theme-swatch):not(.country-option):not(
-    [role="option"]
-  ):not([role="tab"]),
+button:not(.content-card):not(.link):not(.theme-swatch):not(
+    .country-option
+  ):not([role="option"]):not([role="tab"]),
 .button {
   min-height: 42px;
   height: 42px;

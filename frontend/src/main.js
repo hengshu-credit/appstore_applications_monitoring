@@ -27,6 +27,8 @@ import { createAvailabilityPage } from "./availability.js";
 import { createGroupWorkspace } from "./app-groups.js";
 import "./app-groups.css";
 import { initTheme } from "./theme.js";
+import { navigationMarkup, updateWorkspace } from "./navigation.js";
+import "./navigation.css";
 initTheme();
 const $ = (s, root = document) => root.querySelector(s);
 const esc = (v) =>
@@ -120,35 +122,7 @@ const kindLabel = (v) =>
   })[v] || v;
 let revision = 0;
 const accounts = createAccounts({ esc, toast, onReady: render });
-const nav = [
-  ["overview", "◈", "监控概览"],
-  ["groups", "▦", "应用分组"],
-  ["events", "▥", "事件中心"],
-  ["availability", "↕", "上下架观察"],
-  ["apps", "▦", "应用库"],
-  ["watchlist", "◎", "重点监控"],
-  ["charts", "↗", "榜单中心"],
-  ["globalcharts", "◎", "全球排行榜"],
-  ["featured", "✦", "精品推荐"],
-  ["keywords", "⌕", "关键词中心"],
-  ["aso", "✎", "ASO 工作台"],
-  ["compare", "⇄", "竞品集合"],
-  ["reviews", "▤", "评论工作台"],
-  ["market", "◷", "市场分布"],
-  ["developers", "▣", "开发者"],
-  ["collection", "⟳", "采集中心"],
-  ["ads", "◇", "广告观察"],
-  ["alerts", "◉", "告警与日报"],
-  ["exports", "↓", "数据导出"],
-  ["datasources", "⚙", "数据源配置"],
-  ["administration", "◎", "账户管理"],
-];
-$("#navigation").innerHTML = nav
-  .map(
-    ([id, , label]) =>
-      `<a href="#${id}" data-nav="${id}"><span class="nav-icon">${icon(id)}</span>${label}</a>`,
-  )
-  .join("");
+$("#navigation").innerHTML = navigationMarkup(icon);
 function toast(message) {
   $("#toast").textContent = message;
   $("#toast").style.display = "block";
@@ -1529,9 +1503,8 @@ async function render() {
   $("#collection-editor")?.remove();
   $("#research-dialog")?.close();
   $("#group-dialog")?.remove();
-  document
-    .querySelectorAll("[data-nav]")
-    .forEach((a) => a.classList.toggle("active", a.dataset.nav === resource));
+  const name = (location.hash.slice(1) || "overview").split("?")[0];
+  const workspace = updateWorkspace(document, name, accounts.can);
   const ownAccount =
     resource === "administration" &&
     new URLSearchParams(location.hash.split("?")[1] || "").get("own") === "1";
@@ -1558,21 +1531,8 @@ async function render() {
   $("#task-logs")?.close();
   $("#collection-editor")?.remove();
   $("#research-dialog")?.close();
-  const name = (location.hash.slice(1) || "overview").split("?")[0],
-    route = routes[name] || overview,
+  const route = routes[name] || overview,
     rev = ++revision;
-  $("#page-title").textContent =
-    name === "chart"
-      ? "榜单详情"
-      : (nav.find((n) => n[0] === name.split("/")[0]) || nav[0])[2];
-  document
-    .querySelectorAll("[data-nav]")
-    .forEach((a) =>
-      a.classList.toggle(
-        "active",
-        a.dataset.nav === (name === "chart" ? "globalcharts" : name),
-      ),
-    );
   mount('<div class="empty">正在加载观察记录…</div>');
   try {
     const parts = name.split("/");
@@ -1595,7 +1555,7 @@ async function render() {
     await selectors.ready();
     selectors.syncCountry();
     if (
-      !["globalcharts", "datasources"].includes(name) &&
+      workspace.scope === "market" &&
       !selectors.supportsMarket(market().store, market().country)
     ) {
       mount(

@@ -16,9 +16,9 @@ export function createGroupWorkspace(ctx) {
   } = ctx;
   const stateNames = {
     available: "已验证在架",
-    suspected_missing: "待复核",
+    suspected_missing: "缺失待确认",
     region_unavailable: "地区不可用",
-    unverified: "未验证",
+    unverified: "尚未验证",
   };
   const permissionNames = {
     ok: "已采集",
@@ -129,7 +129,7 @@ export function createGroupWorkspace(ctx) {
         : groups[0]?.id;
     if (
       !mount(
-        `<p class="lead">把一组 APP 放在一起管理，按国家查看状态、权限与经营指标。</p><p class="sub">分组可跨商店、跨国家，本页统计以下方筛选为准。</p><div class="group-workspace"><aside class="panel group-sidebar"><div class="panel-heading"><h2>我的应用分组</h2>${can("groups", "write") ? '<button id="group-create" class="secondary">新建</button>' : ""}</div><div id="group-list"></div></aside><section id="group-dashboard" aria-live="polite"></section></div>`,
+        `<div class="group-workspace"><aside class="panel group-sidebar"><div class="panel-heading"><h2>我的应用分组</h2>${can("groups", "write") ? '<button id="group-create" class="secondary">新建</button>' : ""}</div><div id="group-list"></div></aside><section id="group-dashboard" aria-live="polite"></section></div>`,
         revision,
       )
     )
@@ -152,7 +152,7 @@ export function createGroupWorkspace(ctx) {
       groups
         .map(
           (g) =>
-            `<button class="group-choice ${g.id === selected ? "active" : ""}" data-group="${g.id}"><strong>${esc(g.name)}</strong><span>${num(g.apps)} 款应用 · ${num(g.countries)} 国</span><small>${num(g.targets)} 个国家/语言观察目标</small></button>`,
+            `<button class="content-card group-choice ${g.id === selected ? "active" : ""}" data-group="${g.id}"><strong>${esc(g.name)}</strong><span>${num(g.apps)} 款应用 · ${num(g.countries)} 国</span><small>${num(g.targets)} 个国家/语言观察目标</small></button>`,
         )
         .join("") || '<p class="sub">尚无分组</p>';
     root.querySelectorAll("[data-group]").forEach(
@@ -468,7 +468,7 @@ export function createGroupWorkspace(ctx) {
       counts = s.states,
       ev = data.event_counts;
     const badge = (name, value, note) => metric(name, value, note);
-    host.innerHTML = `<div class="panel group-title"><div><p class="eyebrow">APP GROUP</p><h2>${esc(data.group.name)}</h2><p class="sub">${esc(data.group.description || "跨商店、跨国家的应用监控组合")}</p></div><div class="toolbar">${can("groups", "write") ? '<button id="group-edit-button" class="secondary">编辑分组</button>' : ""}${can("groups", "write") && can("watchlist", "write") ? '<button id="group-add-button">批量加入 APP</button>' : ""}${can("groups", "write") && can("collection", "write") ? '<button id="group-collect-button" class="secondary">配置采集</button>' : ""}<button id="group-reload" class="secondary">刷新</button></div></div>
+    host.innerHTML = `<div class="panel group-title"><div><h2>${esc(data.group.name)}</h2><p class="sub">${esc(data.group.description || "跨商店、跨国家的应用监控组合")}</p></div><div class="toolbar">${can("groups", "write") ? '<button id="group-edit-button" class="secondary">编辑分组</button>' : ""}${can("groups", "write") && can("watchlist", "write") ? '<button id="group-add-button">批量加入 APP</button>' : ""}${can("groups", "write") && can("collection", "write") ? '<button id="group-collect-button" class="secondary">配置采集</button>' : ""}<button id="group-reload" class="secondary">刷新</button></div></div>
       <form id="group-filter" class="toolbar group-filters"><label>商店<select name="store">${[
         ["all", "全部商店"],
         ["google", "Google Play"],
@@ -485,9 +485,7 @@ export function createGroupWorkspace(ctx) {
         ]),
         filters.country,
         "全部国家",
-      )}</select></label><label>复核状态<select name="state">${options([...Object.entries(stateNames), ["error", "采集异常"]], filters.state, "全部状态")}</select></label><label>期间<select name="days">${[7, 30, 90, 365].map((d) => `<option value="${d}" ${Number(filters.days) === d ? "selected" : ""}>近 ${d} 天</option>`).join("")}</select></label><label class="wide">应用名称 / ID<input name="q" value="${esc(filters.q)}"></label><button>查看</button></form>
-      <div class="cards group-kpis">${badge("分组应用", s.apps, `${s.targets} 个国家/语言目标`)}${badge("覆盖国家", s.countries, "按当前商店及筛选范围")}${badge("已验证在架", counts.available || 0, "观星实际成功观察")}${badge("待复核", (counts.suspected_missing || 0) + (counts.unverified || 0), `${counts.unverified || 0} 个尚未验证`)}${badge("地区不可用", counts.region_unavailable || 0, "不代表全球下架")}${badge("新增关注目标", s.new_members, `近 ${filters.days} 天加入本组`)}</div>
-      <div class="group-health"><span>详情新鲜度：${s.fresh}/${s.targets}（48 小时内）</span><span>采集异常：${s.errors}</span><span>${data.collection.paused ? "采集已全局暂停" : data.collection.cooldown_seconds ? `共享冷却剩余 ${data.collection.cooldown_seconds} 秒` : "采集队列正常调度"}</span><span>更新于 ${stamp(data.observed_at)}</span></div>
+      )}</select></label><label>期间<select name="days">${[7, 30, 90, 365].map((d) => `<option value="${d}" ${Number(filters.days) === d ? "selected" : ""}>近 ${d} 天</option>`).join("")}</select></label>${tab === "overview" ? "" : `<label>列表状态<select name="state">${options([...Object.entries(stateNames), ["error", "采集异常"]], filters.state, "全部状态")}</select></label><label class="wide">搜索列表<input name="q" value="${esc(filters.q)}" placeholder="应用名称 / ID"></label>`}<button>查看</button></form>
       <div class="group-tabs" role="tablist">${[
         ["overview", "分组总览"],
         ["matrix", "应用矩阵"],
@@ -502,8 +500,19 @@ export function createGroupWorkspace(ctx) {
         .join("")}</div>
       <div id="group-tab-content">${
         tab === "overview"
-          ? `${panel("各国家应用分布", `<p class="sub">点击国家进入该国应用矩阵。导入参考独立显示，不计入观星实测状态。</p><div class="group-countries">${data.countries.map((c) => `<button data-group-country="${c.country}" class="group-country"><strong>${esc(countryName(c.country))} · ${esc(c.country.toUpperCase())}</strong><b>${num(c.apps)} 款 APP</b><small>${num(c.targets)} 个国家/语言观察目标</small><span>已验证在架 ${c.states.available || 0} · 待复核 ${(c.states.unverified || 0) + (c.states.suspected_missing || 0)}</span><span>地区不可用 ${c.states.region_unavailable || 0}</span>${Object.keys(c.reference).length ? `<small>导入参考：在架 ${c.reference.on || 0} / 不在架 ${c.reference.off || 0}</small>` : ""}</button>`).join("")}</div>`)}
-        <div class="cards">${badge("首次验证在架", ev.first_verified || 0, "所选期间去重应用×国家，不等于新发布")}${badge("重新出现", ev.reappeared || 0, "有历史证据的恢复可用")}${badge("确认地区不可用", ev.region_unavailable || 0, "按缺失确认策略产生事件")}${badge("权限有数据目标", s.permissions_known ?? s.permission_states.ok ?? 0, `待采 ${s.permission_states.pending || 0} · 异常 ${s.permission_states.error || 0}`)}</div>
+          ? `<div class="cards group-kpis">${badge("分组应用", s.apps, `${num(s.targets)} 个国家 / 语言目标`)}${badge("覆盖国家", s.countries, "当前商店与国家范围")}${badge("已验证在架", counts.available || 0, "成功访问商店的观察结果")}${badge("尚未验证", counts.unverified || 0, "尚无有效详情，不能判断上下架")}${badge("缺失待确认", counts.suspected_missing || 0, "未查到，等待后续复核")}${badge("地区不可用", counts.region_unavailable || 0, "该地区确认不可用，不代表全球下架")}</div>
+          <div class="group-health"><span>48 小时内取得详情：${num(s.fresh)} / ${num(s.targets)}</span><span>采集异常：${num(s.errors)}</span><span>${data.collection.paused ? "采集已全局暂停" : data.collection.cooldown_seconds ? `距离下次可请求：${data.collection.cooldown_seconds} 秒` : "采集开关已启用"}</span><span>看板更新：${stamp(data.observed_at)}</span></div>
+          ${panel(
+            "各国家应用分布",
+            `<p class="sub">点击国家查看该国应用；状态按国家 / 语言目标统计，应用数按 APP 去重。</p><div class="group-countries">${data.countries
+              .filter((c) => !filters.country || c.country === filters.country)
+              .map(
+                (c) =>
+                  `<button data-group-country="${c.country}" class="content-card group-country"><strong>${esc(countryName(c.country))} · ${esc(c.country.toUpperCase())}</strong><b>${num(c.apps)} 款 APP</b><small>${num(c.targets)} 个国家/语言观察目标</small><span>已验证在架 ${c.states.available || 0} · 尚未验证 ${c.states.unverified || 0}</span><span>缺失待确认 ${c.states.suspected_missing || 0} · 地区不可用 ${c.states.region_unavailable || 0}</span>${Object.keys(c.reference).length ? `<small>导入参考：在架 ${c.reference.on || 0} / 不在架 ${c.reference.off || 0}</small>` : ""}</button>`,
+              )
+              .join("")}</div>`,
+          )}
+        <div class="cards">${badge("首次验证在架", ev.first_verified || 0, "所选期间去重应用×国家，不等于新发布")}${badge("重新出现", ev.reappeared || 0, "有历史证据的恢复可用")}${badge("确认地区不可用", ev.region_unavailable || 0, "按缺失确认策略产生事件")}${badge("新增关注目标", s.new_members, `近 ${filters.days} 天加入，不等于新上架`)}</div>
         <div class="grid2">${Object.entries(eventNames)
           .map(([kind, label]) =>
             panel(
@@ -521,7 +530,7 @@ export function createGroupWorkspace(ctx) {
           )
           .join(
             "",
-          )}${panel("数据覆盖", `<p>评分已取得 ${s.ratings_known}/${s.targets} 个目标。</p><p>有效关键词命中 ${s.keyword_apps} 个目标，榜单命中 ${s.chart_apps} 个目标。</p><p>权限支持范围内按任务独立采集；公开接口未提供 ${s.permission_states.unsupported || 0} 个目标。</p>${metricCells(data.money)}<p class="sub">未取得的指标保持缺失，不把累计安装量当作日下载。</p>`)}</div>`
+          )}${panel("数据覆盖", `<p>评分已取得 ${s.ratings_known}/${s.targets} 个目标。</p><p>有效关键词命中 ${s.keyword_apps} 个目标，榜单命中 ${s.chart_apps} 个目标。</p><p>权限已有数据 ${s.permissions_known ?? s.permission_states.ok ?? 0} 个目标；待采 ${s.permission_states.pending || 0}，异常 ${s.permission_states.error || 0}，公开接口未提供 ${s.permission_states.unsupported || 0}。</p>${metricCells(data.money)}<p class="sub">未取得的指标保持缺失，不把累计安装量当作日下载。</p>`)}</div>`
           : panel(
               tab === "permissions"
                 ? "权限采集情况"
@@ -556,7 +565,7 @@ export function createGroupWorkspace(ctx) {
       filters = Object.fromEntries(
         ["store", "country", "state", "q"].map((k) => [
           k,
-          form.elements[k].value,
+          form.elements[k]?.value || "",
         ]),
       );
       filters.days = Number(form.elements.days.value);
@@ -567,6 +576,11 @@ export function createGroupWorkspace(ctx) {
       (b) =>
         (b.onclick = () => {
           tab = b.dataset.groupTab;
+          if (tab === "overview") {
+            filters.state = "";
+            filters.q = "";
+            offset = 0;
+          }
           load(true).catch((e) => toast(e.message));
         }),
     );

@@ -1,0 +1,681 @@
+{
+  "checkedAt": "2026-11-05T11:55:36.896Z",
+  "browserChecks": [
+    {
+      "cards": [
+        {
+          "childrenFit": true,
+          "height": 101,
+          "scroll": 101
+        },
+        {
+          "childrenFit": true,
+          "height": 101,
+          "scroll": 101
+        },
+        {
+          "childrenFit": true,
+          "height": 101,
+          "scroll": 101
+        },
+        {
+          "childrenFit": true,
+          "height": 101,
+          "scroll": 101
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scroll": 198
+        }
+      ],
+      "nav": 12,
+      "pageWidth": 2390,
+      "view": "groups-wide",
+      "width": 2400
+    },
+    {
+      "cards": [
+        {
+          "childrenFit": true,
+          "height": 101,
+          "scrollHeight": 101
+        },
+        {
+          "childrenFit": true,
+          "height": 101,
+          "scrollHeight": 101
+        },
+        {
+          "childrenFit": true,
+          "height": 101,
+          "scrollHeight": 101
+        },
+        {
+          "childrenFit": true,
+          "height": 101,
+          "scrollHeight": 101
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        },
+        {
+          "childrenFit": true,
+          "height": 198,
+          "scrollHeight": 198
+        }
+      ],
+      "countries": 29,
+      "height": 1080,
+      "pageWidth": 1910,
+      "view": "groups-final-desktop",
+      "width": 1920
+    }
+  ],
+  "desktopRoutes": [
+    {
+      "contentLength": 9015,
+      "error": "",
+      "pageWidth": 1430,
+      "route": "#availability",
+      "scope": "范围：当前商店、国家与请求语言",
+      "title": "市场上下架",
+      "width": 1440
+    },
+    {
+      "contentLength": 14290,
+      "error": "",
+      "pageWidth": 1430,
+      "route": "#events",
+      "scope": "范围：当前商店、国家与请求语言",
+      "title": "事件记录",
+      "width": 1440
+    },
+    {
+      "contentLength": 284,
+      "error": "",
+      "pageWidth": 1430,
+      "route": "#alerts",
+      "scope": "当前商店 · 全部国家",
+      "title": "告警与日报",
+      "width": 1440
+    },
+    {
+      "contentLength": 5958,
+      "error": "",
+      "pageWidth": 1430,
+      "route": "#apps",
+      "scope": "范围：当前商店、国家与请求语言",
+      "title": "应用库",
+      "width": 1440
+    },
+    {
+      "contentLength": 5635,
+      "error": "",
+      "pageWidth": 1430,
+      "route": "#globalcharts",
+      "scope": "当前商店 · 全部国家",
+      "title": "全球排行榜",
+      "width": 1440
+    },
+    {
+      "contentLength": 7647,
+      "error": "",
+      "pageWidth": 1430,
+      "route": "#charts",
+      "scope": "范围：当前商店、国家与请求语言",
+      "title": "榜单追踪",
+      "width": 1440
+    },
+    {
+      "contentLength": 57,
+      "error": "",
+      "pageWidth": 1440,
+      "route": "#featured",
+      "scope": "范围：当前商店、国家与请求语言",
+      "title": "精品推荐",
+      "width": 1440
+    },
+    {
+      "contentLength": 1956,
+      "error": "",
+      "pageWidth": 1430,
+      "route": "#keywords",
+      "scope": "范围：当前商店、国家与请求语言",
+      "title": "关键词研究",
+      "width": 1440
+    },
+    {
+      "contentLength": 147,
+      "error": "",
+      "pageWidth": 1430,
+      "route": "#aso",
+      "scope": "范围：当前商店、国家与请求语言",
+      "title": "ASO 文案",
+      "width": 1440
+    },
+    {
+      "contentLength": 129,
+      "error": "",
+      "pageWidth": 1430,
+      "route": "#compare",
+      "scope": "范围：当前商店、国家与请求语言",
+      "title": "竞品对比",
+      "width": 1440
+    },
+    {
+      "contentLength": 7287,
+      "error": "",
+      "pageWidth": 1430,
+      "route": "#developers",
+      "scope": "当前商店 · 全部国家",
+      "title": "开发者",
+      "width": 1440
+    },
+    {
+      "contentLength": 3090,
+      "error": "",
+      "pageWidth": 1430,
+      "route": "#market",
+      "scope": "范围：当前商店、国家与请求语言",
+      "title": "市场分布",
+      "width": 1440
+    },
+    {
+      "contentLength": 219,
+      "error": "",
+      "pageWidth": 1430,
+      "route": "#ads",
+      "scope": "当前商店 · 全部国家",
+      "title": "广告观察",
+      "width": 1440
+    },
+    {
+      "contentLength": 6700,
+      "error": "",
+      "pageWidth": 1430,
+      "route": "#reviews",
+      "scope": "范围：当前商店、国家与请求语言",
+      "title": "评论工作台",
+      "width": 1440
+    },
+    {
+      "contentLength": 8612,
+      "error": "",
+      "pageWidth": 1430,
+      "route": "#collection",
+      "scope": "列表按商店筛选 · 新建默认使用所选地区",
+      "title": "采集任务",
+      "width": 1440
+    },
+    {
+      "contentLength": 163053,
+      "error": "",
+      "pageWidth": 1430,
+      "route": "#watchlist",
+      "scope": "当前商店 · 全部国家",
+      "title": "详情监控任务",
+      "width": 1440
+    },
+    {
+      "contentLength": 332,
+      "error": "",
+      "pageWidth": 1440,
+      "route": "#exports",
+      "scope": "当前商店 · 全部国家",
+      "title": "数据导出",
+      "width": 1440
+    },
+    {
+      "contentLength": 1208,
+      "error": "",
+      "pageWidth": 1430,
+      "route": "#datasources",
+      "scope": "全平台配置",
+      "title": "数据源配置",
+      "width": 1440
+    },
+    {
+      "contentLength": 90,
+      "error": "",
+      "pageWidth": 1440,
+      "route": "#administration",
+      "scope": "全平台配置",
+      "title": "账户管理",
+      "width": 1440
+    }
+  ],
+  "mobileRoutes": [
+    {
+      "error": "",
+      "pageWidth": 380,
+      "route": "#overview",
+      "width": 390
+    },
+    {
+      "error": "",
+      "pageWidth": 380,
+      "route": "#availability",
+      "width": 390
+    },
+    {
+      "error": "",
+      "pageWidth": 380,
+      "route": "#events",
+      "width": 390
+    },
+    {
+      "error": "",
+      "pageWidth": 380,
+      "route": "#alerts",
+      "width": 390
+    },
+    {
+      "error": "",
+      "pageWidth": 380,
+      "route": "#apps",
+      "width": 390
+    },
+    {
+      "error": "",
+      "pageWidth": 380,
+      "route": "#globalcharts",
+      "width": 390
+    },
+    {
+      "error": "",
+      "pageWidth": 380,
+      "route": "#charts",
+      "width": 390
+    },
+    {
+      "error": "",
+      "pageWidth": 380,
+      "route": "#featured",
+      "width": 390
+    },
+    {
+      "error": "",
+      "pageWidth": 380,
+      "route": "#keywords",
+      "width": 390
+    },
+    {
+      "error": "",
+      "pageWidth": 380,
+      "route": "#aso",
+      "width": 390
+    },
+    {
+      "error": "",
+      "pageWidth": 380,
+      "route": "#compare",
+      "width": 390
+    },
+    {
+      "error": "",
+      "pageWidth": 380,
+      "route": "#developers",
+      "width": 390
+    },
+    {
+      "error": "",
+      "pageWidth": 380,
+      "route": "#market",
+      "width": 390
+    },
+    {
+      "error": "",
+      "pageWidth": 380,
+      "route": "#ads",
+      "width": 390
+    },
+    {
+      "error": "",
+      "pageWidth": 380,
+      "route": "#reviews",
+      "width": 390
+    },
+    {
+      "error": "",
+      "pageWidth": 380,
+      "route": "#collection",
+      "width": 390
+    },
+    {
+      "error": "",
+      "pageWidth": 380,
+      "route": "#watchlist",
+      "width": 390
+    },
+    {
+      "error": "",
+      "pageWidth": 380,
+      "route": "#exports",
+      "width": 390
+    },
+    {
+      "error": "",
+      "pageWidth": 380,
+      "route": "#datasources",
+      "width": 390
+    },
+    {
+      "error": "",
+      "pageWidth": 380,
+      "route": "#administration",
+      "width": 390
+    }
+  ],
+  "memberViews": [
+    {
+      "scroll": 1099,
+      "tab": "权限",
+      "text": "公开接口未提供\n\n商店声明的权限，说明按英文接口取得；不代表用户实际授权。最近成功：尚未采集\n\n暂无可用的权限清单。\n\n尚无数据\n请调整筛选，或添加对应数据后刷新。",
+      "width": 1099
+    },
+    {
+      "scroll": 1089,
+      "tab": "关键词 / 榜单",
+      "text": "关键词排名\n关键词\t排名\t采集时间\t状态\nเงินกู้\t10\t2026/11/5 01:34:25\t有效样本\n排行榜\n榜类 / 分类\t排名\t采集时间\t状态\ntop-free / 总榜\t61\t2026/11/4 21:00:11\t有效样本\ntop-grossing / 总榜\t—\t2026/11/4 21:01:09\t未进入返回范围\ntop-paid / 总榜\t—\t2026/11/4 21:00:45\t未进入返回范围\n\n每类最多显示1000个目标；点击关键词或榜单可查看所选期间最近500次采样趋势。\n\n导入参考关键词报告\n\n保留报告原始日期和口径，不计入当前有效采样命中；此处可查看本市场最近100份报告，不受上方期间筛选限制。\n\n尚无数据\n请调整筛选，或添加对应数据后刷新。",
+      "width": 1089
+    },
+    {
+      "scroll": 1099,
+      "tab": "下载 / 收入 / 评分",
+      "text": "下载与商店净收入按国家、日期、实际/估算、币种分别展示。收入范围为付费下载、内购和订阅；累计安装量不换算成日下载。\n\n尚无下载 / 收入数据，可通过分组看板导入授权指标。\n\n评分变化\n\n暂无历史观察\n\n尚无数据\n请调整筛选，或添加对应数据后刷新。",
+      "width": 1099
+    },
+    {
+      "scroll": 1099,
+      "tab": "上下架与变动",
+      "text": "尚无数据\n请调整筛选，或添加对应数据后刷新。",
+      "width": 1099
+    },
+    {
+      "scroll": 1099,
+      "tab": "评论",
+      "text": "尚无数据\n请调整筛选，或添加对应数据后刷新。",
+      "width": 1099
+    }
+  ],
+  "browserLogs": [],
+  "forms": "Opened and inspected only; no imports, deletions, credential changes, or collection settings submitted."
+}

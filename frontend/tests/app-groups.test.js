@@ -181,6 +181,46 @@ test("group dashboard drills through countries and keeps unknown observations se
   }
 });
 
+test("group overview separates unchecked targets and clears hidden list filters", async () => {
+  const c = setup();
+  try {
+    await c.workspace.render(1);
+    const cards = [...c.doc.querySelectorAll(".group-kpis article")];
+    assert.equal(
+      cards
+        .find((e) => e.textContent.startsWith("尚未验证"))
+        .querySelector("strong").textContent,
+      "3",
+    );
+    assert.equal(
+      cards
+        .find((e) => e.textContent.startsWith("缺失待确认"))
+        .querySelector("strong").textContent,
+      "0",
+    );
+    assert.equal(c.doc.querySelector('[name="state"]'), null);
+    c.doc.querySelector('[data-group-country="th"]').click();
+    await tick();
+    const form = c.doc.querySelector("#group-filter");
+    form.elements.q.value = "no match";
+    form.elements.state.value = "available";
+    form.dispatchEvent(new c.window.Event("submit", { cancelable: true }));
+    await tick();
+    c.doc.querySelector('[data-group-tab="overview"]').click();
+    await tick();
+    const query = new URL("http://local" + c.calls.at(-1).path).searchParams;
+    assert.equal(query.get("q"), "");
+    assert.equal(query.get("state"), "");
+    assert.equal(query.get("country"), "th");
+    assert.equal(c.doc.querySelectorAll(".group-country").length, 1);
+    assert.match(c.doc.querySelector(".group-country").textContent, /泰国/);
+    assert.equal(c.doc.querySelector('[name="country"]').options.length, 3);
+    assert.deepEqual(c.errors, []);
+  } finally {
+    await c.window.happyDOM.close();
+  }
+});
+
 test("bulk selected apps retain store country and language identities", async () => {
   const c = setup((path, body) =>
     path === "/groups/1/members" ? { added: body.members.length } : undefined,

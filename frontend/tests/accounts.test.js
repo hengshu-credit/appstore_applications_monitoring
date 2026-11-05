@@ -115,6 +115,22 @@ test("ordinary users see allowed navigation only and account changes require cur
   });
   try {
     assert.equal(await accounts.start(), true);
+    doc
+      .querySelector("nav")
+      .insertAdjacentHTML(
+        "beforeend",
+        '<div class="nav-section"><a data-nav="keywords" data-pages="keywords apps"></a></div><div class="nav-section"><a data-nav="exports" data-pages="exports datasources"></a></div>',
+      );
+    await accounts.refresh();
+    const module = doc.querySelector('[data-pages="keywords apps"]');
+    assert.equal(module.hidden, false);
+    assert.equal(module.getAttribute("href"), "#apps");
+    assert.equal(
+      doc
+        .querySelector('[data-pages="exports datasources"]')
+        .closest(".nav-section").hidden,
+      true,
+    );
     assert.equal(doc.querySelector("[data-nav=administration]").hidden, true);
     assert.equal(doc.querySelector("[data-nav=keywords]").hidden, true);
     assert.equal(doc.querySelector("[data-nav=apps]").hidden, false);

@@ -6,8 +6,17 @@
 }
 .group-sidebar {
   position: sticky;
-  top: 20px;
+  top: 76px;
   padding: 16px;
+  min-width: 0;
+  color: var(--ink);
+}
+#group-list {
+  display: grid;
+  gap: 8px;
+  max-height: calc(100vh - 240px);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 .group-choice {
   width: 100%;
@@ -18,7 +27,9 @@
   text-align: left;
   white-space: normal;
   padding: 14px 12px;
-  margin: 5px 0;
+  margin: 0;
+  min-height: 96px;
+  height: auto;
   background: var(--soft);
   color: var(--ink);
   border: 1px solid var(--line);
@@ -38,9 +49,13 @@
   justify-content: space-between;
   gap: 18px;
   flex-wrap: wrap;
+  align-items: center;
+  padding: 18px 20px;
+  margin-bottom: 12px;
 }
 .group-title h2 {
-  font-size: 25px;
+  font-size: 22px;
+  margin-bottom: 6px;
 }
 .group-title .eyebrow {
   font-size: 11px;
@@ -49,10 +64,10 @@
   margin: 0 0 6px;
 }
 .group-filters {
-  padding: 18px;
+  padding: 14px 18px;
   background: var(--surface);
   border: 1px solid var(--line);
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 .group-kpis {
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -63,7 +78,7 @@
   flex-wrap: wrap;
   font-size: 12px;
   color: var(--muted);
-  padding: 12px 0;
+  padding: 0 0 16px;
 }
 .group-tabs {
   display: flex;
@@ -83,7 +98,7 @@
 }
 .group-countries {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(205px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 10px;
 }
 .group-country {
@@ -97,6 +112,9 @@
   color: var(--ink);
   border: 1px solid var(--line);
   padding: 16px;
+  height: auto;
+  min-height: 168px;
+  line-height: 1.6;
 }
 .group-country strong {
   color: var(--accent-text);
@@ -145,6 +163,17 @@
 #group-dashboard {
   min-width: 0;
 }
+@media (min-width: 1800px) {
+  .group-kpis {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  .group-kpis .metric {
+    padding: 16px;
+  }
+  .group-kpis .value {
+    font-size: 28px;
+  }
+}
 @media (max-width: 1100px) {
   .group-workspace {
     grid-template-columns: 1fr;
@@ -153,9 +182,14 @@
     position: static;
   }
   #group-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    display: flex;
+    overflow-x: auto;
     gap: 8px;
+    max-height: none;
+    padding-bottom: 6px;
+  }
+  .group-choice {
+    flex: 0 0 220px;
   }
 }
 @media (max-width: 650px) {

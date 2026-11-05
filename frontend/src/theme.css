@@ -35,7 +35,7 @@
   --scrollbar-thumb: color-mix(in srgb, var(--accent-text) 85%, var(--surface));
   --scrollbar-thumb-hover: var(--accent-text);
 }
-aside {
+.app-sidebar {
   --scrollbar-track: var(--nav);
   --scrollbar-thumb: color-mix(in srgb, var(--nav-text) 75%, var(--nav));
   --scrollbar-thumb-hover: var(--nav-text);
@@ -81,7 +81,7 @@ aside {
 }
 @media (forced-colors: active) {
   :root,
-  aside {
+  .app-sidebar {
     --scrollbar-track: Canvas;
     --scrollbar-thumb: CanvasText;
     --scrollbar-thumb-hover: Highlight;
@@ -148,7 +148,7 @@ pre,
 .errorbox,
 .appicon,
 .screenshots img,
-nav a,
+#navigation a,
 #toast,
 .bar,
 .bar-fill {
@@ -165,7 +165,7 @@ button.secondary {
   background: var(--surface);
   color: var(--ink);
 }
-aside,
+.app-sidebar,
 .brand {
   color: var(--nav-text);
 }
@@ -180,15 +180,15 @@ aside,
 .brand small {
   color: var(--brand-tagline);
 }
-nav a {
+#navigation a {
   color: var(--nav-text);
 }
-nav a.active {
+#navigation a.active {
   background: var(--brand-background);
   color: var(--on-brand);
   box-shadow: inset 3px 0 var(--on-brand);
 }
-nav a:hover {
+#navigation a:hover {
   background: var(--nav-hover);
   color: var(--nav-active-text);
 }
@@ -450,16 +450,16 @@ dialog::backdrop {
   background: var(--surface);
   box-shadow: inset 0 -1px var(--line);
 }
-[data-fixed-sidebar="false"] aside {
+[data-fixed-sidebar="false"] .app-sidebar {
   position: absolute;
   min-height: 100vh;
   bottom: auto;
 }
 [data-color-weak="true"] .shell,
-[data-color-weak="true"] aside {
+[data-color-weak="true"] .app-sidebar {
   filter: grayscale(1);
 }
-[data-navigation="top"] aside {
+[data-navigation="top"] .app-sidebar {
   position: sticky;
   inset: 0 0 auto;
   width: 100%;
@@ -479,13 +479,13 @@ dialog::backdrop {
 [data-navigation="top"] .side-note {
   display: none;
 }
-[data-navigation="top"] nav {
+[data-navigation="top"] #navigation {
   display: flex;
   overflow: auto;
   gap: 3px;
   flex: 1;
 }
-[data-navigation="top"] nav a {
+[data-navigation="top"] #navigation a {
   white-space: nowrap;
   padding: 8px 12px;
   margin: 0;
@@ -496,19 +496,19 @@ dialog::backdrop {
 [data-navigation="top"] .shell {
   margin-left: 0;
 }
-[data-navigation="top"][data-fixed-sidebar="false"] aside {
+[data-navigation="top"][data-fixed-sidebar="false"] .app-sidebar {
   position: static;
 }
 @media (max-width: 750px) {
-  [data-fixed-sidebar="false"] aside {
+  [data-fixed-sidebar="false"] .app-sidebar {
     position: static;
     min-height: 0;
   }
-  [data-navigation="top"] aside {
+  [data-navigation="top"] .app-sidebar {
     display: block;
     padding: 14px 18px;
   }
-  [data-navigation="top"] nav {
+  [data-navigation="top"] #navigation {
     margin-top: 12px;
   }
   .market {

@@ -46,7 +46,14 @@ export function createAccounts({ esc, onReady, toast }) {
     const avatar = document.querySelector("#account-avatar");
     if (avatar) avatar.textContent = (user?.username || "U")[0].toUpperCase();
     document.querySelectorAll("[data-nav]").forEach((a) => {
-      a.hidden = !can(a.dataset.nav);
+      const allowed = (a.dataset.pages || a.dataset.nav)
+        .split(" ")
+        .filter((page) => can(page));
+      a.hidden = !allowed.length;
+      if (allowed.length) a.href = `#${allowed[0]}`;
+    });
+    document.querySelectorAll(".nav-section").forEach((section) => {
+      section.hidden = !section.querySelector("[data-nav]:not([hidden])");
     });
   }
   function showCode(data, done) {

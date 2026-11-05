@@ -8,10 +8,11 @@ const source = (
 ).replace(/^export /gm, "");
 const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
 
-test("availability shows classified watches across countries and paginates all records", async () => {
+test("availability keeps classified watches in the header market and paginates records", async () => {
   const window = new Window({ url: "http://localhost" }),
     doc = window.document,
     calls = [];
+  let market = { store: "all", country: "th", language: "en" };
   doc.body.innerHTML = "<main></main>";
   window.eval(source + ";window.createPage=createAvailabilityPage;");
   const esc = (v) =>
@@ -58,7 +59,7 @@ test("availability shows classified watches across countries and paginates all r
         market: { store: "google", language: "en" },
       };
     },
-    market: () => ({ store: "all", country: "us", language: "en" }),
+    market: () => market,
     qs: (value) => new URLSearchParams(value).toString(),
     mount: (html) => {
       doc.querySelector("main").innerHTML = html;
@@ -87,21 +88,28 @@ test("availability shows classified watches across countries and paginates all r
     assert.match(panel.textContent, /现金贷类APP/);
     assert.match(panel.textContent, /未验证/);
     assert.equal(panel.querySelector("img"), null);
-    assert.equal(panel.querySelector("[name=country]").value, "");
+    assert.equal(panel.querySelector("[name=country]"), null);
+    assert.ok(calls.some((p) => p.includes("country=th")));
     panel.querySelector("#watched-next").click();
     await tick();
     assert.ok(calls.some((p) => p.includes("offset=100")));
     const form = doc.querySelector("#watched-filter");
     form.elements.group_name.value = "现金贷类APP";
-    form.elements.store.value = "apple";
-    form.elements.country.value = "th";
+
     form.dispatchEvent(new window.Event("submit", { cancelable: true }));
     await tick();
     const last = new URL("http://local" + calls.at(-1));
     assert.equal(last.searchParams.get("group_name"), "现金贷类APP");
-    assert.equal(last.searchParams.get("store"), "apple");
+    assert.equal(last.searchParams.get("store"), "all");
     assert.equal(last.searchParams.get("country"), "th");
     assert.equal(last.searchParams.get("offset"), "0");
+    market = { store: "apple", country: "vn", language: "vi" };
+    await page(2);
+    await tick();
+    const changed = new URL("http://local" + calls.at(-1));
+    assert.equal(changed.searchParams.get("store"), "apple");
+    assert.equal(changed.searchParams.get("country"), "vn");
+    assert.equal(changed.searchParams.get("offset"), "0");
   } finally {
     await window.happyDOM.close();
   }
