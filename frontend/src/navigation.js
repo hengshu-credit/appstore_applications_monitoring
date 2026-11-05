@@ -102,7 +102,7 @@ export function navigationMarkup(icon) {
   return navigationSections
     .map(
       (section) =>
-        `<div class="nav-section"><p class="nav-section-label">${section.label}</p>${section.modules.map((module) => `<a href="#${module.pages[0]}" data-nav="${module.pages[0]}" data-pages="${module.pages.join(" ")}"><span class="nav-icon">${icon(module.pages[0])}</span><span>${module.label}</span></a>`).join("")}</div>`,
+        `<div class="nav-section"><p class="nav-section-label">${section.label}</p>${section.modules.map((module) => `<a href="#${module.pages[0]}" aria-label="${module.label}" title="${module.label}" data-nav="${module.pages[0]}" data-pages="${module.pages.join(" ")}"><span class="nav-icon">${icon(module.pages[0])}</span><span class="nav-text">${module.label}</span></a>`).join("")}</div>`,
     )
     .join("");
 }

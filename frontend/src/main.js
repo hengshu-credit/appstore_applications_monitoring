@@ -29,7 +29,10 @@ import "./app-groups.css";
 import { initTheme } from "./theme.js";
 import { navigationMarkup, updateWorkspace } from "./navigation.js";
 import "./navigation.css";
+import { initShellLayout } from "./shell-layout.js";
+import "./shell-layout.css";
 initTheme();
+initShellLayout();
 const $ = (s, root = document) => root.querySelector(s);
 const esc = (v) =>
   String(v ?? "").replace(

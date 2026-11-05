@@ -79,6 +79,7 @@ async function wrappedModule(name, exports) {
 const newModules = (
   await Promise.all([
     wrappedModule("icons.js", "icon,storeLogo"),
+    wrappedModule("shell-layout.js", "initShellLayout"),
     wrappedModule("navigation.js", "navigationMarkup,updateWorkspace"),
     wrappedModule(
       "monitoring-charts.js",

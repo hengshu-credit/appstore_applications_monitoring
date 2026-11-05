@@ -1,0 +1,447 @@
+{
+  "checkedAt": "2026-11-05T12:41:12.207Z",
+  "desktopRoutes": [
+    {
+      "error": "",
+      "footerBottom": 899.9999923706055,
+      "footerTop": 835.7999877929688,
+      "height": 900,
+      "mainBottom": 835.8000030517578,
+      "mainHeight": 708,
+      "pageWidth": 1440,
+      "route": "#overview",
+      "scrolls": true,
+      "width": 1440
+    },
+    {
+      "error": "",
+      "footerBottom": 899.9999923706055,
+      "footerTop": 835.7999877929688,
+      "height": 900,
+      "mainBottom": 835.8000030517578,
+      "mainHeight": 708,
+      "pageWidth": 1440,
+      "route": "#groups",
+      "scrolls": false,
+      "width": 1440
+    },
+    {
+      "error": "",
+      "footerBottom": 899.9999923706055,
+      "footerTop": 835.7999877929688,
+      "height": 900,
+      "mainBottom": 835.8000030517578,
+      "mainHeight": 662,
+      "pageWidth": 1440,
+      "route": "#availability",
+      "scrolls": true,
+      "width": 1440
+    },
+    {
+      "error": "",
+      "footerBottom": 899.9999923706055,
+      "footerTop": 835.7999877929688,
+      "height": 900,
+      "mainBottom": 835.8000335693359,
+      "mainHeight": 648,
+      "pageWidth": 1440,
+      "route": "#events",
+      "scrolls": true,
+      "width": 1440
+    },
+    {
+      "error": "",
+      "footerBottom": 899.9999923706055,
+      "footerTop": 835.7999877929688,
+      "height": 900,
+      "mainBottom": 835.8000335693359,
+      "mainHeight": 648,
+      "pageWidth": 1440,
+      "route": "#alerts",
+      "width": 1440
+    },
+    {
+      "error": "",
+      "footerBottom": 899.9999923706055,
+      "footerTop": 835.7999877929688,
+      "height": 900,
+      "mainBottom": 835.8000030517578,
+      "mainHeight": 708,
+      "pageWidth": 1440,
+      "route": "#apps",
+      "scrolls": true,
+      "width": 1440
+    },
+    {
+      "error": "",
+      "footerBottom": 899.9999923706055,
+      "footerTop": 835.7999877929688,
+      "height": 900,
+      "mainBottom": 835.8000335693359,
+      "mainHeight": 648,
+      "pageWidth": 1440,
+      "route": "#globalcharts",
+      "scrolls": true,
+      "width": 1440
+    },
+    {
+      "error": "",
+      "footerBottom": 899.9999923706055,
+      "footerTop": 835.7999877929688,
+      "height": 900,
+      "mainBottom": 835.8000335693359,
+      "mainHeight": 648,
+      "pageWidth": 1440,
+      "route": "#charts",
+      "width": 1440
+    },
+    {
+      "error": "",
+      "footerBottom": 899.9999923706055,
+      "footerTop": 835.7999877929688,
+      "height": 900,
+      "mainBottom": 835.8000335693359,
+      "mainHeight": 648,
+      "pageWidth": 1440,
+      "route": "#featured",
+      "width": 1440
+    },
+    {
+      "error": "",
+      "footerBottom": 899.9999923706055,
+      "footerTop": 835.7999877929688,
+      "height": 900,
+      "mainBottom": 835.8000335693359,
+      "mainHeight": 602,
+      "pageWidth": 1440,
+      "route": "#keywords",
+      "scrolls": true,
+      "width": 1440
+    },
+    {
+      "error": "",
+      "footerBottom": 899.9999923706055,
+      "footerTop": 835.7999877929688,
+      "height": 900,
+      "mainBottom": 835.8000335693359,
+      "mainHeight": 648,
+      "pageWidth": 1440,
+      "route": "#aso",
+      "width": 1440
+    },
+    {
+      "error": "",
+      "footerBottom": 899.9999923706055,
+      "footerTop": 835.7999877929688,
+      "height": 900,
+      "mainBottom": 835.8000335693359,
+      "mainHeight": 648,
+      "pageWidth": 1440,
+      "route": "#compare",
+      "scrolls": true,
+      "width": 1440
+    },
+    {
+      "error": "",
+      "footerBottom": 899.9999923706055,
+      "footerTop": 835.7999877929688,
+      "height": 900,
+      "mainBottom": 835.8000335693359,
+      "mainHeight": 648,
+      "pageWidth": 1440,
+      "route": "#developers",
+      "width": 1440
+    },
+    {
+      "error": "",
+      "footerBottom": 899.9999923706055,
+      "footerTop": 835.7999877929688,
+      "height": 900,
+      "mainBottom": 835.8000335693359,
+      "mainHeight": 648,
+      "pageWidth": 1440,
+      "route": "#market",
+      "width": 1440
+    },
+    {
+      "error": "",
+      "footerBottom": 899.9999923706055,
+      "footerTop": 835.7999877929688,
+      "height": 900,
+      "mainBottom": 835.8000335693359,
+      "mainHeight": 648,
+      "pageWidth": 1440,
+      "route": "#ads",
+      "width": 1440
+    },
+    {
+      "error": "",
+      "footerBottom": 899.9999923706055,
+      "footerTop": 835.7999877929688,
+      "height": 900,
+      "mainBottom": 835.8000030517578,
+      "mainHeight": 662,
+      "pageWidth": 1440,
+      "route": "#reviews",
+      "scrolls": true,
+      "width": 1440
+    },
+    {
+      "error": "",
+      "footerBottom": 899.9999923706055,
+      "footerTop": 835.7999877929688,
+      "height": 900,
+      "mainBottom": 835.8000335693359,
+      "mainHeight": 602,
+      "pageWidth": 1440,
+      "route": "#collection",
+      "scrolls": true,
+      "width": 1440
+    },
+    {
+      "error": "",
+      "footerBottom": 899.9999923706055,
+      "footerTop": 835.7999877929688,
+      "height": 900,
+      "mainBottom": 835.8000335693359,
+      "mainHeight": 648,
+      "pageWidth": 1440,
+      "route": "#watchlist",
+      "width": 1440
+    },
+    {
+      "footerBottom": 899.9999923706055,
+      "height": 900,
+      "mainBottom": 835.8000335693359,
+      "pageWidth": 1440,
+      "route": "#exports",
+      "width": 1440
+    },
+    {
+      "footerBottom": 899.9999923706055,
+      "height": 900,
+      "mainBottom": 835.8000335693359,
+      "pageWidth": 1440,
+      "route": "#datasources",
+      "width": 1440
+    },
+    {
+      "footerBottom": 899.9999923706055,
+      "height": 900,
+      "mainBottom": 835.8000030517578,
+      "pageWidth": 1440,
+      "route": "#administration",
+      "width": 1440
+    }
+  ],
+  "mobileRoutes": [
+    {
+      "error": "",
+      "footerBottom": 844.0000152587891,
+      "height": 844,
+      "mainBottom": 738.2000122070312,
+      "mainHeight": 302,
+      "pageWidth": 390,
+      "route": "#apps",
+      "width": 390
+    },
+    {
+      "error": "",
+      "footerBottom": 844.0000152587891,
+      "height": 844,
+      "mainBottom": 738.2000122070312,
+      "mainHeight": 336,
+      "pageWidth": 390,
+      "route": "#globalcharts",
+      "width": 390
+    },
+    {
+      "error": "",
+      "footerBottom": 844.0000152587891,
+      "height": 844,
+      "mainBottom": 738.2000122070312,
+      "mainHeight": 244,
+      "pageWidth": 390,
+      "route": "#keywords",
+      "width": 390
+    },
+    {
+      "error": "",
+      "footerBottom": 844.0000152587891,
+      "height": 844,
+      "mainBottom": 738.1999969482422,
+      "mainHeight": 220,
+      "pageWidth": 390,
+      "route": "#collection",
+      "width": 390
+    },
+    {
+      "error": "",
+      "footerBottom": 844.0000152587891,
+      "height": 844,
+      "mainBottom": 738.2000122070312,
+      "mainHeight": 336,
+      "pageWidth": 390,
+      "route": "#exports",
+      "width": 390
+    }
+  ],
+  "final": {
+    "cards": [
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      },
+      {
+        "barWidth": 1000,
+        "height": 164,
+        "scrollHeight": 164
+      }
+    ],
+    "footerBottom": 1080,
+    "footerCentered": true,
+    "footerTop": 1042.5,
+    "height": 1080,
+    "mainBottom": 1042.500015258789,
+    "pageWidth": 1920,
+    "sidebarToggleBottom": 1080,
+    "width": 1920
+  },
+  "logs": []
+}

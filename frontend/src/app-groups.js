@@ -116,6 +116,34 @@ export function createGroupWorkspace(ctx) {
       )
       .join("");
 
+  function countryCard(country) {
+    const states = [
+      ["available", "在架"],
+      ["unverified", "未验"],
+      ["suspected_missing", "待确认"],
+      ["region_unavailable", "不可用"],
+    ].map(([key, label]) => ({ key, label, count: country.states[key] || 0 }));
+    const total = states.reduce((sum, state) => sum + state.count, 0);
+    const summary = states
+      .map((s) => `${stateNames[s.key]} ${num(s.count)}`)
+      .join("，");
+    let start = 0;
+    const segments = states
+      .map((s) => {
+        const width = total ? (s.count / total) * 1000 : 0;
+        const rect = `<rect x="${start}" y="0" width="${width}" height="8" class="country-state-${s.key}"><title>${esc(stateNames[s.key])} ${num(s.count)}</title></rect>`;
+        start += width;
+        return rect;
+      })
+      .join("");
+    return `<button data-group-country="${esc(country.country)}" class="content-card group-country" aria-label="${esc(countryName(country.country))}，${num(country.apps)} 款应用，${num(country.targets)} 个目标，${esc(summary)}。查看应用矩阵">
+      <span class="country-heading"><strong>${esc(countryName(country.country))}</strong><small>${esc(country.country.toUpperCase())}</small></span>
+      <span class="country-total"><b>${num(country.apps)}</b><small>APP</small>${country.targets !== country.apps ? `<small class="country-targets" title="按国家 / 语言统计的观察目标">${num(country.targets)} 目标</small>` : ""}</span>
+      <svg class="country-status-bar" viewBox="0 0 1000 8" preserveAspectRatio="none" role="img" aria-label="目标状态占比：${esc(summary)}"><rect width="1000" height="8" class="country-state-empty"/>${segments}</svg>
+      <span class="country-status-counts">${states.map((s) => `<span class="country-status country-state-${s.key}" title="${esc(stateNames[s.key])}：${num(s.count)}"><b>${num(s.count)}</b><small>${s.label}</small></span>`).join("")}</span>
+    </button>`;
+  }
+
   async function render(revision) {
     const listing = await api("/groups");
     groups = listing.items;
@@ -504,12 +532,9 @@ export function createGroupWorkspace(ctx) {
           <div class="group-health"><span>48 小时内取得详情：${num(s.fresh)} / ${num(s.targets)}</span><span>采集异常：${num(s.errors)}</span><span>${data.collection.paused ? "采集已全局暂停" : data.collection.cooldown_seconds ? `距离下次可请求：${data.collection.cooldown_seconds} 秒` : "采集开关已启用"}</span><span>看板更新：${stamp(data.observed_at)}</span></div>
           ${panel(
             "各国家应用分布",
-            `<p class="sub">点击国家查看该国应用；状态按国家 / 语言目标统计，应用数按 APP 去重。</p><div class="group-countries">${data.countries
+            `<p class="sub">点击国家查看应用；色条与状态数字按观察目标统计。</p><div class="group-countries">${data.countries
               .filter((c) => !filters.country || c.country === filters.country)
-              .map(
-                (c) =>
-                  `<button data-group-country="${c.country}" class="content-card group-country"><strong>${esc(countryName(c.country))} · ${esc(c.country.toUpperCase())}</strong><b>${num(c.apps)} 款 APP</b><small>${num(c.targets)} 个国家/语言观察目标</small><span>已验证在架 ${c.states.available || 0} · 尚未验证 ${c.states.unverified || 0}</span><span>缺失待确认 ${c.states.suspected_missing || 0} · 地区不可用 ${c.states.region_unavailable || 0}</span>${Object.keys(c.reference).length ? `<small>导入参考：在架 ${c.reference.on || 0} / 不在架 ${c.reference.off || 0}</small>` : ""}</button>`,
-              )
+              .map(countryCard)
               .join("")}</div>`,
           )}
         <div class="cards">${badge("首次验证在架", ev.first_verified || 0, "所选期间去重应用×国家，不等于新发布")}${badge("重新出现", ev.reappeared || 0, "有历史证据的恢复可用")}${badge("确认地区不可用", ev.region_unavailable || 0, "按缺失确认策略产生事件")}${badge("新增关注目标", s.new_members, `近 ${filters.days} 天加入，不等于新上架`)}</div>

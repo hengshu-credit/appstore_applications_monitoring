@@ -221,6 +221,53 @@ test("group overview separates unchecked targets and clears hidden list filters"
   }
 });
 
+test("country charts show observed status proportions and keep imported references out of totals", async () => {
+  const c = setup((path) => {
+    if (!path.includes("/dashboard?")) return;
+    const data = dashboard();
+    data.countries = [
+      {
+        country: "th",
+        apps: 8,
+        targets: 10,
+        states: {
+          available: 4,
+          unverified: 3,
+          suspected_missing: 2,
+          region_unavailable: 1,
+        },
+        reference: { on: 99, off: 20 },
+      },
+    ];
+    return data;
+  });
+  try {
+    await c.workspace.render(1);
+    const card = c.doc.querySelector(".group-country");
+    assert.equal(card.querySelector(".country-total b").textContent, "8");
+    assert.equal(card.querySelector(".country-targets").textContent, "10 目标");
+    assert.deepEqual(
+      [...card.querySelectorAll(".country-status b")].map((e) => e.textContent),
+      ["4", "3", "2", "1"],
+    );
+    const bars = [
+      ...card.querySelectorAll("svg rect:not(.country-state-empty)"),
+    ];
+    assert.deepEqual(
+      bars.map((e) => Number(e.getAttribute("width"))),
+      [400, 300, 200, 100],
+    );
+    assert.deepEqual(
+      bars.map((e) => Number(e.getAttribute("x"))),
+      [0, 400, 700, 900],
+    );
+    assert.match(card.getAttribute("aria-label"), /已验证在架 4/);
+    assert.ok(!card.textContent.includes("99"));
+  } finally {
+    await c.window.happyDOM.close();
+  }
+});
+
 test("bulk selected apps retain store country and language identities", async () => {
   const c = setup((path, body) =>
     path === "/groups/1/members" ? { added: body.members.length } : undefined,

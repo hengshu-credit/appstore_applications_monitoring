@@ -37,3 +37,5 @@
 主侧栏和导航样式限定在 `.app-sidebar`、`#navigation`，不影响业务页的 `aside` 和 `nav`。多行可点击卡片使用 `.content-card`，不应用表单按钮固定高度。国家卡和分组卡按内容自然增高；宽表在自身容器滚动。
 
 页面清单及范围统一在 `frontend/src/navigation.js` 维护；浏览器验收记录见 [UI 验收](ui-restructure-verification.md)。
+
+侧栏底部提供折叠按钮，页脚独立贴合视口底边，正文单独滚动。国家卡片使用应用总数与状态占比图；详细参考信息在应用矩阵和档案查看。实现及浏览器测量见 [侧栏与页脚验收](shell-cards-verification.md)。

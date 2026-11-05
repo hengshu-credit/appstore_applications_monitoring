@@ -35,10 +35,27 @@
       </a>
       <div class="nav-label">应用情报工作台</div>
       <nav id="navigation" aria-label="主导航"></nav>
-      <div class="side-note">
-        <span class="status-dot"></span>公开观察 · 可追溯历史
-        <p>保留来源与采集时间<br />以实际观察记录为依据</p>
-      </div>
+      <button
+        id="sidebar-toggle"
+        type="button"
+        aria-label="收起侧边栏"
+        title="收起侧边栏"
+        aria-expanded="true"
+        aria-controls="navigation"
+      >
+        <svg
+          class="ui-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="m14 5-7 7 7 7m5-14-7 7 7 7" />
+        </svg>
+      </button>
     </aside>
     <div class="shell">
       <header>
@@ -195,9 +212,44 @@
       <main id="content" aria-live="polite">
         <div class="empty">正在连接数据工作台…</div>
       </main>
-      <footer>
-        开源应用基线 · 商店公开观察 · 时间按浏览器所在时区显示
-        <a href="/api/openapi.json" target="_blank" rel="noopener">API 定义</a>
+      <footer class="app-footer">
+        <span class="footer-note"
+          >开源应用基线 · 商店公开观察 · 时间按浏览器所在时区显示</span
+        >
+        <div class="footer-center">
+          <span class="footer-copyright"
+            >© 2026
+            <a
+              href="https://hengshucredit.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              >上海衡枢真信科技有限公司</a
+            >
+            · ALL RIGHTS RESERVED</span
+          >
+          <span
+            >开源地址：<a
+              href="https://github.com/hengshu-credit"
+              target="_blank"
+              rel="noopener noreferrer"
+              >github.com/hengshu-credit</a
+            ></span
+          >
+          <a
+            href="https://github.com/itlubber"
+            target="_blank"
+            rel="noopener noreferrer"
+            >github.com/itlubber</a
+          >
+          <span>微信：itlubber</span><span>公众号：itlubber_art</span>
+        </div>
+        <a
+          class="footer-api"
+          href="/api/openapi.json"
+          target="_blank"
+          rel="noopener"
+          >API 定义</a
+        >
       </footer>
     </div>
     <div id="toast" role="status"></div>

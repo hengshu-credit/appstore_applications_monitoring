@@ -168,17 +168,6 @@ label {
   text-align: center;
   font-size: 17px;
 }
-.side-note {
-  margin-top: auto;
-  padding: 32px 12px 0;
-  color: #a6bbc9;
-  font-size: 12px;
-}
-.side-note p {
-  font-size: 11px;
-  line-height: 1.9;
-  color: #7894aa;
-}
 .status-dot {
   display: inline-block;
   width: 6px;
@@ -634,8 +623,7 @@ dialog button {
   .brand {
     padding: 0;
   }
-  .nav-label,
-  .side-note {
+  .nav-label {
     display: none;
   }
   #navigation {

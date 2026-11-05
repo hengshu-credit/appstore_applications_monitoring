@@ -169,9 +169,7 @@ button.secondary {
 .brand {
   color: var(--nav-text);
 }
-.nav-label,
-.side-note,
-.side-note p {
+.nav-label {
   color: var(--nav-muted);
 }
 .brand strong {
@@ -475,8 +473,7 @@ dialog::backdrop {
   padding: 0;
   flex-shrink: 0;
 }
-[data-navigation="top"] .nav-label,
-[data-navigation="top"] .side-note {
+[data-navigation="top"] .nav-label {
   display: none;
 }
 [data-navigation="top"] #navigation {
