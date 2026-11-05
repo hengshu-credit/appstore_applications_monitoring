@@ -53,6 +53,9 @@ export function createResearchPages(ctx) {
   const coverageNames = {
     one_regional_listing: "单地区详情",
     first_response: "首个搜索响应",
+    paginated_search: "已续采至目标或来源末尾",
+    chart_source_limit: "来源实际榜单范围（未达目标数量）",
+    reviews_source_limit: "评论来源窗口上限（非历史全量）",
     recent_reviews_bounded: "近期评论窗口",
     returned_chart_range: "实际返回榜单",
     visible_editorial_cards: "可见推荐卡片",

@@ -66,3 +66,8 @@ Data provided by [AppGoblin](https://appgoblin.info).
   `MrAdex77/google-play-scraper` MIT fixtures above; the search projection was
   refreshed against a public search response on 2026-11-06. Portable projected
   test datasets and their provenance are in `tests/fixtures/`.
+
+- Google search continuation request and item mappings in `keyword_stores.py`
+  follow `core/pagination.ts`, `core/clusterItem.ts`, and
+  `features/search/specs.ts` in the same pinned MIT scraper. The local pagination
+  state machine adds strict completion checks and per-target batch isolation.

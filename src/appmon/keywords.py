@@ -156,7 +156,8 @@ def work_keywords(cfg, db, limit=200, client=None, target_id=None, refresh=False
                 accepted = save_search(db, cfg, target, result=result)
                 outcome = "ok"
                 detail = f"返回应用 {len(result.apps)} 条"
-            task_log.finish(outcome,accepted,detail,error=failure)
+            from .pagination import completion_note
+            task_log.finish(outcome,accepted,(completion_note(result) or detail) if failure is None else detail,error=failure)
         counts["processed"] += 1
         counts[outcome if accepted else "stale"] += 1
         log.info("Keyword %s %s/%s/%s: %s", target["id"], target["store"],

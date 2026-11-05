@@ -223,7 +223,8 @@ def work_observations(cfg, db, limit=10, client=None):
                 accepted = save_observation(db, cfg, target, result=result)
                 outcome = "ok"
                 detail = f"返回记录 {len(result.items)} 条"
-            task_log.finish(outcome,accepted,detail,error=failure)
+            from .pagination import completion_note
+            task_log.finish(outcome,accepted,(completion_note(result) or detail) if failure is None else detail,error=failure)
         count["processed"] += 1
         count[outcome if accepted else "stale"] += 1
     return count

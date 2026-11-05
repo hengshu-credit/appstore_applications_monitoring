@@ -2,7 +2,7 @@
 
 Google mappings adapted from MrAdex77/google-play-scraper (MIT); Apple native
 search protocol/markets from facundoolano/app-store-scraper (MIT). See licenses.
-Only the first response is collected; requested depth is an upper bound.
+Read the source window and follow its cursor when the requested depth needs more.
 """
 import json
 import re
@@ -24,6 +24,7 @@ class SearchResult:
     source: str
     coverage: str = "first_response"
     parser_version: str = PARSER_VERSION
+    pagination: dict | None = None
 
 
 def path(value, *keys):
@@ -49,7 +50,7 @@ def ordered_apps(store, apps):
     return output
 
 
-def parse_google(text):
+def google_search_payload(text):
     # Resolve the RPC's dataset key when Google moves it; do not scan arbitrary
     # detail links, recommendation carousels or advertisements as search ranks.
     routes = re.findall(r"'(ds:\d+)'\s*:\s*\{\s*id:\s*'lGYRle'", text)
@@ -65,14 +66,22 @@ def parse_google(text):
         blocks[key[1]] = json.loads(data[1])
     if len(blocks) != 1:
         raise FetchError("Google search dataset unavailable")
-    return parse_google_payload(next(iter(blocks.values())))
+    return next(iter(blocks.values()))
+
+
+def parse_google(text):
+    return parse_google_payload(google_search_payload(text))
 
 
 def parse_google_payload(payload):
+    return google_search_page(payload)[0]
+
+
+def google_search_page(payload):
     sections = path(payload, 0, 1)
     if not isinstance(sections, list):
         raise FetchError("Google search sections unavailable")
-    apps, exact, recognized = [], None, False
+    apps, exact, recognized, cursor = [], None, False, None
     for section in sections:
         card = path(section, 23)
         if card is not None:
@@ -89,6 +98,9 @@ def parse_google_payload(payload):
             if not isinstance(rows, list):
                 raise FetchError("Google search rows changed")
             recognized = True
+            cursor=path(section,22,1,3,1)
+            if cursor is not None and (not isinstance(cursor,str) or not cursor):
+                raise FetchError('Google search cursor invalid')
             for row in rows:
                 title = path(row, 0, 3)
                 if not isinstance(title, str) or not title:
@@ -99,7 +111,7 @@ def parse_google_payload(payload):
         raise FetchError("Google search layout unrecognized; retain previous ranks")
     if exact and not any(a["app_id"] == exact["app_id"] for a in apps):
         apps.insert(0, exact)
-    return ordered_apps("google", apps)
+    return ordered_apps("google", apps),cursor
 
 
 def parse_apple(data,country=None):
@@ -157,18 +169,71 @@ class KeywordClient(Client):
             payload=template('search');payload[0][2][0]=target['keyword']
             calls.append(('lGYRle',payload))
         payloads,raw=rpc_many(self,targets[0],calls)
-        results=[]
-        for target,payload in zip(targets,payloads):
+        return self.complete_google_searches(targets,payloads,[raw]*len(targets))
+
+    def complete_google_searches(self, targets, payloads, initial_raw):
+        from .google_rpc import rpc_many
+        from .pagination import PageWindow
+        states=[PageWindow(t['depth'],'app_id') for t in targets]
+        raw_pages=[[raw.decode('utf-8')] for raw in initial_raw]
+        results=[None]*len(targets)
+        for i,payload in enumerate(payloads):
             if isinstance(payload,FetchError):
-                results.append(payload);continue
+                results[i]=payload;continue
             try:
-                results.append(SearchResult(parse_google_payload(payload)[:target['depth']],raw,SOURCES['google']))
-            except (ValueError,TypeError,KeyError,IndexError,FetchError):
-                results.append(FetchError('Google batch search schema changed; retry separately',60))
+                states[i].add(*google_search_page(payload))
+            except (FetchError,ValueError,TypeError,KeyError,IndexError) as error:
+                results[i]=error if isinstance(error,FetchError) else FetchError('Google search schema changed')
+        while True:
+            active=[i for i,state in enumerate(states) if results[i] is None and not state.end]
+            if not active:
+                break
+            calls=[]
+            for i in active:
+                state=states[i]
+                payload=[[None,[[10,[10,min(100,state.depth-len(state.items))]],True,None,
+                    [96,27,4,8,57,30,110,79,11,16,49,1,3,9,12,104,55,56,51,10,34,77]],None,state.cursor]]
+                calls.append(('qnKhOb',payload))
+            try:
+                pages,raw=rpc_many(self,targets[0],calls)
+            except FetchError as error:
+                for i in active:results[i]=error
+                break
+            for i,page in zip(active,pages):
+                if isinstance(page,FetchError):
+                    results[i]=page;continue
+                try:
+                    if page==[]:
+                        rows,cursor=[],None  # Valid empty continuation payload, not a null/error frame.
+                    else:
+                        rows=path(page,0,0,0);cursor=path(page,0,0,7,1)
+                        if not isinstance(rows,list):raise FetchError('Google search continuation schema changed')
+                        parsed=[]
+                        for row in rows:
+                            name=path(row,2)
+                            if not isinstance(name,str) or not name:raise FetchError('Google search continuation title missing')
+                            parsed.append({'app_id':path(row,12,0),'name':name})
+                        rows=ordered_apps('google',parsed)
+                    states[i].add(rows,cursor)
+                    raw_pages[i].append(raw.decode('utf-8'))
+                    self.report('page',f"关键词批次目标 {i+1}：已取得 {len(states[i].items)}/{targets[i]['depth']} 条")
+                except (FetchError,ValueError,TypeError,KeyError,IndexError) as error:
+                    results[i]=error if isinstance(error,FetchError) else FetchError('Google search continuation schema changed')
+        for i,state in enumerate(states):
+            if results[i] is None:
+                paginated=state.pages>1
+                raw=json.dumps(raw_pages[i],ensure_ascii=False).encode() if paginated else initial_raw[i]
+                results[i]=SearchResult(state.items,raw,SOURCES['google'],
+                    coverage='paginated_search' if paginated else 'first_response',
+                    parser_version='serp-v2' if paginated else PARSER_VERSION,pagination=state.summary())
         return results
 
     def search(self, target):
         store = target["store"]
+        if store=='google' and target['depth']>20 and not target.get('failures',0):
+            result=self.search_many([target])[0]
+            if isinstance(result,FetchError):raise result
+            return result
         if store == "apple":
             storefront = APPLE_MARKETS.get(target["country"])
             if not storefront:
@@ -194,7 +259,11 @@ class KeywordClient(Client):
                 marker in response.text.lower() for marker in ("recaptcha", "unusual traffic")):
             raise FetchError("Search consent or challenge page")
         try:
-            apps = parse_apple(response.json(),target['country']) if store == "apple" else parse_google(response.text)
-        except (ValueError, KeyError, TypeError, AttributeError) as e:
-            raise FetchError(f"{store} search schema changed") from e
+            if store=='google':
+                result=self.complete_google_searches([target],[google_search_payload(response.text)],[response.content])[0]
+                if isinstance(result,FetchError):raise result
+                return result
+            apps=parse_apple(response.json(),target['country'])
+        except (ValueError,KeyError,TypeError,AttributeError) as error:
+            raise FetchError(f'{store} search schema changed') from error
         return SearchResult(apps[:target["depth"]], response.content, SOURCES[store])

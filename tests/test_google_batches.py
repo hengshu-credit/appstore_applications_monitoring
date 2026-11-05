@@ -109,7 +109,8 @@ class GoogleBatchParserTest(unittest.TestCase):
                 requested.append((app,count,token))
                 start=50 if token else 0
                 self.assertTrue(token is None or token==app+':page2')
-                rows=[[app+':'+str(i),None,4,None,'review '+str(i),[1720000000],0,None,None,None,'1.0'] for i in range(start,start+count)]
+                # A source may cap the response at 50 despite a larger request.
+                rows=[[app+':'+str(i),None,4,None,'review '+str(i),[1720000000],0,None,None,None,'1.0'] for i in range(start,start+min(50,count))]
                 payloads.append([rows,[None,None if token else app+':page2']])
             return response(calls,payloads)
         with patch.object(client,'request',side_effect=send) as http:

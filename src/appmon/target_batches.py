@@ -68,7 +68,8 @@ def work_targets(cfg, db, limit, client, *, table, resource, single, multiple, s
                 error=result if isinstance(result,FetchError) else None
                 accepted=save(db,cfg,row,error=error) if error else save(db,cfg,row,result=result)
                 outcome='error' if error else 'ok'
-                task_log.finish(outcome,accepted,'按目标独立保存，保留原采集深度与周期',error=error)
+                from .pagination import completion_note
+                task_log.finish(outcome,accepted,completion_note(result) or '按目标独立保存，保留原采集深度与周期',error=error)
                 counts['processed']+=1
                 counts[outcome if accepted else 'stale']+=1
             if any(isinstance(r,FetchError) and r.retry_after>=300 for r in results):

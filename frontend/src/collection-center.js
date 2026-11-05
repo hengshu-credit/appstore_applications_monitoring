@@ -117,7 +117,7 @@ export function createCollectionCenter(ctx) {
       )}<p class="sub">本站派生榜复用对应基榜，不作为官方榜单。</p></div>
       <div data-plan-field="observations">${field("榜单 / 评论 / 推荐结果上限", "depth", 100, "number", 'min="1" max="500" required')}</div>
       <div data-plan-field="keywords">${field("关键词结果上限", "keyword_depth", 50, "number", 'min="1" max="200" required')}</div>
-      <p class="sub full">结果上限不保证实际返回数量。已有相同目标会更新设置，并保留暂停状态与历史。</p><div class="full form-actions"><button type="submit">预览采集计划</button></div></form><div id="plan-preview"></div><details class="plan-history"><summary>导入已有关键词词库（JSON）</summary><form id="keyword-import"><label>包含商店、国家、语言和关键词的数组<textarea name="json" required placeholder='[{"store":"google","country":"th","language":"th","keyword":"เงินกู้"}]'></textarea></label><button type="submit" class="spacer">校验并导入词库</button></form><p class="sub">支持跨市场批量导入；整批验证，保留已有任务历史和暂停状态。</p></details>`;
+      <p class="sub full">优先一次取足；接口限制时自动续采。来源上限会单独标明。已有目标保留暂停状态与历史。</p><div class="full form-actions"><button type="submit">预览采集计划</button></div></form><div id="plan-preview"></div><details class="plan-history"><summary>导入已有关键词词库（JSON）</summary><form id="keyword-import"><label>包含商店、国家、语言和关键词的数组<textarea name="json" required placeholder='[{"store":"google","country":"th","language":"th","keyword":"เงินกู้"}]'></textarea></label><button type="submit" class="spacer">校验并导入词库</button></form><p class="sub">支持跨市场批量导入；整批验证，保留已有任务历史和暂停状态。</p></details>`;
   }
   function bindCreation(rev) {
     $("#back-to-tasks").onclick = () => {
