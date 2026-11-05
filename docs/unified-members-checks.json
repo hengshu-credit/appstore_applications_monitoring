@@ -1,0 +1,44 @@
+{
+  "desktop": {
+    "columns": [
+      "",
+      "应用 / 市场",
+      "上下架与监控",
+      "权限采集",
+      "关键词与榜单",
+      "下载量",
+      "商店收入",
+      "评分"
+    ],
+    "containerWidth": 1302,
+    "firstRow": "\t\nCoconu เงินกู้\ncoconuttr.ees.seawa\nGoogle Play\n泰国 · TH / th\n\t已验证在架\n已暂停\n详情 2026/11/5 18:27:42\n参考在架 · 导入记录\n\t已采集14 项\n短信\n其他\n全部 6 类\n更新 2026/11/5 18:37:42\n\t\n关键词\n—\n命中\n最佳 —\n排行榜\n—\n命中\n最佳 —\n\t暂无数据\n累计安装 10,000+\n全球 · 商店累计下限\n\t暂无数据\t\n4.496\n/ 5\n4,645 次评分",
+    "firstRowHeight": 129.8000030517578,
+    "pageWidth": 1910,
+    "records": 50,
+    "selection": 0,
+    "tableWidth": 1302,
+    "tabs": [
+      "分组总览",
+      "应用明细"
+    ],
+    "theme": "light",
+    "width": 1920
+  },
+  "darkPreview": {
+    "badgeBackground": "color(srgb 0.171765 0.140392 0.343529)",
+    "cellBackground": "rgb(21, 29, 49)",
+    "overflow": false,
+    "text": "rgb(237, 242, 255)",
+    "theme": "dark"
+  },
+  "browserLogs": [],
+  "mobile": {
+    "width": 390,
+    "pageWidth": 381,
+    "recordWidth": 319.2,
+    "columnsPerRecord": 8,
+    "selectionChecked": true
+  },
+  "pagination": "TH / Google Play: 1-50 then 51-84 and back",
+  "mutations": "Only selection toggled; no membership removal, collection change or metric import submitted"
+}

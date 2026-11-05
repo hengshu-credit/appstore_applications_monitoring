@@ -151,14 +151,19 @@ test("group dashboard drills through countries and keeps unknown observations se
       c.doc.querySelector("#group-tab-content").textContent,
       /参考不在架/,
     );
-    assert.equal(c.doc.querySelector("img"), null);
+    assert.equal(c.doc.querySelector('img[src="x"]'), null);
+    assert.deepEqual(
+      [...c.doc.querySelectorAll("[data-group-tab]")].map((e) => e.textContent),
+      ["分组总览", "应用明细"],
+    );
+    assert.equal(c.doc.querySelectorAll("[data-member-row]").length, 1);
     const before = c.calls.length;
-    c.doc.querySelector('[data-group-tab="permissions"]').click();
+    c.doc.querySelector('[data-group-tab="matrix"]').click();
     await tick();
     assert.equal(
       c.calls.length,
       before,
-      "switching views should reuse the same scoped response",
+      "all metrics reuse the same scoped response",
     );
     assert.match(
       c.doc.querySelector("#group-tab-content").textContent,
@@ -344,6 +349,92 @@ test("large country counts stay compact while hints retain exact values", async 
       c.doc.querySelector("#group-country-hint").textContent,
       /100.0%/,
     );
+  } finally {
+    await c.window.happyDOM.close();
+  }
+});
+
+test("unified rows show permissions rankings money and ratings without mixing missing values or currencies", async () => {
+  const c = setup((path) => {
+    if (!path.includes("/dashboard?")) return;
+    const data = dashboard();
+    data.items = [
+      {
+        ...member,
+        permission_state: "ok",
+        permission_count: 0,
+        permission_groups: ["Camera", "SMS", "<img src=x>"],
+        permission_error: "<script>problem</script>",
+        keyword_count: 5,
+        keyword_best: 3,
+        chart_count: 0,
+        chart_best: null,
+        rating: 0,
+        ratings: 123,
+        installs: 1000,
+        metrics: [
+          { metric: "downloads", value: "0", days: 3, is_estimate: false },
+          {
+            metric: "revenue",
+            value: "123.4500",
+            days: 3,
+            is_estimate: false,
+            currency: "USD",
+          },
+          {
+            metric: "revenue",
+            value: "9",
+            days: 1,
+            is_estimate: true,
+            currency: "EUR",
+          },
+        ],
+      },
+    ];
+    return data;
+  });
+  try {
+    await c.workspace.render(1);
+    c.doc.querySelector('[data-group-tab="matrix"]').click();
+    await tick();
+    const row = c.doc.querySelector('[data-member-row="11"]');
+    assert.equal(row.querySelectorAll("td").length, 8);
+    assert.match(row.querySelector(".member-col-2").textContent, /尚未验证/);
+    assert.match(row.querySelector(".member-col-2").textContent, /参考不在架/);
+    assert.match(row.querySelector(".member-col-3").textContent, /已采集0 项/);
+    assert.match(row.querySelector(".member-col-3").textContent, /相机/);
+    assert.match(
+      row.querySelector(".member-col-4").textContent,
+      /关键词5命中最佳 #3/,
+    );
+    assert.match(
+      row.querySelector(".member-col-4").textContent,
+      /排行榜0命中最佳 —/,
+    );
+    assert.equal(
+      row.querySelector(".member-col-5 .member-fact strong").textContent,
+      "0",
+    );
+    assert.match(row.querySelector(".member-col-5").textContent, /全球/);
+    assert.deepEqual(
+      [...row.querySelectorAll(".member-col-6 .member-fact")].map(
+        (e) => e.textContent,
+      ),
+      ["123.45USD实际 · 已有 3 天数据", "9EUR估算 · 已有 1 天数据"],
+    );
+    assert.equal(row.querySelector(".member-rating b").textContent, "0");
+    assert.equal(row.querySelector('img[src="x"]'), null);
+    assert.equal(row.querySelector("script"), null);
+    c.doc.querySelector("#group-select-page").click();
+    assert.equal(row.querySelector("[data-group-check]").checked, true);
+    assert.equal(c.doc.querySelector("#group-remove").disabled, false);
+    assert.match(
+      c.doc.querySelector("#group-selection-count").textContent,
+      /已选 1 条/,
+    );
+    c.doc.querySelector("#group-import-metrics").click();
+    assert.ok(c.doc.querySelector("#group-metrics"));
+    assert.deepEqual(c.errors, []);
   } finally {
     await c.window.happyDOM.close();
   }
