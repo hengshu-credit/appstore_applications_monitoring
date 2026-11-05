@@ -1,3 +1,4 @@
+import "./collection-center.css";
 import { icon, storeLogo } from "./icons.js";
 import { createTaskLogViewer } from "./task-logs.js";
 export const taskKinds = {
@@ -240,6 +241,39 @@ export function createCollectionCenter(ctx) {
       api("/research/collection/limits"),
     ]);
     const s = tasks.summary;
+    const categoryCards = `<div class="collection-categories" aria-label="任务分类概览">${Object.entries(
+      taskKinds,
+    )
+      .map(([kind, label]) => {
+        const category = tasks.categories?.find((c) => c.kind === kind) || {
+          total: 0,
+          summary: {},
+        };
+        return `<article class="collection-category ${filters.kind === kind ? "active" : ""}"><button type="button" class="category-heading" data-category="${kind}" aria-pressed="${filters.kind === kind}"><span>${esc(label)}</span><strong>${num(category.total)}</strong></button><div class="category-states">${Object.entries(
+          states,
+        )
+          .map(
+            ([state, title]) =>
+              `<button type="button" data-category="${kind}" data-category-state="${state}" class="${filters.kind === kind && filters.state === state ? "active" : ""}"><span>${title}</span><b>${num(category.summary[state] || 0)}</b></button>`,
+          )
+          .join("")}</div></article>`;
+      })
+      .join("")}${pipelines
+      .filter((p) => p.id === "pool")
+      .map(
+        (p) =>
+          `<article class="collection-category"><button class="category-heading" data-pool-card><span>全池应用详情</span><strong>${num(p.total || 0)}</strong></button><div class="category-states">${Object.entries(
+            { ...states, out_of_scope: "未启用市场" },
+          )
+            .map(
+              ([state, label]) =>
+                `<span><span>${label}</span><b>${num(p.summary?.[state] || 0)}</b></span>`,
+            )
+            .join(
+              "",
+            )}</div><p class="sub">所有商店 / 市场 · 点击管理基础流程</p></article>`,
+      )
+      .join("")}</div>`;
     const tab = (key, label) =>
       `<button class="secondary ${section === key ? "selected" : ""}" type="button" data-collection-tab="${key}" role="tab" aria-selected="${section === key}">${label}</button>`;
     const body =
@@ -261,7 +295,7 @@ export function createCollectionCenter(ctx) {
                   ["apple", "App Store"],
                 ],
                 filters.store,
-              )}${select("任务状态", "state", [["", "全部状态"], ...options(states)], filters.state)}${field("国家代码", "country", filters.country, "text", 'maxlength="2" placeholder="全部"')}<button type="submit" class="secondary">查询</button><button type="button" class="secondary" id="reset-task-filters">重置</button></form><div class="task-bulk"><span id="selected-count">已选 0 项</span><button type="button" class="secondary small" data-batch="refresh">立即采集</button><button type="button" class="secondary small" data-batch="pause">暂停</button><button type="button" class="secondary small" data-batch="resume">恢复</button><button type="button" class="secondary small" id="select-filtered-tasks">全选筛选结果（跨页）</button><button type="button" class="secondary small" id="select-every-task">全选全部任务（所有商店）</button><button type="button" class="secondary small" id="clear-task-selection">取消选择</button></div>${table(
+              )}${select("任务状态", "state", [["", "全部状态"], ...options(states)], filters.state)}${field("国家代码", "country", filters.country, "text", 'maxlength="2" placeholder="全部"')}<button type="submit" class="secondary">查询</button><button type="button" class="secondary" id="reset-task-filters">重置</button></form><div class="task-bulk"><span id="selected-count">已选 0 项</span><button type="button" class="secondary small" data-batch="refresh">立即采集</button><button type="button" class="secondary small" data-batch="pause">暂停</button><button type="button" class="secondary small" data-batch="resume">恢复</button><button type="button" class="secondary small" data-batch="interval">修改周期</button><button type="button" class="secondary small" id="retry-failed-tasks">重试筛选内失败任务</button><button type="button" class="secondary small" id="select-filtered-tasks">全选筛选结果（跨页）</button><button type="button" class="secondary small" id="select-every-task">全选配置任务（所有商店）</button><button type="button" class="secondary small" id="clear-task-selection">取消选择</button></div>${table(
                 [
                   '<input type="checkbox" id="select-all-tasks" aria-label="选择当前页全部任务">',
                   "采集类型 / 目标",
@@ -301,16 +335,44 @@ export function createCollectionCenter(ctx) {
       )}</details>`;
     if (
       !mount(
-        `<div class="collection-heading"><p class="lead">在一个地方配置全部采集流程，查看任务进度并处理失败。</p><button id="new-collection">${icon("plus")}新建采集计划</button></div><div class="cards collection-metrics">${metric("筛选结果", tasks.total, "已配置的独立采集目标")}${metric("采集中 / 等待", s.running + s.pending, "依照限速与队列执行")}${metric("失败待重试", s.error, "保留最近成功结果")}${metric("已暂停", s.paused, "恢复后继续按周期采集")}</div><div class="collection-status"><span class="status-dot"></span>后台最近心跳：${esc(stamp(quality.heartbeat?.next_at))}<span class="sub">所有市场独立保存 · 不改写历史</span></div><div class="collection-tabs" role="tablist" aria-label="采集管理视图">${tab("tasks", "采集任务")}${tab("pipelines", "基础采集流程")}${section === "create" ? tab("create", "新建计划") : ""}</div>${panel("整体采集控频", `<form id="collection-limits" class="form-grid">${field("整体最小请求间隔（秒）", "global_interval_seconds", limits.global_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Google 最小间隔（秒）", "google_interval_seconds", limits.google_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Apple 最小间隔（秒）", "apple_interval_seconds", limits.apple_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("受限后整体冷却（秒）", "cooldown_seconds", limits.cooldown_seconds, "number", 'min="60" max="86400" required')}<label class="check-label"><input type="checkbox" name="paused" ${limits.paused ? "checked" : ""}>暂停所有商店采集请求</label><p class="sub full">所有采集 worker 共用额度，详情、关键词、榜单、评论、推荐和图标请求均计入。403 / 429 / 5xx 会触发共享冷却，并遵守更长的 Retry-After。保存后新请求生效，已发出的请求会完成。此开关不停止种子包同步和第三方数据源手动操作。</p><button type="submit">保存控频设置</button></form>`)}${body}`,
+        `<div class="collection-heading"><p class="lead">按类型查看任务规模与状态，点击卡片筛选并跨页管理。</p><button id="new-collection">${icon("plus")}新建采集计划</button></div>${categoryCards}<div class="cards collection-metrics">${metric("筛选结果", tasks.total, "已配置的独立采集目标")}${metric("采集中 / 等待", s.running + s.pending, "依照限速与队列执行")}${metric("失败待重试", s.error, "保留最近成功结果")}${metric("已暂停", s.paused, "恢复后继续按周期采集")}</div><div class="collection-status"><span class="status-dot"></span>后台最近心跳：${esc(stamp(quality.heartbeat?.next_at))}<span class="sub">所有市场独立保存 · 不改写历史</span></div><div class="collection-tabs" role="tablist" aria-label="采集管理视图">${tab("tasks", "采集任务")}${tab("pipelines", "基础采集流程")}${section === "create" ? tab("create", "新建计划") : ""}</div><details class="panel collection-limits-panel"><summary>整体采集控频 · ${limits.paused ? "已暂停请求" : (limits.daily_request_limit ?? 10000) ? "每日预算 " + num(limits.daily_request_limit ?? 10000) + " 次" : "每日预算不限"}</summary><div class="spacer"><form id="collection-limits" class="form-grid">${field("整体最小请求间隔（秒）", "global_interval_seconds", limits.global_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Google 最小间隔（秒）", "google_interval_seconds", limits.google_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Apple 最小间隔（秒）", "apple_interval_seconds", limits.apple_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("每日请求预算（UTC，0 为不限）", "daily_request_limit", limits.daily_request_limit ?? 10000, "number", 'min="0" max="10000000" step="1" required')}${field("受限后整体冷却（秒）", "cooldown_seconds", limits.cooldown_seconds, "number", 'min="60" max="86400" required')}<label class="check-label"><input type="checkbox" name="paused" ${limits.paused ? "checked" : ""}>暂停所有商店采集请求</label><p class="sub full">同市场 App Store 详情每批最多 50 个应用共用一次请求；Google 详情保持逐请求限速。每日预算耗尽后等待下一 UTC 日，所有采集 worker 共用额度，详情、关键词、榜单、评论、推荐和图标请求均计入。403 / 429 / 5xx 会触发共享冷却，并遵守更长的 Retry-After。保存后新请求生效，已发出的请求会完成。此开关不停止种子包同步和第三方数据源手动操作。</p><button type="submit">保存控频设置</button></form></div></details>${body}`,
         rev,
       )
     )
       return;
+    document.querySelectorAll("[data-category]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          filters.kind = b.dataset.category;
+          filters.state = b.dataset.categoryState || "";
+          page = 1;
+          section = "tasks";
+          refresh().catch((e) => toast(e.message));
+        }),
+    );
+    document
+      .querySelector("[data-pool-card]")
+      ?.addEventListener("click", () => {
+        section = "pipelines";
+        refresh().catch((e) => toast(e.message));
+      });
     bindForm("#collection-limits", async (v, f) => {
-      await api("/research/collection/limits", {
-        ...Object.fromEntries(["global_interval_seconds", "google_interval_seconds", "apple_interval_seconds", "cooldown_seconds"].map(k => [k, Number(v[k])])),
-        paused: f.elements.paused.checked,
-      }, "PUT");
+      await api(
+        "/research/collection/limits",
+        {
+          ...Object.fromEntries(
+            [
+              "global_interval_seconds",
+              "google_interval_seconds",
+              "apple_interval_seconds",
+              "cooldown_seconds",
+              "daily_request_limit",
+            ].map((k) => [k, Number(v[k])]),
+          ),
+          paused: f.elements.paused.checked,
+        },
+        "PUT",
+      );
       toast("整体控频设置已保存，新请求即时生效");
     });
     const storeFilter = $('#task-filters [name="store"]');
@@ -445,10 +507,22 @@ export function createCollectionCenter(ctx) {
         (el) => tasks.items[Number(el.dataset.taskIndex)],
       );
     const selectionChange = () => {
-      $("#selected-count").textContent = selectionScope === "all" ? "已选全部任务（所有商店、所有页）" : selectionScope === "filtered" ? `已选筛选结果 ${tasks.total} 项（所有页）` : `已选 ${selected().length} 项`;
+      $("#selected-count").textContent =
+        selectionScope === "all"
+          ? "已选全部配置任务（所有商店、所有页，不含全池）"
+          : selectionScope === "filtered"
+            ? `已选筛选结果 ${tasks.total} 项（所有页）`
+            : `已选 ${selected().length} 项`;
       document
         .querySelectorAll("[data-batch]")
-        .forEach((b) => (b.disabled = selectionScope === "selected" ? !selected().length : b.dataset.batch === "refresh" || (selectionScope === "filtered" && !tasks.total)));
+        .forEach(
+          (b) =>
+            (b.disabled =
+              selectionScope === "selected"
+                ? !selected().length
+                : b.dataset.batch === "refresh" ||
+                  (selectionScope === "filtered" && !tasks.total)),
+        );
     };
     const selectAll = $("#select-all-tasks");
     if (selectAll)
@@ -459,31 +533,70 @@ export function createCollectionCenter(ctx) {
           .forEach((c) => (c.checked = e.target.checked));
         selectionChange();
       };
-    document
-      .querySelectorAll("[data-task-index]")
-      .forEach((c) => (c.onchange = () => { selectionScope = "selected"; selectionChange(); }));
+    document.querySelectorAll("[data-task-index]").forEach(
+      (c) =>
+        (c.onchange = () => {
+          selectionScope = "selected";
+          selectionChange();
+        }),
+    );
     selectionChange();
-    for (const [id, scope] of [["select-filtered-tasks", "filtered"], ["select-every-task", "all"], ["clear-task-selection", "selected"]]) {
+    for (const [id, scope] of [
+      ["select-filtered-tasks", "filtered"],
+      ["select-every-task", "all"],
+      ["clear-task-selection", "selected"],
+    ]) {
       $("#" + id).onclick = () => {
         selectionScope = scope;
-        document.querySelectorAll("[data-task-index]").forEach(c => c.checked = scope !== "selected");
+        document
+          .querySelectorAll("[data-task-index]")
+          .forEach((c) => (c.checked = scope !== "selected"));
         if (selectAll) selectAll.checked = scope !== "selected";
         selectionChange();
       };
     }
-    async function control(action, rows, scope = "selected") {
-      if (scope !== "selected" && !window.confirm(`确认${action === "pause" ? "暂停" : "恢复"}${scope === "all" ? "所有商店的全部任务" : `当前筛选结果的 ${tasks.total} 个任务`}？将跨越所有分页，执行时匹配的任务均会更新。`)) return;
+    async function control(action, rows, scope = "selected", extra = {}) {
+      if (action === "interval" && extra.refresh_hours === undefined) {
+        const scopeLabel =
+          scope === "all"
+            ? "所有商店的全部配置任务（不含全池）"
+            : scope === "filtered"
+              ? `当前筛选的 ${num(tasks.total)} 个任务`
+              : `已选 ${rows.length} 个任务`;
+        editor(
+          "批量修改采集周期",
+          `<p>${scopeLabel}</p><form id="batch-interval-form" class="form-grid">${field("刷新周期（小时）", "refresh_hours", 168, "number", 'min="0.25" max="8760" step="0.25" required')}<p class="sub full">从保存时间按新周期重新排期，取消当前租约并保留历史与暂停状态。延长周期可降低每日请求量。</p><button type="submit">保存周期</button></form>`,
+        );
+        bindForm("#batch-interval-form", async (v) => {
+          await control(action, rows, scope, {
+            refresh_hours: Number(v.refresh_hours),
+          });
+          closeEditor();
+        });
+        return;
+      }
+      if (
+        scope !== "selected" &&
+        !window.confirm(
+          `确认${{ pause: "暂停", resume: "恢复", retry: "重试其中失败的", interval: "修改周期：" }[action]}${scope === "all" ? "所有商店的全部配置任务（不含全池）" : `当前筛选结果的 ${tasks.total} 个任务`}？将跨越所有分页，执行时匹配的任务均会更新。`,
+        )
+      )
+        return;
       const controls = [
         ...document.querySelectorAll(
-          "[data-edit-task],[data-task-action],[data-batch],#new-collection,#select-filtered-tasks,#select-every-task,#clear-task-selection",
+          "[data-edit-task],[data-task-action],[data-batch],#new-collection,#select-filtered-tasks,#select-every-task,#clear-task-selection,#retry-failed-tasks",
         ),
       ];
       const disabled = controls.map((b) => b.disabled);
       controls.forEach((b) => (b.disabled = true));
       try {
         const result = await api("/research/collection/tasks/batch", {
-          action, scope,
-          ...(scope === "selected" ? {tasks: rows.map(t => ({resource: t.resource, id: t.id}))} : {filters: scope === "filtered" ? {...filters} : {}}),
+          action,
+          scope,
+          ...extra,
+          ...(scope === "selected"
+            ? { tasks: rows.map((t) => ({ resource: t.resource, id: t.id })) }
+            : { filters: scope === "filtered" ? { ...filters } : {} }),
         });
         toast(
           action === "refresh"
@@ -497,6 +610,8 @@ export function createCollectionCenter(ctx) {
         });
       }
     }
+    $("#retry-failed-tasks").onclick = () =>
+      control("retry", [], "filtered").catch((e) => toast(e.message));
     document
       .querySelectorAll("[data-batch]")
       .forEach(

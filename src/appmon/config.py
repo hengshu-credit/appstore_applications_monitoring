@@ -17,6 +17,9 @@ def load(path="config.toml"):
         raise ValueError("countries must contain two-letter storefront codes")
     if not re.fullmatch(r"[a-z]{2}(?:[-_][A-Za-z]{2})?", cfg["language"]):
         raise ValueError("Invalid language")
+    cfg.setdefault('apple_lookup_batch_size', 50)
+    if type(cfg['apple_lookup_batch_size']) is not int or not 1<=cfg['apple_lookup_batch_size']<=50:
+        raise ValueError('apple_lookup_batch_size must be an integer from 1 to 50')
     cfg.setdefault('global_interval_seconds', 5)
     cfg.setdefault('cooldown_seconds', 900)
     for key, low, high in [('global_interval_seconds',0.1,3600),('cooldown_seconds',60,86400)]:

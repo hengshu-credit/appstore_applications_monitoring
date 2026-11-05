@@ -106,37 +106,8 @@ def save_result(db, cfg, job, result=None, error=None, now=None):
 
 
 def work(cfg, db, limit, client=None, managed=False):
-    client = client or Client(cfg, db)
-    counts = {"processed": 0, "ok": 0, "missing": 0, "error": 0, "stale": 0}
-    for _ in range(limit):
-        if managed:
-            from .pipelines import configured
-            enabled, cfg = configured(db,cfg,'pool')
-            if not enabled:
-                break
-        disk_check(cfg["data_dir"], cfg["min_free_gb"])
-        job = claim(db, cfg["countries"], cfg["language"], cfg["lease_seconds"])
-        if not job:
-            break
-        from .task_logs import execution
-        with execution(db,client,'pipelines','pool',f"{job['store']} / {job['app_id']} / {job['country']}") as task_log:
-            failure = None
-            try:
-                result = client.fetch(job)
-            except FetchError as e:
-                failure = e
-                accepted = save_result(db, cfg, job, error=e)
-                outcome = "error"
-                detail = str(e) + "；已安排退避重试"
-            else:
-                accepted = save_result(db, cfg, job, result=result)
-                outcome = result.outcome
-                detail = "地区状态与版本观察已处理"
-            task_log.finish(outcome,accepted,detail,error=failure)
-        counts["processed"] += 1
-        counts[outcome if accepted else "stale"] += 1
-        log.info("%s %s %s %s", job["store"], job["app_id"], job["country"], outcome)
-    return counts
+    from .detail_batches import work_details
+    return work_details(cfg,db,limit,client or Client(cfg,db),managed=managed)
 
 
 def discover(cfg, db, client=None, max_sources=None, managed=False):

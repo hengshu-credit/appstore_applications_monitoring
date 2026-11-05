@@ -82,6 +82,9 @@ def public(cfg,row):
 def work_icons(cfg,db,limit=5,client=None):
     client=client or Client(cfg,db);counts={'processed':0,'ok':0,'error':0,'stale':0}
     for _ in range(limit):
+        from .collection_limits import blocked
+        if blocked(db,cfg):
+            break
         disk_check(cfg['data_dir'],cfg['min_free_gb'])
         with db:
             row=db.execute('''SELECT * FROM app_icons WHERE requested=1 AND enabled=1 AND due<=%s AND lease_until<=%s

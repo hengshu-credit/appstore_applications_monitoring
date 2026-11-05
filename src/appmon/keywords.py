@@ -130,6 +130,9 @@ def work_keywords(cfg, db, limit=200, client=None, target_id=None, refresh=False
     counts = dict(processed=0, ok=0, error=0, stale=0)
     # An explicit refresh is one observation, not a tight repeat loop.
     for _ in range(1 if target_id is not None else limit):
+        from .collection_limits import blocked
+        if blocked(db,cfg):
+            break
         disk_check(cfg["data_dir"], cfg["min_free_gb"])
         target = claim_target(db, cfg["lease_seconds"], target_id=target_id, refresh=refresh)
         if target is None:

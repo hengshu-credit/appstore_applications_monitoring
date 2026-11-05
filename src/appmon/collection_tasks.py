@@ -4,6 +4,8 @@ from .intelligence import hours, text
 from .task_logs import emit
 
 TABLES = {'watchlist': 'watchlist', 'keywords': 'keyword_targets', 'targets': 'observation_targets', 'icons':'app_icons'}
+KINDS = ('details','keywords','chart','reviews','featured','icons')
+STATES = ('paused','running','error','pending','scheduled')
 UNION = '''SELECT 'watchlist' resource,w.id,'details' kind,w.store,w.country,w.language,w.app_id,
     COALESCE(a.name,w.app_id) label,'' category,'' collection,w.group_name,NULL depth,
     w.refresh_hours,w.enabled,COALESCE(j.failures,0) failures,j.last_error,j.due,j.lease_until,l.last_success success_at
@@ -27,7 +29,7 @@ UNION = '''SELECT 'watchlist' resource,w.id,'details' kind,w.store,w.country,w.l
 def task_query(*, kind='', store='', country='', language='', state='', q=''):
     if any(not isinstance(v,str) for v in (kind,store,country,language,state,q)):
         raise ValueError('筛选参数须为文本')
-    if kind and kind not in ('details','keywords','chart','reviews','featured','icons'):
+    if kind and kind not in KINDS:
         raise ValueError('未知采集类型')
     if store=='all':store=''
     if store and store not in ('google','apple'):
@@ -36,7 +38,7 @@ def task_query(*, kind='', store='', country='', language='', state='', q=''):
         raise ValueError('搜索参数无效')
     now = time.time()
     query = f'''SELECT task.*,CASE WHEN enabled=0 THEN 'paused' WHEN lease_until>{now} THEN 'running'
-        WHEN failures>0 THEN 'error' WHEN success_at IS NULL OR due<={now} THEN 'pending'
+        WHEN failures>0 THEN 'error' WHEN COALESCE(due,0)<={now} THEN 'pending'
         ELSE 'scheduled' END task_state FROM ({UNION}) task'''
     where, args = [], []
     for key, value in [('kind',kind),('store',store),('country',country.lower()),('language',language.lower())]:
@@ -56,12 +58,20 @@ def list_tasks(db, *, page=1, limit=50, **filters):
     if not 1 <= page <= 100000 or not 1 <= limit <= 200:
         raise ValueError('分页参数无效')
     filtered, args = task_query(**filters)
-    counts = db.execute(f'SELECT task_state,count(*) n FROM ({filtered}) f GROUP BY task_state', args).fetchall()
-    summary = {name:0 for name in ('paused','running','error','pending','scheduled')}
-    summary.update({r['task_state']:r['n'] for r in counts})
+    # Cards retain every category and state while the list is drilled down.
+    overview, overview_args = task_query(**(filters | {'kind':'','state':''}))
+    counts = db.execute(f'SELECT kind,task_state,count(*) n FROM ({overview}) f GROUP BY kind,task_state', overview_args).fetchall()
+    categories = {kind:dict(kind=kind,total=0,summary=dict.fromkeys(STATES,0)) for kind in KINDS}
+    summary = dict.fromkeys(STATES,0)
+    for row in counts:
+        category = categories[row['kind']]
+        category['summary'][row['task_state']] = row['n']
+        category['total'] += row['n']
+        if (not filters.get('kind') or filters['kind']==row['kind']) and (not filters.get('state') or filters['state']==row['task_state']):
+            summary[row['task_state']] += row['n']
     total = sum(summary.values())
     rows = db.execute(filtered+' ORDER BY resource,id DESC LIMIT %s OFFSET %s', (*args,limit,(page-1)*limit)).fetchall()
-    return {'items':rows,'total':total,'summary':summary,'page':page,'limit':limit,'has_more':page*limit<total}
+    return {'items':rows,'total':total,'summary':summary,'categories':list(categories.values()),'page':page,'limit':limit,'has_more':page*limit<total}
 
 
 def _target(db, resource, identifier):
@@ -101,28 +111,39 @@ def control_tasks(db, value):
     if scope not in ('selected','filtered','all'):
         raise ValueError('未知选择范围')
     if scope != 'selected':
-        if action not in ('pause','resume') or refs is not None:
-            raise ValueError('跨页操作仅支持暂停和恢复，不能同时指定任务列表')
+        if action not in ('pause','resume','interval','retry') or refs is not None:
+            raise ValueError('跨页支持暂停、恢复、修改周期和重试失败，不能同时指定任务列表')
         filters = value.get('filters', {})
         if not isinstance(filters,dict) or set(filters)-{'kind','store','country','language','state','q'}:
             raise ValueError('筛选参数无效')
         if scope == 'all' and filters:
             raise ValueError('全部任务操作不能带筛选条件')
         query, args = task_query(**filters)
-    elif not isinstance(refs,list) or not 1<=len(refs)<=100 or action not in ('pause','resume','refresh'):
+        if action=='retry':
+            query = f"SELECT * FROM ({query}) retryable WHERE enabled=1 AND failures>0 AND lease_until<=%s"
+            args.append(time.time())
+        interval = hours(value.get('refresh_hours')) if action=='interval' else None
+        return _control_scope(db, query, args, action, interval)
+    elif not isinstance(refs,list) or not 1<=len(refs)<=100 or action not in ('pause','resume','refresh','interval'):
         raise ValueError('每次请选择1–100个任务及有效操作')
+    interval = hours(value.get('refresh_hours')) if action=='interval' else None
     with db:
-        if scope != 'selected':
-            # Snapshot matching identities once: state changes cannot shift later pages.
-            refs = db.execute(f'SELECT resource,id FROM ({query}) selected ORDER BY resource,id',args).fetchall()
-        else:
-            if any(not isinstance(ref,dict) or ref.get('resource') not in TABLES or type(ref.get('id')) is not int for ref in refs):
-                raise ValueError('任务标识无效')
-            refs = [dict(resource=r,id=i) for r,i in sorted({(ref['resource'],ref['id']) for ref in refs})]
+        if any(not isinstance(ref,dict) or ref.get('resource') not in TABLES or type(ref.get('id')) is not int for ref in refs):
+            raise ValueError('任务标识无效')
+        refs = [dict(resource=r,id=i) for r,i in sorted({(ref['resource'],ref['id']) for ref in refs})]
         for ref in refs:
             if not isinstance(ref,dict): raise ValueError('任务标识无效')
             resource, identifier = ref.get('resource'), ref.get('id')
             table, row = _target(db, resource, identifier)
+            if action=='interval':
+                db.execute(f'UPDATE {table} SET refresh_hours=%s WHERE id=%s',(interval,identifier))
+                if resource=='watchlist':
+                    db.execute('UPDATE jobs SET due=%s,token=NULL,lease_until=0 WHERE store=%s AND app_id=%s AND country=%s AND language=%s',
+                               (time.time()+interval*3600,*[row[k] for k in ('store','app_id','country','language')]))
+                else:
+                    db.execute(f'UPDATE {table} SET due=%s,token=NULL,lease_until=0 WHERE id=%s',(time.time()+interval*3600,identifier))
+                emit(db,resource,identifier,action,f'刷新周期已改为 {interval} 小时，从现在重新排期')
+                continue
             if action=='refresh' and not row['enabled']:
                 raise ValueError('已暂停的任务须先恢复，再安排采集')
             if resource=='watchlist':
@@ -140,3 +161,36 @@ def control_tasks(db, value):
                 db.execute(f'UPDATE {table} SET due=0 WHERE id=%s AND lease_until<=%s', (identifier,time.time()))
             emit(db,resource,identifier,action,{'pause':'任务已暂停，当前租约已失效','resume':'任务已恢复，等待到期后领取','refresh':'已请求立即采集；由后台按租约和限速执行'}[action])
     return {'updated':len(refs),'action':action}
+
+
+def _control_scope(db, query, args, action, interval):
+    """Keep the identity snapshot on disk in MySQL; SQL count is independent of task count."""
+    db.execute('CREATE TEMPORARY TABLE collection_selection (resource VARCHAR(16) NOT NULL,id BIGINT NOT NULL,PRIMARY KEY(resource,id)) ENGINE=InnoDB')
+    try:
+        with db:
+            db.execute(f'INSERT INTO collection_selection SELECT resource,id FROM ({query}) matched',args)
+            count = db.execute('SELECT count(*) n FROM collection_selection').fetchone()['n']
+            now = time.time()
+            for resource, table in TABLES.items():
+                join = f"{table} t JOIN collection_selection s ON s.resource=%s AND s.id=t.id"
+                if action in ('pause','resume'):
+                    db.execute(f'UPDATE {join} SET t.enabled=%s'+('' if resource=='watchlist' else ',t.token=NULL,t.lease_until=0'),(resource,action=='resume'))
+                elif action=='interval':
+                    db.execute(f'UPDATE {join} SET t.refresh_hours=%s'+('' if resource=='watchlist' else ',t.due=%s,t.token=NULL,t.lease_until=0'),
+                               (resource,interval) if resource=='watchlist' else (resource,interval,now+interval*3600))
+                elif resource!='watchlist':
+                    db.execute(f'UPDATE {join} SET t.due=0 WHERE t.enabled=1 AND t.failures>0 AND t.lease_until<=%s',(resource,now))
+                if resource=='watchlist':
+                    jobs_join = join+' JOIN jobs j ON j.store=t.store AND j.app_id=t.app_id AND j.country=t.country AND j.language=t.language'
+                    if action=='retry':
+                        db.execute(f'UPDATE {jobs_join} SET j.due=0 WHERE t.enabled=1 AND j.failures>0 AND j.lease_until<=%s',(resource,now))
+                    else:
+                        db.execute(f'UPDATE {jobs_join} SET j.token=NULL,j.lease_until=0'+(',j.due=%s' if action=='interval' else ''),
+                                   (resource,now+interval*3600) if action=='interval' else (resource,))
+            message = {'pause':'任务已暂停，当前租约已失效','resume':'任务已恢复，等待到期后领取',
+                       'retry':'已安排失败任务重试，仍遵守共享控频和冷却','interval':f'刷新周期已改为 {interval} 小时，从现在重新排期'}[action]
+            db.execute('''INSERT INTO collection_logs(resource,target_key,created_at,level,event,message)
+                SELECT resource,CAST(id AS CHAR),%s,'info',%s,%s FROM collection_selection''',(now,action,message))
+        return {'updated':count,'action':action}
+    finally:
+        db.execute('DROP TEMPORARY TABLE collection_selection')

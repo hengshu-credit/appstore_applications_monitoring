@@ -20,7 +20,8 @@ TABLES = {
     'jobs': f'''{APP_KEY}, {REGION}, due DOUBLE NOT NULL DEFAULT 0,
         lease_until DOUBLE NOT NULL DEFAULT 0, token CHAR(32) CHARACTER SET ascii,
         failures INT NOT NULL DEFAULT 0, last_error TEXT,
-        PRIMARY KEY(store,app_id,country,language), INDEX jobs_due(due,lease_until)''',
+        PRIMARY KEY(store,app_id,country,language), INDEX jobs_due(due,lease_until),
+        INDEX jobs_market_due(store,country,language,due,lease_until)''',
     'listings': f'''{APP_KEY}, {REGION}, state VARCHAR(32) NOT NULL, checked_at DOUBLE NOT NULL,
         last_success DOUBLE, misses INT NOT NULL DEFAULT 0, payload LONGTEXT, digest CHAR(64),
         PRIMARY KEY(store,app_id,country,language)''',
@@ -136,6 +137,7 @@ def connect(cfg, *, initialize=True, allow_migration=False):
                         db.execute('ALTER TABLE collection_logs ADD COLUMN details LONGTEXT NULL')
                 finally:db.execute('SELECT RELEASE_LOCK(%s)',(name,))
             for table,name,columns in [('apps','apps_store_category','store,category(64)'),
+                                       ('jobs','jobs_market_due','store,country,language,due,lease_until'),
                                        ('requests','requests_app','store,app_id,country,language,id')]:
                 if not db.execute(f"SHOW INDEX FROM {table} WHERE Key_name=%s",(name,)).fetchone():
                     with db.named_lock(name):
@@ -219,6 +221,43 @@ def claim(db, countries, language, lease_seconds, now=None):
 
 def key(job):
     return tuple(job[k] for k in ('store', 'app_id', 'country', 'language'))
+
+
+def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=False, now=None):
+    """Claim only the jobs served by the next HTTP request, in a short transaction."""
+    now = time.time() if now is None else now
+    where = 'j.due<=%s AND j.lease_until<=%s'
+    args = [now,now]
+    if watchlist:
+        source = 'jobs j JOIN watchlist w USING(store,app_id,country,language)'
+        columns = 'j.*,w.id watch_id,w.refresh_hours'
+        where += ' AND w.enabled=1'
+    else:
+        source, columns = 'jobs j', 'j.*'
+        where += ' AND j.country IN ('+','.join('%s' for _ in countries)+') AND j.language=%s'
+        args += [*countries,language]
+        where += ''' AND NOT EXISTS (SELECT 1 FROM watchlist w WHERE w.store=j.store AND w.app_id=j.app_id
+            AND w.country=j.country AND w.language=j.language)'''
+    with db:
+        # Serialize the short claim phase, not HTTP. Different queue indexes can
+        # otherwise deadlock when parallel batches update indexed lease values.
+        db.execute("INSERT INTO schedules VALUES('claim:details',0) ON DUPLICATE KEY UPDATE name=schedules.name")
+        first = db.execute(f'SELECT {columns} FROM {source} WHERE {where} ORDER BY j.due LIMIT 1 FOR UPDATE SKIP LOCKED',args).fetchone()
+        if not first:
+            return []
+        jobs = [first]
+        if first['store']=='apple' and first['failures']==0 and limit>1:
+            jobs += list(db.execute(f'''SELECT {columns} FROM {source} WHERE {where}
+                AND j.store=%s AND j.country=%s AND j.language=%s AND j.app_id<>%s AND j.failures=0
+                ORDER BY j.due LIMIT %s FOR UPDATE SKIP LOCKED''',
+                (*args,first['store'],first['country'],first['language'],first['app_id'],min(50,limit)-1)).fetchall())
+        token = uuid.uuid4().hex
+        db.execute('UPDATE jobs SET token=%s,lease_until=%s WHERE store=%s AND country=%s AND language=%s AND app_id IN ('+
+                   ','.join('%s' for _ in jobs)+')',
+                   (token,now+lease_seconds,first['store'],first['country'],first['language'],*[job['app_id'] for job in jobs]))
+        for job in jobs:
+            job['token'] = token
+    return jobs
 
 
 def reserve(db, name, interval, now=None):

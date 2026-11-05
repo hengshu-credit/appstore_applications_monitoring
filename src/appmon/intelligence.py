@@ -188,40 +188,9 @@ def observation_report(db, target_id, run_id=None):
             "history": db.execute("SELECT * FROM observation_runs WHERE target_id=%s ORDER BY id DESC LIMIT 100", (target_id,)).fetchall()}
 
 
-def work_watchlist(cfg, db, limit=10, client=None):
-    client = client or Client(cfg, db)
-    count = dict(processed=0, ok=0, error=0, stale=0)
-    for _ in range(limit):
-        now = time.time()
-        with db:
-            job = db.execute('''SELECT j.*,w.id watch_id,w.refresh_hours FROM jobs j JOIN watchlist w
-                USING(store,app_id,country,language) WHERE w.enabled=1 AND j.due<=%s AND j.lease_until<=%s
-                ORDER BY j.due LIMIT 1 FOR UPDATE SKIP LOCKED''', (now, now)).fetchone()
-            if not job:
-                break
-            job["token"] = uuid.uuid4().hex
-            db.execute("UPDATE jobs SET token=%s,lease_until=%s WHERE store=%s AND app_id=%s AND country=%s AND language=%s",
-                       (job["token"], now + cfg["lease_seconds"], job["store"], job["app_id"], job["country"], job["language"]))
-        disk_check(cfg["data_dir"], cfg["min_free_gb"])
-        local_cfg = cfg | {"refresh_hours": job["refresh_hours"]}
-        from .task_logs import execution
-        with execution(db,client,'watchlist',job['watch_id'],f"{job['store']} / {job['app_id']} / {job['country']}") as task_log:
-            failure = None
-            try:
-                result = client.fetch(job)
-            except FetchError as exc:
-                failure = exc
-                accepted = save_result(db, local_cfg, job, error=exc)
-                outcome = "error"
-                detail = str(exc) + "；已安排退避重试"
-            else:
-                accepted = save_result(db, local_cfg, job, result=result)
-                outcome = result.outcome
-                detail = "地区状态与版本观察已处理"
-            task_log.finish(outcome,accepted,detail,error=failure)
-        count[("error" if outcome=="error" else "ok") if accepted else "stale"] += 1
-        count["processed"] += 1
-    return count
+def work_watchlist(cfg, db, limit=10, client=None, *, max_requests=None):
+    from .detail_batches import work_details
+    return work_details(cfg,db,limit,client or Client(cfg,db),watchlist=True,max_requests=max_requests)
 
 
 def work_observations(cfg, db, limit=10, client=None):
@@ -229,6 +198,9 @@ def work_observations(cfg, db, limit=10, client=None):
     client = client or ObservationClient(cfg, db)
     count = dict(processed=0, ok=0, error=0, stale=0)
     for _ in range(limit):
+        from .collection_limits import blocked
+        if blocked(db,cfg):
+            break
         disk_check(cfg["data_dir"], cfg["min_free_gb"])
         target = claim_observation(db, max(cfg["lease_seconds"], 900))
         if not target:

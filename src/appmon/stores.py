@@ -28,6 +28,17 @@ class Result:
     raw: bytes = b""
 
 
+APPLE_MAPPING = {"name": "trackName", "version": "version", "description": "description",
+                       "developer": "artistName", "developer_id": "artistId", "category": "primaryGenreName",
+                       "price": "price", "currency": "currency", "rating": "averageUserRating",
+                       "ratings": "userRatingCount", "updated": "currentVersionReleaseDate",
+                       "released": "releaseDate", "bundle_id": "bundleId", "url": "trackViewUrl",
+                       "icon": "artworkUrl512", "screenshots": "screenshotUrls",
+                       "release_notes": "releaseNotes", "languages": "languageCodesISO2A",
+                       "category_id": "primaryGenreId", "genre_ids": "genreIds", "genres": "genres",
+                       "size_bytes": "fileSizeBytes", "minimum_os": "minimumOsVersion", "age_rating": "contentAdvisoryRating",
+                       "seller": "sellerName", "developer_url": "sellerUrl", "devices": "supportedDevices"}
+
 class Client:
     def __init__(self, cfg, db):
         self.cfg, self.db = cfg, db
@@ -92,32 +103,10 @@ class Client:
     def fetch(self, job):
         store, app_id = job["store"], job["app_id"]
         if store == "apple":
-            r = self.get(store, "https://itunes.apple.com/lookup",
-                         {"id": app_id, "country": job["country"], "entity": "software", "lang":job.get("language","en")},
-                         headers={"Accept-Language":job.get("language","en")})
-            if r.status_code != 200:
-                raise FetchError("Apple lookup endpoint unavailable")
-            try:
-                data = r.json()
-                if not isinstance(data.get("results"), list) or data.get("resultCount") != len(data["results"]):
-                    raise ValueError("Bad lookup schema")
-                if data["resultCount"] == 0:
-                    return Result("missing", raw=r.content)
-                app = next(x for x in data["results"] if str(x.get("trackId")) == app_id and x.get("wrapperType") == "software")
-                if not app.get("trackName"):
-                    raise ValueError("Missing title")
-            except (ValueError, TypeError, StopIteration, AttributeError) as e:
-                raise FetchError("Apple response schema changed") from e
-            mapping = {"name": "trackName", "version": "version", "description": "description",
-                       "developer": "artistName", "developer_id": "artistId", "category": "primaryGenreName",
-                       "price": "price", "currency": "currency", "rating": "averageUserRating",
-                       "ratings": "userRatingCount", "updated": "currentVersionReleaseDate",
-                       "released": "releaseDate", "bundle_id": "bundleId", "url": "trackViewUrl",
-                       "icon": "artworkUrl512", "screenshots": "screenshotUrls",
-                       "release_notes": "releaseNotes", "languages": "languageCodesISO2A",
-                       "category_id": "primaryGenreId", "genre_ids": "genreIds", "genres": "genres",
-                       "size_bytes": "fileSizeBytes", "minimum_os": "minimumOsVersion", "age_rating": "contentAdvisoryRating",
-                       "seller": "sellerName", "developer_url": "sellerUrl", "devices": "supportedDevices"}
+            result = self.fetch_many([job])[0]
+            if isinstance(result, FetchError):
+                raise result
+            return result
         else:
             from appgoblin_play_scraper.features.app import parse_dom
             r = self.get(store, "https://play.google.com/store/apps/details",
@@ -142,6 +131,40 @@ class Client:
                        "release_notes": "recentChanges", "summary": "summary", "category_id": "genreId"}
         payload = {k: app.get(v) for k, v in mapping.items()}
         return Result("ok", payload, r.content)
+
+    def fetch_many(self, jobs):
+        """One Apple lookup per market. Ambiguous omissions retry singly, never mass-delist."""
+        if not jobs:
+            return []
+        if len(jobs) > 50 or len({(j['store'],j['country'],j.get('language','en')) for j in jobs}) != 1:
+            raise ValueError('A detail batch must contain at most 50 jobs in one market')
+        if jobs[0]['store'] != 'apple':
+            raise ValueError('This store does not support multi-ID detail lookup')
+        ids = [j['app_id'] for j in jobs]
+        if len(set(ids)) != len(ids):
+            raise ValueError('Duplicate batch IDs')
+        language = jobs[0].get('language','en')
+        r = self.get('apple', 'https://itunes.apple.com/lookup',
+                     {'id':','.join(ids),'country':jobs[0]['country'],'entity':'software','lang':language,'limit':200},
+                     headers={'Accept-Language':language})
+        if r.status_code != 200:
+            raise FetchError('Apple lookup endpoint unavailable')
+        try:
+            data = r.json()
+            rows = data['results']
+            if not isinstance(rows,list) or type(data.get('resultCount')) is not int or data['resultCount'] != len(rows):
+                raise ValueError('Bad lookup schema')
+            found = {}
+            for app in rows:
+                identifier = str(app.get('trackId'))
+                if identifier not in ids or identifier in found or app.get('wrapperType') != 'software' or not app.get('trackName'):
+                    raise ValueError('Invalid lookup item')
+                found[identifier] = app
+        except (ValueError,TypeError,KeyError,AttributeError) as exc:
+            raise FetchError('Apple response schema changed') from exc
+        return [Result('ok', {k:found[i].get(v) for k,v in APPLE_MAPPING.items()}, r.content) if i in found
+                else Result('missing',raw=r.content) if len(ids)==1
+                else FetchError('Apple batch omitted this ID; verify with a single lookup',60) for i in ids]
 
     def discover(self, store, country, kind, term=""):
         if store == "apple":

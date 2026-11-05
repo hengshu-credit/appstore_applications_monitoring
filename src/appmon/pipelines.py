@@ -60,4 +60,17 @@ def save(db, cfg, name, value):
 
 
 def report(db,cfg):
-    return [{'id':name,'name':label,**settings(db,cfg,name)} for name,label in NAMES.items()]
+    rows = [{'id':name,'name':label,**settings(db,cfg,name)} for name,label in NAMES.items()]
+    pool = rows[0]
+    now = time.time()
+    countries = ','.join('%s' for _ in pool['countries'])
+    counts = db.execute(f'''SELECT CASE WHEN j.country NOT IN ({countries}) OR j.language<>%s THEN 'out_of_scope'
+        WHEN %s=0 THEN 'paused' WHEN j.lease_until>%s THEN 'running'
+        WHEN j.failures>0 THEN 'error' WHEN j.due<=%s THEN 'pending' ELSE 'scheduled' END state,count(*) n
+        FROM jobs j WHERE NOT EXISTS (SELECT 1 FROM watchlist w WHERE w.store=j.store AND w.app_id=j.app_id
+        AND w.country=j.country AND w.language=j.language) GROUP BY state''',
+        (*pool['countries'],pool['language'],pool['enabled'],now,now)).fetchall()
+    pool['summary'] = dict.fromkeys(('paused','running','error','pending','scheduled','out_of_scope'),0)
+    pool['summary'].update({r['state']:r['n'] for r in counts})
+    pool['total'] = sum(pool['summary'].values())
+    return rows

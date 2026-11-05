@@ -593,6 +593,71 @@ test("keyword-only plan sends multilingual words and configured depth", async ()
   }
 });
 
+test("category cards drill into state and batch interval preserves scope", async () => {
+  const queries = [],
+    bodies = [];
+  const { window } = await setup((path, options) => {
+    if (path.startsWith("/api/research/collection/tasks?")) {
+      queries.push(new URLSearchParams(path.split("?")[1]));
+      return {
+        items: [],
+        total: 120000,
+        summary: { running: 2, pending: 119995, error: 3, paused: 0 },
+        categories: [
+          {
+            kind: "keywords",
+            total: 120000,
+            summary: { running: 2, pending: 119995, error: 3 },
+          },
+        ],
+        has_more: true,
+      };
+    }
+    if (path === "/api/research/collection/tasks/batch") {
+      bodies.push(JSON.parse(options.body));
+      return { updated: 120000 };
+    }
+  });
+  try {
+    window.confirm = () => true;
+    window.location.hash = "collection";
+    await tick();
+    assert.equal(
+      window.document.querySelectorAll(".collection-category").length,
+      6,
+    );
+    window.document
+      .querySelector('[data-category="keywords"][data-category-state="error"]')
+      .click();
+    await tick();
+    assert.equal(queries.at(-1).get("kind"), "keywords");
+    assert.equal(queries.at(-1).get("state"), "error");
+    assert.equal(queries.at(-1).get("page"), "1");
+    window.document.querySelector("#select-filtered-tasks").click();
+    window.document.querySelector('[data-batch="interval"]').click();
+    const form = window.document.querySelector("#batch-interval-form");
+    form.elements.refresh_hours.value = "168";
+    form.dispatchEvent(
+      new window.Event("submit", { bubbles: true, cancelable: true }),
+    );
+    await tick();
+    assert.equal(bodies[0].scope, "filtered");
+    assert.equal(bodies[0].refresh_hours, 168);
+    assert.equal(bodies[0].filters.kind, "keywords");
+    assert.equal(bodies[0].filters.state, "error");
+    window.document.querySelector("#retry-failed-tasks").click();
+    await tick();
+    assert.equal(bodies[1].action, "retry");
+    assert.equal(bodies[1].scope, "filtered");
+    assert.equal(
+      window.document.querySelector('[name="daily_request_limit"]').value,
+      "10000",
+    );
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
 test("cross-page selection sends scope and filters without enumerating pages", async () => {
   const bodies = [];
   const { window } = await setup((path, options) => {
