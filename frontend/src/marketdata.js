@@ -28,17 +28,17 @@ export function marketDataPanel(panel, esc, state = {}) {
   return panel(
     "市场数据采集",
     `
-    <p id="figures-state" role="status">${esc(state.message || "未配置账户")}</p>
-    <form id="figures-account" class="toolbar">
+    <p id="marketdata-state" role="status">${esc(state.message || "未配置账户")}</p>
+    <form id="marketdata-account" class="toolbar">
       <label>账户邮箱<input type="email" name="email" autocomplete="off" placeholder="可选，与密码一起填写"></label>
       <label>账户密码<input type="password" name="password" autocomplete="new-password"></label>
       <label class="wide">Personal Access Token<input type="password" name="access_token" autocomplete="new-password" placeholder="API 采集必填；不回显"></label>
       <button type="submit">保存并检查 API 授权</button>
-      <button type="button" id="figures-authorize" class="secondary" ${state.configured ? "" : "disabled"}>检查授权</button>
+      <button type="button" id="marketdata-authorize" class="secondary" ${state.configured ? "" : "disabled"}>检查授权</button>
     </form>
     <p class="sub">账密及 Token 加密保存、不回显。可单独填写 Token；每次保存替换全部 市场数据 凭据。官方 API 已停用账密登录，仅保存账密不会启用采集。</p>
     <p class="sub">采集范围由账户权限及剩余额度决定，遇到限制时保留续采进度。</p>
-    <form id="figures-plan" class="toolbar">
+    <form id="marketdata-plan" class="toolbar">
       <label>历史开始日期<input name="start_date" type="date" required value="${start}"></label>
       <label>历史结束日期<input name="end_date" type="date" required value="${end}"></label>
       <label>试用截止时间（本机时区）<input name="stop_at" type="datetime-local" required></label>
@@ -53,18 +53,18 @@ export function marketDataPanel(panel, esc, state = {}) {
       <button type="submit">建立采集计划</button>
     </form>
     <p class="sub">默认回溯一年，可调整日期。先归档目录，再采集榜单和应用历史；保存逐日、分国家数据。空国家范围会显著增加请求量。由观星采集服务执行，关闭页面后继续；达到实际 API 配额或截止时间后停止请求。</p>
-    <div class="toolbar"><button id="figures-refresh" class="secondary">刷新进度与归档</button></div>
-    <div id="figures-progress" role="status"></div>
-    <form id="figures-import" class="toolbar"><label class="wide">导入 市场数据 导出的 CSV<input name="dataset" type="file" accept=".csv,text/csv" required></label><button>归档数据集</button></form>
+    <div class="toolbar"><button id="marketdata-refresh" class="secondary">刷新进度与归档</button></div>
+    <div id="marketdata-progress" role="status"></div>
+    <form id="marketdata-import" class="toolbar"><label class="wide">导入 市场数据 导出的 CSV<input name="dataset" type="file" accept=".csv,text/csv" required></label><button>归档数据集</button></form>
     <p class="sub">可在网页导出后导入 UTF-8 CSV（单文件最多 10 MB），完整保留原始列、行数与校验值。来源估算和官方实测数据分别保存。</p>
-    <div id="figures-import-result" role="status"></div>
+    <div id="marketdata-import-result" role="status"></div>
   `,
   );
 }
 
 export async function bindMarketData({ $, api, esc, table, toast, root }) {
   const find = (selector) => root.querySelector(selector);
-  const anchor = find("#figures-account");
+  const anchor = find("#marketdata-account");
   const run = async (button, action) => {
     button.disabled = true;
     try {
@@ -77,10 +77,10 @@ export async function bindMarketData({ $, api, esc, table, toast, root }) {
   };
   const updateAccount = (data) => {
     if (!anchor.isConnected) return;
-    find("#figures-state").textContent = data.marketdata.message;
-    find("#figures-authorize").disabled = !data.marketdata.configured;
+    find("#marketdata-state").textContent = data.marketdata.message;
+    find("#marketdata-authorize").disabled = !data.marketdata.configured;
   };
-  find("#figures-account").onsubmit = (event) => {
+  find("#marketdata-account").onsubmit = (event) => {
     event.preventDefault();
     const form = event.currentTarget;
     const value = Object.fromEntries(
@@ -100,7 +100,7 @@ export async function bindMarketData({ $, api, esc, table, toast, root }) {
       }
     });
   };
-  find("#figures-authorize").onclick = (event) =>
+  find("#marketdata-authorize").onclick = (event) =>
     run(event.currentTarget, async () =>
       updateAccount(await api("/data-sources/marketdata/authorize", {})),
     );
@@ -108,7 +108,7 @@ export async function bindMarketData({ $, api, esc, table, toast, root }) {
     const data = await api("/data-sources/marketdata/collection");
     if (!anchor.isConnected) return;
     const budget = data.budget;
-    find("#figures-progress").innerHTML =
+    find("#marketdata-progress").innerHTML =
       `<p>${data.heartbeat && data.heartbeat > Date.now() / 1000 - 180 ? "采集服务最近在线" : "等待采集服务启动"}</p>${budget ? `<p>今日 UTC 请求：${esc(budget.used)} / 来源上限 ${esc(budget.source_limit)}${budget.next_at > Date.now() / 1000 ? " · 下次请求 " + esc(new Date(budget.next_at * 1000).toLocaleString()) : ""}</p>` : ""}
       ${
         data.runs
@@ -164,7 +164,7 @@ export async function bindMarketData({ $, api, esc, table, toast, root }) {
           `<a href="/api/data-sources/marketdata/artifacts/${a.id}" title="${esc(a.sha256)}">下载 GZIP</a>`,
         ]),
       )}`;
-    find("#figures-progress")
+    find("#marketdata-progress")
       .querySelectorAll("[data-af-action]")
       .forEach((button) => {
         button.onclick = () =>
@@ -177,9 +177,9 @@ export async function bindMarketData({ $, api, esc, table, toast, root }) {
           });
       });
   };
-  find("#figures-refresh").onclick = (event) =>
+  find("#marketdata-refresh").onclick = (event) =>
     run(event.currentTarget, refresh);
-  find("#figures-plan").onsubmit = (event) => {
+  find("#marketdata-plan").onsubmit = (event) => {
     event.preventDefault();
     const form = event.currentTarget,
       value = {};
@@ -207,7 +207,7 @@ export async function bindMarketData({ $, api, esc, table, toast, root }) {
       await refresh();
     });
   };
-  find("#figures-import").onsubmit = (event) => {
+  find("#marketdata-import").onsubmit = (event) => {
     event.preventDefault();
     const form = event.currentTarget,
       file = form.elements.dataset.files[0];
@@ -218,7 +218,7 @@ export async function bindMarketData({ $, api, esc, table, toast, root }) {
         content: await file.text(),
       });
       if (!anchor.isConnected) return;
-      find("#figures-import-result").textContent =
+      find("#marketdata-import-result").textContent =
         `${result.note}，共 ${result.records} 行。`;
       form.reset();
       await refresh();

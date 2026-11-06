@@ -104,16 +104,17 @@ export function filterFields(id, fields, values = {}) {
           rows[0] || ["", "请选择"];
         return `<div class="filter-control" data-filter-type="${type}"><span id="${uid}-label">${label}</span><select hidden name="${name}">${opts}</select><button class="picker-trigger secondary filter-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="${uid}-options" aria-labelledby="${uid}-label ${uid}-caption"><span id="${uid}-caption" class="filter-caption">${caption(type, selected[0], selected[1])}</span><span aria-hidden="true">⌄</span></button>${popup}</div>`;
       }
+      const required = f.required ? " required" : "";
       const attrs = ["min", "max", "step", "maxlength", "placeholder"]
         .filter((k) => f[k] != null)
         .map((k) => ` ${k}="${escapeFilter(f[k])}"`)
         .join("");
       if (type === "date")
-        return `<label>${label}<input name="${name}" type="date" value="${escapeFilter(value)}"></label>`;
+        return `<label>${label}<input name="${name}" type="date" value="${escapeFilter(value)}"${required}></label>`;
       const match = f.matchKey
         ? `<input type="hidden" data-filter-match data-free="${escapeFilter(f.freeMode || "contains")}" data-picked="${escapeFilter(f.pickedMode || "exact")}" name="${escapeFilter(f.matchKey)}" value="${escapeFilter(values[f.matchKey] || f.freeMode || "contains")}">`
         : "";
-      return `<div class="filter-control ${f.wide ? "wide" : ""}" data-filter-type="suggest" data-filter-source="${escapeFilter(f.source || "")}"><label for="${uid}">${label}</label><input id="${uid}" name="${name}" data-filter-input type="${type === "number" ? "number" : "text"}" role="combobox" autocomplete="off" aria-autocomplete="list" aria-expanded="false" aria-controls="${uid}-options" value="${escapeFilter(value)}"${attrs}>${match}<datalist>${opts}</datalist>${popup}</div>`;
+      return `<div class="filter-control ${f.wide ? "wide" : ""}" data-filter-type="suggest" data-filter-source="${escapeFilter(f.source || "")}"><label for="${uid}">${label}</label><input id="${uid}" name="${name}" data-filter-input type="${type === "number" ? "number" : "text"}" role="combobox" autocomplete="off" aria-autocomplete="list" aria-expanded="false" aria-controls="${uid}-options" value="${escapeFilter(value)}"${attrs}${required}>${match}<datalist>${opts}</datalist>${popup}</div>`;
     })
     .join("");
 }
@@ -126,8 +127,10 @@ export function filterBar({
   after = "",
   className = "",
   resetValues = {},
+  resetSubmit = true,
+  submitDisabled = false,
 }) {
-  return `<form id="${escapeFilter(id)}" class="toolbar filter-bar ${escapeFilter(className)}" data-filter-reset="${escapeFilter(JSON.stringify(resetValues))}" data-filter-bar>${filterFields(id, fields, values)}<button type="submit">${escapeFilter(submit)}</button><button type="button" class="secondary" data-filter-reset-button>重置</button>${actions}${after}</form>`;
+  return `<form id="${escapeFilter(id)}" class="toolbar filter-bar ${escapeFilter(className)}" data-filter-reset="${escapeFilter(JSON.stringify(resetValues))}" data-filter-reset-submit="${resetSubmit}" data-filter-bar>${filterFields(id, fields, values)}<button type="submit" ${submitDisabled ? "disabled" : ""}>${escapeFilter(submit)}</button><button type="button" class="secondary" data-filter-reset-button>重置</button>${actions}${after}</form>`;
 }
 
 export function bindFilterBar(form, onApply, onError) {
@@ -136,6 +139,7 @@ export function bindFilterBar(form, onApply, onError) {
     if (form.dataset.applying === "true") return;
     const submit = form.querySelector('button[type="submit"]');
     const reset = form.querySelector("[data-filter-reset-button]");
+    if (submit.disabled) return;
     form.dataset.applying = "true";
     submit.disabled = true;
     reset.disabled = true;
@@ -353,7 +357,7 @@ export function initFilterBars({ doc = document, win = window, suggest } = {}) {
       form.dispatchEvent(
         new win.CustomEvent("filter-reset", { bubbles: true }),
       );
-      form.requestSubmit();
+      if (form.dataset.filterResetSubmit !== "false") form.requestSubmit();
       return;
     }
 

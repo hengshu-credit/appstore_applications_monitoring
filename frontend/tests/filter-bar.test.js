@@ -176,3 +176,32 @@ test("one click reset clears typed filters and chosen selectors before submittin
     await win.happyDOM.close();
   }
 });
+
+test("reset-only queries and disabled providers cannot accidentally submit", async () => {
+  const win = new Window(),
+    doc = win.document,
+    calls = [];
+  try {
+    initFilterBars({ doc, win });
+    doc.body.innerHTML = filterBar({
+      id: "remote",
+      fields: [{ name: "q", label: "查询", required: true }],
+      submitDisabled: true,
+      resetSubmit: false,
+      values: { q: "old" },
+    });
+    const form = doc.querySelector("form");
+    bindFilterBar(form, (v) => calls.push(v));
+    form.querySelector("[data-filter-reset-button]").click();
+    assert.equal(form.elements.q.value, "");
+    assert.equal(form.elements.q.required, true);
+    assert.equal(form.querySelector("[type=submit]").disabled, true);
+    form.dispatchEvent(
+      new win.Event("submit", { bubbles: true, cancelable: true }),
+    );
+    await Promise.resolve();
+    assert.equal(calls.length, 0);
+  } finally {
+    await win.happyDOM.close();
+  }
+});

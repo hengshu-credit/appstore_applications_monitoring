@@ -509,12 +509,41 @@ export function createDiscoveryPages(ctx) {
           query({ ...m, q: keywordQuery, offset: candidateOffset }),
       );
       const sources = await api("/discovery/keywords/sources");
-      content = `<p class="callout">${esc(sources.note)}</p><details><summary>导入词库</summary><form id="manual-words" class="toolbar"><label class="wide">关键词（每行一个）<textarea name="words" rows="4" required></textarea></label>${field("目标国家（逗号分隔，同语言）", "countries", m.country)}${field("来源名称", "source", "手工词库")}${field("来源网址（可选）", "source_url", "")}${field("来源期间", "source_period", new Date().toLocaleDateString("sv-SE"))}<button type="submit">导入候选词</button></form><form id="frequency-words" class="toolbar">${select(
-        "开源词库语言",
-        "language",
-        sources.frequency_languages.map((v) => [v, v]),
-        m.language,
-      )}${field("目标国家（逗号分隔）", "countries", m.country)}${field("词数上限", "limit", 500, "number", 'min="1" max="5000"')}<button type="submit">下载 FrequencyWords 候选词</button></form><p class="sub">OpenSubtitles 2018，CC BY-SA 4.0。语料词频不代表搜索量；导入后先筛选，未自动采集。</p></details>${filterBar({ id: "candidate-search", values: { q: keywordQuery }, fields: [{ name: "q", label: "筛选词", options: data.items.map((r) => r.keyword) }] })}<div class="toolbar"><button id="candidate-all" class="secondary">选择本页</button><button id="candidate-track">追踪所选词</button><span>共 ${data.total} 个词、${data.source_records ?? data.total} 条来源记录，每页100词</span>${pagination({ id: "candidate-pages", offset: candidateOffset, limit: 100, total: data.total, prevId: "candidate-prev", nextId: "candidate-next" })}</div>${table(
+      content = `<p class="callout">${esc(sources.note)}</p><details><summary>导入词库</summary><form id="manual-words" class="toolbar"><label class="wide">关键词（每行一个）<textarea name="words" rows="4" required></textarea></label>${field("目标国家（逗号分隔，同语言）", "countries", m.country)}${field("来源名称", "source", "手工词库")}${field("来源网址（可选）", "source_url", "")}${field("来源期间", "source_period", new Date().toLocaleDateString("sv-SE"))}<button type="submit">导入候选词</button></form>${filterBar(
+        {
+          id: "frequency-words",
+          submit: "下载 FrequencyWords 候选词",
+          resetSubmit: false,
+          values: { language: m.language, countries: m.country, limit: 500 },
+          resetValues: {
+            language: m.language,
+            countries: m.country,
+            limit: 500,
+          },
+          fields: [
+            {
+              name: "language",
+              label: "开源词库语言",
+              type: "language",
+              options: sources.frequency_languages.map((v) => [v, v]),
+            },
+            {
+              name: "countries",
+              label: "目标国家（逗号分隔）",
+              required: true,
+            },
+            {
+              name: "limit",
+              label: "词数上限",
+              type: "number",
+              min: 1,
+              max: 5000,
+              required: true,
+              options: [100, 500, 1000],
+            },
+          ],
+        },
+      )}<p class="sub">OpenSubtitles 2018，CC BY-SA 4.0。语料词频不代表搜索量；导入后先筛选，未自动采集。</p></details>${filterBar({ id: "candidate-search", values: { q: keywordQuery }, fields: [{ name: "q", label: "筛选词", options: data.items.map((r) => r.keyword) }] })}<div class="toolbar"><button id="candidate-all" class="secondary">选择本页</button><button id="candidate-track">追踪所选词</button><span>共 ${data.total} 个词、${data.source_records ?? data.total} 条来源记录，每页100词</span>${pagination({ id: "candidate-pages", offset: candidateOffset, limit: 100, total: data.total, prevId: "candidate-prev", nextId: "candidate-next" })}</div>${table(
         ["选择", "关键词", "语料词频", "来源", "期间", "许可", "追踪状态"],
         data.items.map((r) => [
           pick("id", r.id),
@@ -643,39 +672,77 @@ export function createDiscoveryPages(ctx) {
       const provider = await api("/discovery/keywords/apple-popularity");
       const official =
         m.store === "apple"
-          ? `<section class="panel"><h2>Apple官方周/月搜索热度</h2><p class="sub">${esc(provider.note)} 授权配置：${provider.configured ? "已配置，查询时验证权限" : "待配置"}</p><form id="apple-popularity-form" class="toolbar">${select(
-              "统计分类",
-              "genre",
-              provider.genres.map((g) => [
-                g,
-                {
-                  BUSINESS: "商务",
-                  EDUCATION: "教育",
-                  ENTERTAINMENT: "娱乐",
-                  FINANCE: "财务",
-                  FOOD_DRINK: "美食佳饮",
-                  GAMES: "游戏",
-                  HEALTH_FITNESS: "健康健身",
-                  LIFESTYLE: "生活",
-                  NEW_PUBLICATION: "新闻出版",
-                  PHOTO_VIDEO: "摄影与视频",
-                  PRODUCTIVITY_UTILITIES: "效率与工具",
-                  SHOPPING: "购物",
-                  SOCIAL_NETWORKING: "社交",
-                  SPORTS: "体育",
-                  TRAVEL: "旅行",
-                }[g] || g,
-              ]),
-              "PRODUCTIVITY_UTILITIES",
-            )}${select(
-              "周期",
-              "period",
-              [
-                ["weekly", "周（日–六）"],
-                ["monthly", "自然月"],
-              ],
-              "weekly",
-            )}${field("周期开始（UTC）", "start", provider.default_start, "date")}${field("最多条数", "limit", 200, "number", 'min="1" max="2000"')}<button type="submit" ${provider.configured ? "" : "disabled"}>查询并保存热度</button></form><details><summary>导入已取得的Apple API响应</summary><form id="apple-popularity-import"><label>响应JSON（result.rows）<textarea name="response" rows="4" required></textarea></label><button type="submit">按上方统计范围导入</button></form></details><p id="apple-popularity-result" role="status"></p></section>`
+          ? `<section class="panel"><h2>Apple官方周/月搜索热度</h2><p class="sub">${esc(provider.note)} 授权配置：${provider.configured ? "已配置，查询时验证权限" : "待配置"}</p>${filterBar(
+              {
+                id: "apple-popularity-form",
+                submit: "查询并保存热度",
+                submitDisabled: !provider.configured,
+                resetSubmit: false,
+                values: {
+                  genre: "PRODUCTIVITY_UTILITIES",
+                  period: "weekly",
+                  start: provider.default_start,
+                  limit: 200,
+                },
+                resetValues: {
+                  genre: "PRODUCTIVITY_UTILITIES",
+                  period: "weekly",
+                  start: provider.default_start,
+                  limit: 200,
+                },
+                fields: [
+                  {
+                    name: "genre",
+                    label: "统计分类",
+                    type: "panel",
+                    options: provider.genres.map((g) => [
+                      g,
+                      {
+                        BUSINESS: "商务",
+                        EDUCATION: "教育",
+                        ENTERTAINMENT: "娱乐",
+                        FINANCE: "财务",
+                        FOOD_DRINK: "美食佳饮",
+                        GAMES: "游戏",
+                        HEALTH_FITNESS: "健康健身",
+                        LIFESTYLE: "生活",
+                        NEW_PUBLICATION: "新闻出版",
+                        PHOTO_VIDEO: "摄影与视频",
+                        PRODUCTIVITY_UTILITIES: "效率与工具",
+                        SHOPPING: "购物",
+                        SOCIAL_NETWORKING: "社交",
+                        SPORTS: "体育",
+                        TRAVEL: "旅行",
+                      }[g] || g,
+                    ]),
+                  },
+                  {
+                    name: "period",
+                    label: "周期",
+                    type: "select",
+                    options: [
+                      ["weekly", "周（日–六）"],
+                      ["monthly", "自然月"],
+                    ],
+                  },
+                  {
+                    name: "start",
+                    label: "周期开始（UTC）",
+                    type: "date",
+                    required: true,
+                  },
+                  {
+                    name: "limit",
+                    label: "最多条数",
+                    type: "number",
+                    min: 1,
+                    max: 2000,
+                    required: true,
+                    options: [100, 200, 500],
+                  },
+                ],
+              },
+            )}<details><summary>导入已取得的Apple API响应</summary><form id="apple-popularity-import"><label>响应JSON（result.rows）<textarea name="response" rows="4" required></textarea></label><button type="submit">按上方统计范围导入</button></form></details><p id="apple-popularity-result" role="status"></p></section>`
           : "";
       content =
         official +

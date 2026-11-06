@@ -1,3 +1,4 @@
+import { filterBar, bindFilterBar } from "./filter-bar.js";
 export function createAppInsights(ctx) {
   const {
     api,
@@ -25,55 +26,55 @@ export function createAppInsights(ctx) {
     }
     host.innerHTML = panel(
       "搜索商店并入库",
-      `<p class="sub">在当前商店与地区查找应用。支持名称、App ID／包名、官方商店链接。</p><form id="store-search-form" class="toolbar"><label class="wide">搜索内容<input name="query" required maxlength="1000" placeholder="应用名称 / App ID / 官方商店链接"></label><button>搜索商店</button></form><div id="store-search-results" aria-live="polite"></div>`,
+      `<p class="sub">在当前商店与地区查找应用。支持名称、App ID／包名、官方商店链接。</p>${filterBar({ id: "store-search-form", submit: "搜索商店", resetSubmit: false, fields: [{ name: "query", label: "搜索内容", required: true, maxlength: 1000, wide: true, placeholder: "应用名称 / App ID / 官方商店链接", source: "app" }] })}<div id="store-search-results" aria-live="polite"></div>`,
     );
     const form = host.querySelector("form"),
       result = host.querySelector("#store-search-results");
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const m = { ...market() },
-        button = form.querySelector("button");
-      button.disabled = true;
-      result.textContent = "正在查询商店…";
-      try {
-        const r = await api("/discovery/search", {
-          ...m,
-          query: new FormData(form).get("query"),
-        });
-        if (!host.isConnected) return;
-        result.innerHTML = `<p class="sub">${esc(r.scope)} · ${esc(r.source)} · ${stamp(r.observed_at)} · ${esc(m.country.toUpperCase())}/${esc(m.language)}</p>${table(
-          ["应用", "ID", "应用库", "操作"],
-          r.items.map((a, i) => [
-            esc(a.name || a.app_id),
-            esc(a.app_id),
-            a.in_library ? "已入库" : "尚未入库",
-            `<button type="button" class="secondary" data-import="${i}">${a.in_library ? "加入监控并采集" : "入库并采集"}</button>`,
-          ]),
-        )}`;
-        result.querySelectorAll("[data-import]").forEach((b) =>
-          b.addEventListener("click", async () => {
-            b.disabled = true;
-            try {
-              const a = r.items[Number(b.dataset.import)];
-              const imported = await api("/discovery/import", {
-                ...m,
-                app_id: a.app_id,
-              });
-              if (!host.isConnected) return;
-              toast("已入库并创建采集计划，进度可在详情查看");
-              b.outerHTML = `<a href="#app/${encodeURIComponent(m.store)}/${encodeURIComponent(imported.app.app_id)}?country=${encodeURIComponent(m.country)}&language=${encodeURIComponent(m.language)}">查看应用详情与采集进度</a>`;
-            } catch (error) {
-              toast(error.message);
-              b.disabled = false;
-            }
-          }),
-        );
-      } catch (error) {
-        result.textContent = error.message;
-      } finally {
-        button.disabled = false;
-      }
-    });
+    form.addEventListener("filter-reset", () => result.replaceChildren());
+    bindFilterBar(
+      form,
+      async (values) => {
+        const m = { ...market() };
+        result.textContent = "正在查询商店…";
+        try {
+          const r = await api("/discovery/search", {
+            ...m,
+            query: values.query,
+          });
+          if (!host.isConnected) return;
+          result.innerHTML = `<p class="sub">${esc(r.scope)} · ${esc(r.source)} · ${stamp(r.observed_at)} · ${esc(m.country.toUpperCase())}/${esc(m.language)}</p>${table(
+            ["应用", "ID", "应用库", "操作"],
+            r.items.map((a, i) => [
+              esc(a.name || a.app_id),
+              esc(a.app_id),
+              a.in_library ? "已入库" : "尚未入库",
+              `<button type="button" class="secondary" data-import="${i}">${a.in_library ? "加入监控并采集" : "入库并采集"}</button>`,
+            ]),
+          )}`;
+          result.querySelectorAll("[data-import]").forEach((b) =>
+            b.addEventListener("click", async () => {
+              b.disabled = true;
+              try {
+                const a = r.items[Number(b.dataset.import)];
+                const imported = await api("/discovery/import", {
+                  ...m,
+                  app_id: a.app_id,
+                });
+                if (!host.isConnected) return;
+                toast("已入库并创建采集计划，进度可在详情查看");
+                b.outerHTML = `<a href="#app/${encodeURIComponent(m.store)}/${encodeURIComponent(imported.app.app_id)}?country=${encodeURIComponent(m.country)}&language=${encodeURIComponent(m.language)}">查看应用详情与采集进度</a>`;
+              } catch (error) {
+                toast(error.message);
+                b.disabled = false;
+              }
+            }),
+          );
+        } catch (error) {
+          result.textContent = error.message;
+        }
+      },
+      toast,
+    );
   }
   function facts(p, base) {
     const date = (v) =>
@@ -103,8 +104,8 @@ export function createAppInsights(ctx) {
       ["开发者 ID", p.developer_id],
       ["开发者邮箱", p.developer_email],
       ["开发者网站", p.developer_website || p.developer_url],
-      ["隐私政策",p.privacy_url],
-      ["内购范围",p.iap_range],
+      ["隐私政策", p.privacy_url],
+      ["内购范围", p.iap_range],
       ["支持语言", (p.languages || []).join(" / ")],
       ["首次入库", stamp(base.first_seen)],
     ];

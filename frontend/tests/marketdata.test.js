@@ -50,9 +50,9 @@ test("市场数据 accepts token-only configuration and immediately clears secre
   );
   try {
     await ctx.bind;
-    const form = ctx.doc.querySelector("#figures-account");
+    const form = ctx.doc.querySelector("#marketdata-account");
     form.elements.access_token.value = "fixture-private-token";
-    ctx.submit("#figures-account");
+    ctx.submit("#marketdata-account");
     assert.equal(form.elements.access_token.value, "");
     await tick();
     assert.equal(
@@ -61,7 +61,7 @@ test("市场数据 accepts token-only configuration and immediately clears secre
       "fixture-private-token",
     );
     assert.equal(
-      ctx.doc.querySelector("#figures-state").textContent,
+      ctx.doc.querySelector("#marketdata-state").textContent,
       "授权有效",
     );
     assert.ok(
@@ -76,12 +76,12 @@ test("市场数据 sends explicit scope and UTC deadline", async () => {
   const ctx = setup();
   try {
     await ctx.bind;
-    const form = ctx.doc.querySelector("#figures-plan");
+    const form = ctx.doc.querySelector("#marketdata-plan");
     form.elements.countries.value = "US, th";
     form.elements.products.value = "123,456";
     form.elements.stop_at.value = "2030-01-02T03:04";
     form.elements.ranks.checked = false;
-    ctx.submit("#figures-plan");
+    ctx.submit("#marketdata-plan");
     await tick();
     const request = ctx.calls.find((c) => c.value?.stop_at);
     assert.deepEqual(request.value.countries, ["us", "th"]);

@@ -126,12 +126,20 @@ const qs = (obj) =>
     Object.entries(obj).filter(([, v]) => v !== "" && v != null),
   ).toString();
 initFilterBars({
-  suggest: (field, q) =>
+  suggest: (field, q, form) =>
     field === "developer-directory"
       ? api("/research/developers?" + qs({ store: market().store, q })).then(
           (rows) => rows.map((r) => r.name),
         )
-      : api("/apps/filter-options?" + qs({ ...market(), field, q })),
+      : api(
+          "/apps/filter-options?" +
+            qs({
+              ...market(),
+              store: form?.elements.store?.value || market().store,
+              field,
+              q,
+            }),
+        ),
 });
 const kindLabel = (v) =>
   ({
@@ -996,26 +1004,101 @@ async function multiCharts(rev) {
       }),
   );
 }
+let detailFilters = {},
+  detailOffset = 0,
+  detailLimit = 50;
 async function watchlist(rev) {
-  const rows = await api("/watchlist");
-  mount(
-    collectionLink("details") +
-      panel(
-        "重点监控结果",
-        table(
-          ["应用", "市场 / 分组", "状态", "周期 / 下次采集", "管理"],
-          rows.map((r) => [
-            appLink(r.store, r.app_id, r.name, null, r.country, r.language),
-            `${esc(r.country)} / ${esc(r.language)}<div class="sub">${esc(r.group_name)}</div>`,
-            badge(r.state) +
-              `<div class="sub">${r.enabled ? "监控中" : "已暂停"}</div>`,
-            r.refresh_hours + 'h<div class="sub">' + stamp(r.due) + "</div>",
-            '<a href="#collection">管理任务</a>',
-          ]),
-        ),
-      ),
-    rev,
+  const data = await api(
+    "/availability/watched?" +
+      qs({
+        ...detailFilters,
+        store: market().store,
+        offset: detailOffset,
+        limit: detailLimit,
+      }),
   );
+  if (
+    !mount(
+      collectionLink("details") +
+        panel(
+          "重点监控结果",
+          filterBar({
+            id: "detail-task-filter",
+            values: detailFilters,
+            fields: [
+              { name: "country", label: "国家 / 地区", type: "country" },
+              { name: "language", label: "语言", type: "language" },
+              {
+                name: "enabled",
+                label: "监控",
+                type: "panel",
+                options: [
+                  ["", "全部"],
+                  ["1", "监控中"],
+                  ["0", "已暂停"],
+                ],
+              },
+              {
+                name: "state",
+                label: "观察状态",
+                type: "panel",
+                options: [
+                  ["", "全部状态"],
+                  ["available", "在架"],
+                  ["suspected_missing", "待复核"],
+                  ["region_unavailable", "地区不可用"],
+                  ["unobserved", "尚未验证"],
+                ],
+              },
+              {
+                name: "group_name",
+                label: "分类",
+                type: "panel",
+                options: [["", "全部分类"], ...data.groups],
+              },
+              { name: "q", label: "应用名称 / ID", source: "app", wide: true },
+            ],
+          }) +
+            table(
+              ["应用", "市场 / 分组", "状态", "周期 / 下次采集", "管理"],
+              data.items.map((r) => [
+                appLink(r.store, r.app_id, r.name, null, r.country, r.language),
+                `${esc(r.country)} / ${esc(r.language)}<div class="sub">${esc(r.group_name)}</div>`,
+                badge(r.state) +
+                  `<div class="sub">${r.enabled ? "监控中" : "已暂停"}</div>`,
+                r.refresh_hours +
+                  'h<div class="sub">' +
+                  stamp(r.due) +
+                  "</div>",
+                '<a href="#collection">管理任务</a>',
+              ]),
+            ) +
+            pagination({
+              id: "detail-task-pages",
+              offset: data.offset,
+              limit: data.limit,
+              total: data.total,
+              sizes: [25, 50, 100, 200],
+            }),
+        ),
+      rev,
+    )
+  )
+    return;
+  bindFilterBar(
+    $("#detail-task-filter"),
+    async (values) => {
+      detailFilters = values;
+      detailOffset = 0;
+      await watchlist(++revision);
+    },
+    toast,
+  );
+  bindPagination(document, "detail-task-pages", (offset, limit) => {
+    detailOffset = offset;
+    detailLimit = limit;
+    return watchlist(++revision);
+  });
 }
 async function observations(rev, kind) {
   const rows = await api("/targets?kind=" + kind);

@@ -5,23 +5,27 @@ from .db import dump
 from .intelligence import market
 
 
-def watched(db, store='all', country='', group_name='', q='', offset=0, limit=100):
+def watched(db, store='all', country='', group_name='', q='', offset=0, limit=100, language='', enabled='', state=''):
     from .locales import stores
     import re
     selected=stores(store)
     if country and not re.fullmatch('[a-zA-Z]{2}',country):raise ValueError('国家代码无效')
     if len(group_name)>120 or len(q)>255:raise ValueError('筛选条件过长')
+    if language and not re.fullmatch('[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*',language):raise ValueError('语言代码无效')
+    if enabled not in ('','0','1'):raise ValueError('监控状态无效')
+    if state not in ('','available','suspected_missing','region_unavailable','unobserved'):raise ValueError('观察状态无效')
     if type(offset) is not int or offset<0 or type(limit) is not int or not 1<=limit<=200:raise ValueError('分页参数无效')
     clauses=['w.store IN ('+','.join('%s' for _ in selected)+')'];args=list(selected)
-    for column,value in [('country',country.lower()),('group_name',group_name)]:
+    for column,value in [('country',country.lower()),('group_name',group_name),('language',language),('enabled',enabled)]:
         if value:clauses.append('w.'+column+'=%s');args.append(value)
+    if state=='unobserved':clauses.append('l.state IS NULL')
+    elif state:clauses.append('l.state=%s');args.append(state)
     if q:
         clauses.append('(LOCATE(%s,w.app_id)>0 OR LOCATE(%s,a.name)>0)');args.extend([q,q])
     where=' AND '.join(clauses)
-    base=' FROM watchlist w LEFT JOIN apps a USING(store,app_id) '
+    base=' FROM watchlist w LEFT JOIN apps a USING(store,app_id) LEFT JOIN listings l USING(store,app_id,country,language) '
     total=db.execute('SELECT COUNT(*) n'+base+'WHERE '+where,args).fetchone()['n']
     rows=db.execute('''SELECT w.*,a.name,l.state,l.checked_at,l.last_success,j.due,j.failures,j.last_error'''+base+'''
-        LEFT JOIN listings l USING(store,app_id,country,language)
         LEFT JOIN jobs j USING(store,app_id,country,language) WHERE '''+where+'''
         ORDER BY w.group_name,w.store,w.country,w.app_id,w.language LIMIT %s OFFSET %s''',(*args,limit,offset)).fetchall()
     groups=[r['group_name'] for r in db.execute('SELECT DISTINCT group_name FROM watchlist ORDER BY group_name').fetchall()]

@@ -15,21 +15,21 @@ class Response:
 
 class SourceAccountsTest(MySQLTestCase):
     def test_directory_has_separate_encrypted_configuration_and_session(self):
-        def brain_login(client,saved):
-            self.assertEqual(saved['email'],'brain@example.com')
-            self.assertEqual(saved['password'],'brain-secret')
-            client.cookies.set('brain-session','brain-cookie',domain='.directory.example',path='/')
+        def directory_login(client,saved):
+            self.assertEqual(saved['email'],'directory@example.com')
+            self.assertEqual(saved['password'],'directory-secret')
+            client.cookies.set('directory-session','directory-cookie',domain='.directory.example',path='/')
             client.cookies.set('unrelated','do-not-store',domain='other.example',path='/')
             return 'authorized'
-        with patch('appmon.directory_source.authorize',side_effect=brain_login):
-            result=data_sources.save(self.db,self.cfg,{'email':'brain@example.com','password':'brain-secret'},'directory')
+        with patch('appmon.directory_source.authorize',side_effect=directory_login):
+            result=data_sources.save(self.db,self.cfg,{'email':'directory@example.com','password':'directory-secret'},'directory')
         self.assertEqual(result['directory']['status'],'authorized')
         self.assertEqual(result['community']['status'],'not_configured')
         row=self.db.execute("SELECT secret FROM source_accounts WHERE provider='directory'").fetchone()
-        self.assertNotIn('brain-secret',row['secret'])
-        self.assertNotIn('brain-cookie',json.dumps(result))
+        self.assertNotIn('directory-secret',row['secret'])
+        self.assertNotIn('directory-cookie',json.dumps(result))
         saved=json.loads(data_sources.cipher(self.cfg).decrypt(row['secret'].encode()))
-        self.assertEqual([c['name'] for c in saved['cookies']],['brain-session'])
+        self.assertEqual([c['name'] for c in saved['cookies']],['directory-session'])
 
     def test_credentials_and_cookies_encrypted_and_expired_session_reauthorized(self):
         client=requests.Session();calls=[];expired=False

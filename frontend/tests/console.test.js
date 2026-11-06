@@ -380,7 +380,8 @@ test("navigation queries the API and escapes upstream application content", asyn
 
 test("watchlist configuration moves to the center and sends explicit market and numeric interval", async () => {
   const { window, calls } = await setup((path, options) => {
-    if (path.split("?")[0] === "/api/watchlist") return [];
+    if (path.split("?")[0] === "/api/availability/watched")
+      return { items: [], groups: [], total: 0, offset: 0, limit: 50 };
     if (path === "/api/research/plans/preview") {
       const v = JSON.parse(options.body);
       return {
@@ -399,6 +400,9 @@ test("watchlist configuration moves to the center and sends explicit market and 
     window.location.hash = "watchlist";
     await tick();
     assert.equal(window.document.querySelector("#watch-form"), null);
+    assert.ok(
+      window.document.querySelector("#detail-task-filter[data-filter-bar]"),
+    );
     window.document.querySelector('a[href="#collection?new=details"]').click();
     await tick();
     const form = window.document.querySelector("#plan-form");
@@ -419,6 +423,57 @@ test("watchlist configuration moves to the center and sends explicit market and 
     assert.equal(body.country, "us");
     assert.equal(body.store, "google");
     assert.deepEqual(body.app_ids, ["com.example.app"]);
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("detail monitoring uses bounded pages, fuzzy Enter filtering and reset", async () => {
+  const { window, calls } = await setup((path) => {
+    if (!path.startsWith("/api/availability/watched?")) return;
+    const p = new URL(path, "http://local").searchParams;
+    return {
+      items: [],
+      groups: ["现金贷类APP"],
+      total: 2132,
+      offset: Number(p.get("offset")),
+      limit: Number(p.get("limit")),
+    };
+  });
+  try {
+    window.location.hash = "watchlist";
+    await tick();
+    window.document.querySelector("#detail-task-pages-next").click();
+    await tick();
+    assert.ok(calls.at(-1).path.includes("offset=50"));
+    const form = window.document.querySelector("#detail-task-filter");
+    form.elements.q.value = "loan";
+    form.elements.q.dispatchEvent(
+      new window.KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await tick();
+    assert.ok(calls.at(-1).path.includes("q=loan"));
+    assert.ok(calls.at(-1).path.includes("offset=0"));
+    window.document
+      .querySelector("#detail-task-filter [data-filter-reset-button]")
+      .click();
+    await tick();
+    assert.equal(
+      new URL(calls.at(-1).path, "http://local").searchParams.get("q"),
+      null,
+    );
+    assert.equal(
+      window.document.querySelector("#detail-task-filter").elements.q.value,
+      "",
+    );
+    assert.equal(
+      calls.some((c) => c.path.split("?")[0] === "/api/watchlist"),
+      false,
+    );
   } finally {
     await window.happyDOM.close();
   }
@@ -925,6 +980,7 @@ test("ASO workbench edits a versioned local draft and never submits to a store",
   try {
     window.location.hash = "aso";
     await tick();
+    assert.ok(window.document.querySelector("#aso-load[data-filter-bar]"));
     window.document.querySelector("#aso-load [name=app_id]").value =
       "com.example.app";
     window.document
@@ -1630,6 +1686,19 @@ test("official popularity does not send a network query when credentials are unc
       ).disabled,
       true,
     );
+    assert.ok(
+      window.document.querySelector("#apple-popularity-form[data-filter-bar]"),
+    );
+    window.document
+      .querySelector("#apple-popularity-form [data-filter-reset-button]")
+      .click();
+    assert.equal(
+      window.document.querySelector(
+        '#apple-popularity-form button[type="submit"]',
+      ).disabled,
+      true,
+    );
+
     assert.match(
       window.document.querySelector("#content").textContent,
       /待配置/,
@@ -1989,6 +2058,16 @@ test("admin source configuration submits secrets in the request body, clears pas
   try {
     window.location.hash = "datasources";
     await tick();
+    const sourceQuery = window.document.querySelector("#source-app-query");
+    assert.equal(sourceQuery.dataset.filterBar, "");
+    assert.ok(sourceQuery.querySelector('[data-filter-type="store"]'));
+    sourceQuery.elements.app_id.value = "com.example.app";
+    sourceQuery.querySelector("[data-filter-reset-button]").click();
+    assert.equal(sourceQuery.elements.app_id.value, "");
+    assert.equal(
+      calls.some((c) => c.path === "/api/data-sources/app-metrics"),
+      false,
+    );
     const form = window.document.querySelector("#provider-account");
     form.elements.email.value = "fixture@example.com";
     form.elements.password.value = "fixture-secret";
@@ -2012,24 +2091,48 @@ test("admin source configuration submits secrets in the request body, clears pas
       false,
     );
     assert.ok(calls.every((c) => !c.path.includes("fixture-secret")));
-    const brain = window.document.querySelector("#brain-account");
-    brain.elements.email.value = "brain@example.com";
-    brain.elements.password.value = "brain-secret";
-    brain.dispatchEvent(
+    const directory = window.document.querySelector("#directory-account");
+    directory.elements.email.value = "directory@example.com";
+    directory.elements.password.value = "directory-secret";
+    directory.dispatchEvent(
       new window.Event("submit", { bubbles: true, cancelable: true }),
     );
-    assert.equal(brain.elements.password.value, "");
+    assert.equal(directory.elements.password.value, "");
     await tick();
     assert.match(
-      window.document.querySelector("#brain-state").textContent,
+      window.document.querySelector("#directory-state").textContent,
       /安装指标授权有效/,
     );
     assert.ok(
       calls.some(
         (c) =>
           c.path === "/api/data-sources/directory" &&
-          JSON.parse(c.options.body).email === "brain@example.com",
+          JSON.parse(c.options.body).email === "directory@example.com",
       ),
+    );
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("store lookup reuses shared query controls and reset clears without fetching", async () => {
+  const { window, calls } = await setup((path) =>
+    path.startsWith("/api/apps?") ? { items: [], next: null } : undefined,
+  );
+  try {
+    window.location.hash = "apps";
+    await tick();
+    const form = window.document.querySelector(
+      "#store-search-form[data-filter-bar]",
+    );
+    assert.ok(form);
+    assert.equal(form.elements.query.required, true);
+    form.elements.query.value = "chat";
+    form.querySelector("[data-filter-reset-button]").click();
+    assert.equal(form.elements.query.value, "");
+    assert.equal(
+      calls.some((c) => c.path === "/api/discovery/search"),
+      false,
     );
   } finally {
     await window.happyDOM.close();

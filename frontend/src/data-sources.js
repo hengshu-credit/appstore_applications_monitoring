@@ -1,3 +1,4 @@
+import { filterBar, bindFilterBar } from "./filter-bar.js";
 import { marketDataPanel, bindMarketData } from "./marketdata.js";
 
 export function createDataSourcePage({
@@ -12,7 +13,10 @@ export function createDataSourcePage({
   return async (revision) => {
     const data = await api("/data-sources"),
       state = data.community,
-      brain = data.directory || { configured: false, message: "未配置账户" };
+      directory = data.directory || {
+        configured: false,
+        message: "未配置账户",
+      };
     const metricsLabels = {
       total_installs: "来源累计安装（全球）",
       installs: "累计安装档位下限",
@@ -25,7 +29,44 @@ export function createDataSourcePage({
     };
     if (
       !mount(
-        `${panel("公开指标接入", `<p id="provider-state" role="status">${esc(state.message)}${state.checked_at ? " · " + new Date(state.checked_at * 1000).toLocaleString() : ""}</p><form id="provider-account" class="toolbar"><label>账户邮箱<input type="email" name="email" required autocomplete="off" placeholder="${state.configured ? "已保存，更换账户时填写" : "公开元数据 登录邮箱"}"></label><label>密码<input type="password" name="password" required autocomplete="new-password"></label><button type="submit">保存并自动授权</button><button type="button" id="provider-authorize" class="secondary" ${state.configured ? "" : "disabled"}>检查 / 续期授权</button><button type="button" id="provider-datasets" class="secondary" ${state.configured ? "" : "disabled"}>读取免费数据目录</button></form><p class="sub">账密与会话加密保存在服务器，密码不回显。普通密码登录可自动授权；邮箱验证、验证码或二次验证需在 公开元数据 完成。授权不自动开通付费服务。</p><div id="provider-result"></div>`)}${panel("安装指标接入", `<p id="brain-state" role="status">${esc(brain.message)}</p><form id="brain-account" class="toolbar"><label>账户邮箱<input name="email" type="email" required autocomplete="off" placeholder="${brain.configured ? "已保存，更换时填写" : "安装指标 登录邮箱"}"></label><label>密码<input name="password" type="password" required autocomplete="new-password"></label><button type="submit">保存并自动授权</button><button type="button" id="brain-authorize" class="secondary" ${brain.configured ? "" : "disabled"}>检查 / 续期授权</button></form><p class="sub">使用 安装指标 自身的邮箱密码；第三方单点登录和验证码需在来源网站完成。免费账户仅获取实际开放的数据。</p>`)}${panel("获取应用公开指标", `<form id="source-app-query" class="toolbar"><label>优先来源<select name="provider"><option value="auto">自动兜底</option><option value="community">公开元数据</option><option value="directory">安装指标</option></select></label><label>商店<select name="store"><option value="google">Google Play</option><option value="apple">App Store</option></select></label><label class="wide">应用 ID<input name="app_id" required placeholder="com.openai.chatgpt 或 6448311069"></label><button>获取来源快照</button></form><p class="sub">优先使用 公开元数据；失败时检查 Android 备用来源。每个来源保留独立口径和缺失字段。</p><div id="source-app-result"></div>`)}${panel(
+        `${panel("公开指标接入", `<p id="provider-state" role="status">${esc(state.message)}${state.checked_at ? " · " + new Date(state.checked_at * 1000).toLocaleString() : ""}</p><form id="provider-account" class="toolbar"><label>账户邮箱<input type="email" name="email" required autocomplete="off" placeholder="${state.configured ? "已保存，更换账户时填写" : "公开元数据 登录邮箱"}"></label><label>密码<input type="password" name="password" required autocomplete="new-password"></label><button type="submit">保存并自动授权</button><button type="button" id="provider-authorize" class="secondary" ${state.configured ? "" : "disabled"}>检查 / 续期授权</button><button type="button" id="provider-datasets" class="secondary" ${state.configured ? "" : "disabled"}>读取免费数据目录</button></form><p class="sub">账密与会话加密保存在服务器，密码不回显。普通密码登录可自动授权；邮箱验证、验证码或二次验证需在 公开元数据 完成。授权不自动开通付费服务。</p><div id="provider-result"></div>`)}${panel("安装指标接入", `<p id="directory-state" role="status">${esc(directory.message)}</p><form id="directory-account" class="toolbar"><label>账户邮箱<input name="email" type="email" required autocomplete="off" placeholder="${directory.configured ? "已保存，更换时填写" : "安装指标 登录邮箱"}"></label><label>密码<input name="password" type="password" required autocomplete="new-password"></label><button type="submit">保存并自动授权</button><button type="button" id="directory-authorize" class="secondary" ${directory.configured ? "" : "disabled"}>检查 / 续期授权</button></form><p class="sub">使用 安装指标 自身的邮箱密码；第三方单点登录和验证码需在来源网站完成。免费账户仅获取实际开放的数据。</p>`)}${panel(
+          "获取应用公开指标",
+          `${filterBar({
+            id: "source-app-query",
+            submit: "获取来源快照",
+            resetSubmit: false,
+            values: { provider: "auto", store: "google" },
+            fields: [
+              {
+                name: "provider",
+                label: "优先来源",
+                type: "select",
+                options: [
+                  ["auto", "自动兜底"],
+                  ["community", "公开元数据"],
+                  ["directory", "安装指标"],
+                ],
+              },
+              {
+                name: "store",
+                label: "商店",
+                type: "store",
+                options: [
+                  ["google", "Google Play"],
+                  ["apple", "App Store"],
+                ],
+              },
+              {
+                name: "app_id",
+                label: "应用 ID",
+                required: true,
+                wide: true,
+                placeholder: "com.openai.chatgpt 或 6448311069",
+                source: "app",
+              },
+            ],
+          })}<p class="sub">优先使用 公开元数据；失败时检查 Android 备用来源。每个来源保留独立口径和缺失字段。</p><div id="source-app-result"></div>`,
+        )}${panel(
           "可用来源与兜底范围",
           table(
             ["来源", "访问方式", "可提供", "限制"],
@@ -94,11 +135,11 @@ export function createDataSourcePage({
             result.files.map((f) => [esc(f)]),
           )}`;
       });
-    const updateBrain = (result) => {
-      $("#brain-state").textContent = result.directory.message;
-      $("#brain-authorize").disabled = !result.directory.configured;
+    const updateDirectory = (result) => {
+      $("#directory-state").textContent = result.directory.message;
+      $("#directory-authorize").disabled = !result.directory.configured;
     };
-    $("#brain-account").onsubmit = (event) => {
+    $("#directory-account").onsubmit = (event) => {
       event.preventDefault();
       const form = event.currentTarget,
         value = {
@@ -109,22 +150,25 @@ export function createDataSourcePage({
       run(form.querySelector('[type="submit"]'), async () => {
         try {
           const result = await api("/data-sources/directory", value, "PUT");
-          if (form.isConnected) updateBrain(result);
+          if (form.isConnected) updateDirectory(result);
         } finally {
           value.password = "";
         }
       });
     };
-    $("#brain-authorize").onclick = (event) =>
+    $("#directory-authorize").onclick = (event) =>
       run(event.currentTarget, async () => {
         const result = await api("/data-sources/directory/authorize", {});
-        if (event.target.isConnected) updateBrain(result);
+        if (event.target.isConnected) updateDirectory(result);
       });
-    $("#source-app-query").onsubmit = (event) => {
-      event.preventDefault();
-      const form = event.currentTarget;
-      $("#source-app-result").textContent = "正在获取所选应用的来源快照…";
-      run(form.querySelector("button"), async () => {
+    const queryForm = $("#source-app-query");
+    queryForm.addEventListener("filter-reset", () =>
+      $("#source-app-result").replaceChildren(),
+    );
+    bindFilterBar(
+      queryForm,
+      async (values, form) => {
+        $("#source-app-result").textContent = "正在获取所选应用的来源快照…";
         const result = await api("/data-sources/app-metrics", {
           provider: form.elements.provider.value,
           store: form.elements.store.value,
@@ -144,7 +188,8 @@ export function createDataSourcePage({
               esc(v),
             ]),
           )}<p>${esc(result.note)}</p>`;
-      });
-    };
+      },
+      toast,
+    );
   };
 }

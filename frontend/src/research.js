@@ -299,7 +299,7 @@ export function createResearchPages(ctx) {
     }
     if (
       !mount(
-        `${panel("选择应用市场", `<form id="aso-load" class="toolbar">${field("应用 ID", "app_id", appId, "text", "required")}<button type="submit">加载已采文案</button></form><p class="sub">${esc(marketCaption(market()))}。Apple后台关键词和未采集副标题需由用户提供。</p>`)}<div id="aso-workspace">${empty("选择应用开始文案核查", "公开详情会作为基准快照；不会读取竞品私有后台。")}</div>`,
+        `${panel("选择应用市场", `${filterBar({ id: "aso-load", submit: "加载已采文案", values: { app_id: appId }, fields: [{ name: "app_id", label: "应用 ID", source: "app", wide: true }] })}<p class="sub">${esc(marketCaption(market()))}。Apple后台关键词和未采集副标题需由用户提供。</p>`)}<div id="aso-workspace">${empty("选择应用开始文案核查", "公开详情会作为基准快照；不会读取竞品私有后台。")}</div>`,
         rev,
       )
     )

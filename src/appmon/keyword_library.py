@@ -21,7 +21,7 @@ def prepare_reports(folder, bindings):
     """Validate every file/binding before importing the first report."""
     paths = sorted(Path(folder).glob('*数据报告*.xlsx'))
     if not paths:
-        raise ValueError('目录中未发现点点数据报告xlsx')
+        raise ValueError('目录中未发现应用关键词报告xlsx')
     prepared, seen, duplicates = [], {}, []
     for path in paths:
         raw = path.read_bytes()

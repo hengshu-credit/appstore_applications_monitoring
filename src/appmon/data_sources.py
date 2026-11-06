@@ -116,11 +116,11 @@ def _authorize(db,cfg,provider):
                 if cookie_allowed(client.source_profile,cookie.get('domain','')):
                     client.cookies.set(cookie['name'],cookie['value'],domain=cookie['domain'],path=cookie.get('path','/'),secure=True)
             if provider=='marketdata':
-                from .marketdata_source import authorize as figures_authorize
-                outcome=figures_authorize(db,client,saved)
+                from .marketdata_source import authorize as marketdata_authorize
+                outcome=marketdata_authorize(db,client,saved)
             elif provider=='directory':
-                from .directory_source import authorize as brain_authorize
-                outcome=brain_authorize(client,saved)
+                from .directory_source import authorize as directory_authorize
+                outcome=directory_authorize(client,saved)
             elif saved.get('cookies') and authorized_user(request(client,'GET','/auth/me')):outcome='authorized'
             else:
                 client.cookies.clear()
@@ -166,7 +166,7 @@ def dataset_catalog(db,cfg):
             'note':'已通过账户会话读取目录。下载范围由免费账户权限决定；此处不代表文件已导入。'}
 
 
-def brain_metrics(db,cfg,store,app_id):
+def directory_metrics(db,cfg,store,app_id):
     from . import directory_source
     import hashlib
     if store!='google':raise ValueError('安装指标当前适配器仅支持Android应用')
@@ -188,7 +188,7 @@ def app_metrics(db,cfg,store,app_id,provider='auto'):
     if provider not in ('auto',*PROVIDERS):raise ValueError('未知数据源')
     if provider=='marketdata':raise ValueError('请在 市场数据 试用期采集面板建立计划并查看来源归档')
     if provider=='directory':
-        try:return brain_metrics(db,cfg,store,app_id)
+        try:return directory_metrics(db,cfg,store,app_id)
         except requests.RequestException:raise ValueError('安装指标连接失败，请稍后重试') from None
     failures=[]
     if status(db)['community']['configured']:
@@ -201,7 +201,7 @@ def app_metrics(db,cfg,store,app_id,provider='auto'):
     except (ValueError,requests.RequestException):failures.append('公开元数据公开页未成功')
     if provider=='community':raise ValueError('；'.join(failures))
     if store=='google' and status(db)['directory']['configured']:
-        try:return brain_metrics(db,cfg,store,app_id)
+        try:return directory_metrics(db,cfg,store,app_id)
         except (ValueError,requests.RequestException):failures.append('安装指标账户访问未成功')
     if store=='google':
         row=db.execute("SELECT payload,last_success AS observed_at FROM listings WHERE store='google' AND app_id=%s AND last_success IS NOT NULL ORDER BY last_success DESC LIMIT 1",(app_id,)).fetchone()

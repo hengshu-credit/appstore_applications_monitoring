@@ -32,6 +32,18 @@ class WatchlistValidationTest(unittest.TestCase):
 
 
 class WatchlistImportTest(MySQLTestCase):
+    def test_detail_task_filters_apply_before_count_and_pagination(self):
+        for country,language in [('us','en'),('th','th')]:
+            watch(self.db,dict(store='google',app_id='com.loan.example',country=country,language=language,group_name='贷款'))
+        self.db.execute("UPDATE watchlist SET enabled=0 WHERE country='th'")
+        data=availability.watched(self.db,q='loan',language='th',enabled='0',state='unobserved',limit=1)
+        self.assertEqual(data['total'],1)
+        self.assertEqual((data['items'][0]['country'],data['items'][0]['enabled']),('th',0))
+        self.assertEqual(availability.watched(self.db,language='en',enabled='0')['total'],0)
+        self.assertEqual(availability.watched(self.db,state='available')['total'],0)
+        for kwargs in ({'language':'???'},{'enabled':'2'},{'state':'invented'}):
+            with self.assertRaises(ValueError):availability.watched(self.db,**kwargs)
+
     def test_idempotent_import_preserves_existing_settings_and_never_creates_status(self):
         watch(self.db,dict(store='google',app_id='com.existing.app',country='us',language='en',group_name='原分组',refresh_hours=3))
         old=self.db.execute('SELECT * FROM watchlist').fetchone()
