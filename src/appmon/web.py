@@ -200,7 +200,7 @@ def create_app(cfg):
         return app_groups.adjust_member(db,identifier,member_id,value,request.state.user['username'])
 
     @api.get('/groups/{identifier}/members/{member_id}')
-    def group_member(identifier:int,member_id:int,days:int=30,db=DB):return app_groups.member_detail(db,identifier,member_id,days)
+    def group_member(identifier:int,member_id:int,days:int=30,db=DB):return app_groups.member_detail(db,identifier,member_id,days,cfg)
 
     @api.get('/groups/{identifier}/members/{member_id}/rank-history')
     def group_rank_history(identifier:int,member_id:int,kind:str,target_id:int,days:int=30,db=DB):

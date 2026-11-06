@@ -41,12 +41,29 @@ def worker(cfg, db):
     Thread(target=icon_worker,args=(cfg,),daemon=True,name='app-icons').start()
     Thread(target=marketdata_worker,args=(cfg,),daemon=True,name='marketdata').start()
     Thread(target=permission_worker,args=(cfg,),daemon=True,name='permissions').start()
+    Thread(target=developer_reference_worker,args=(cfg,),daemon=True,name='developer-references').start()
     while True:
         try:
             log.info("Console cycle %s", run_once(cfg, db,include_icons=False))
         except Exception as exc:
             log.error("Console cycle failed: %s", type(exc).__name__)
         time.sleep(10)
+
+
+def developer_reference_worker(cfg):
+    from .db import connect
+    from .developer_refs import refresh
+    while True:
+        try:
+            db = connect(cfg,initialize=False)
+            try:
+                with db.named_lock('group-developer-references'):
+                    refresh(db,cfg)
+            finally:
+                db.close()
+        except Exception as exc:
+            log.error('Developer reference refresh failed: %s',type(exc).__name__)
+        time.sleep(3600)
 
 
 def marketdata_worker(cfg):

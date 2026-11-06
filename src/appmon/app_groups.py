@@ -10,6 +10,7 @@ import pymysql
 from .db import add_apps, dump
 from .intelligence import market, text
 from . import app_permissions, metric_facts
+from . import developer_refs
 
 
 def group(db, identifier):
@@ -289,7 +290,7 @@ def rankings(db, identifier, store='all', country='', now=None):
     return {r['id']:r for r in keyword},{r['id']:r for r in chart},*sampled
 
 
-def member_rank_details(db, identifier, page, now):
+def member_rank_details(db, identifier, page, now, cfg):
     if not page:
         return
     members = {row['id']: row for row in page}
@@ -298,7 +299,7 @@ def member_rank_details(db, identifier, page, now):
         row['chart_positions'] = []
     where = 'm.group_id=%s AND m.id IN (' + ','.join('%s' for _ in page) + ')'
     args = (identifier, *members)
-    identity = db.execute(f'''SELECT m.id,JSON_OBJECT('developer',l.payload->'$.developer','icon',l.payload->'$.icon',
+    identity = db.execute(f'''SELECT m.id,JSON_OBJECT('developer',l.payload->'$.developer','developer_id',l.payload->'$.developer_id','icon',l.payload->'$.icon',
         'price',l.payload->'$.price','currency',l.payload->'$.currency','has_iap',l.payload->'$.has_iap',
         'languages',l.payload->'$.languages','updated',l.payload->'$.updated','version',l.payload->'$.version') metadata,
         r.observed_at review_sample_at FROM app_group_members m LEFT JOIN listings l USING(store,app_id,country,language)
@@ -307,9 +308,11 @@ def member_rank_details(db, identifier, page, now):
         LEFT JOIN observation_runs r ON r.id=t.latest_success_id AND r.outcome='ok' WHERE {where}''',args).fetchall()
     midnight = datetime.fromtimestamp(now, timezone.utc).replace(hour=0,minute=0,second=0,microsecond=0)
     yesterday = midnight - timedelta(days=1)
+    refs = developer_refs.references(cfg)
     for item in identity:
         member = members[item['id']]
         member.update(json.loads(item['metadata']))
+        member.update(developer_refs.identity(member,member,refs))
         member['yesterday_reviews'] = 0 if (item['review_sample_at'] or 0)>=midnight.timestamp() else None
     # Published dates may carry a storefront offset. Narrow the SQL range, then compare in UTC.
     dates = db.execute(f'''SELECT m.id,v.published_at FROM app_group_members m JOIN reviews v USING(store,app_id,country,language)
@@ -441,7 +444,7 @@ def dashboard(db, cfg, identifier, store='all', country='', state='', q='', days
         AND EXISTS (SELECT 1 FROM app_group_members m WHERE '''+where+''' AND m.store=e.store AND m.app_id=e.app_id
             AND m.country=e.country AND m.language=e.language) GROUP BY e.kind,day ORDER BY day''',(since,*args)).fetchall()
     page=rows[offset:offset+limit]
-    member_rank_details(db,identifier,page,now)
+    member_rank_details(db,identifier,page,now,cfg)
     page_metric_facts(db,identifier,page,days,now)
     from .collection_limits import settings
     rate=db.execute("SELECT MAX(next_at) at FROM schedules WHERE name IN ('rate:global','rate:google','rate:apple')").fetchone()['at']
@@ -463,13 +466,15 @@ def dashboard(db, cfg, identifier, store='all', country='', state='', q='', days
         observed_at=time.time(),days=days,scope='按当前分组成员回看观察。应用按商店去重；状态按国家/语言观察目标统计。首次验证不等于新发布；地区不可用不等于全球下架。关键词和榜单只显示有效采样命中；空值表示尚无有效数据。')
 
 
-def member_detail(db, identifier, member_id, days=30):
+def member_detail(db, identifier, member_id, days=30, cfg=None):
     if type(days) is not int or not 1<=days<=365:raise ValueError('观察期间无效')
     member=db.execute('SELECT m.*,a.name FROM app_group_members m LEFT JOIN apps a USING(store,app_id) WHERE m.group_id=%s AND m.id=%s',(identifier,member_id)).fetchone()
     if not member:raise ValueError('该应用不在当前分组')
     key=tuple(member[k] for k in ('store','app_id','country','language'));since=time.time()-days*86400
     listing=db.execute('SELECT * FROM listings WHERE store=%s AND app_id=%s AND country=%s AND language=%s',key).fetchone()
     if listing:listing['payload']=json.loads(listing['payload']) if listing['payload'] else {}
+    refs = developer_refs.references(cfg) if cfg else ({},{})
+    member.update(developer_refs.identity(member, (listing or {}).get('payload') or {}, refs))
     job=db.execute('SELECT due,failures,last_error,lease_until FROM jobs WHERE store=%s AND app_id=%s AND country=%s AND language=%s',key).fetchone()
     watch=db.execute('SELECT enabled,refresh_hours,group_name FROM watchlist WHERE store=%s AND app_id=%s AND country=%s AND language=%s',key).fetchone()
     permission=db.execute('SELECT * FROM app_permission_targets WHERE store=%s AND app_id=%s AND country=%s',key[:3]).fetchone()

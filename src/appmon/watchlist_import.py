@@ -39,6 +39,7 @@ def prepare(snapshots):
             key = tuple(target[k] for k in ('store', 'app_id', 'country', 'language'))
             targets.setdefault(key, target | {'name':row.get('name'), 'group_name':GROUP})
             source_rows.append(target | {'name':row.get('name'), 'source_row':index,
+                'developer': row.get('dev'),
                 'source_status':row.get('liveStatus'), 'source_generated_at':data.get('generatedAt'),
                 'source_type':'watchlist_import', 'group_name':GROUP})
         selected = [t for t in targets.values() if t['store'] == store]

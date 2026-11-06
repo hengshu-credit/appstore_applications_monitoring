@@ -514,6 +514,21 @@ export function createGroupWorkspace(ctx) {
       return null;
     return (row.permission_groups || []).includes(name);
   }
+  const developerSources = {
+    store: "商店详情",
+    watchlist: "导入名单",
+    seed: "公开种子快照",
+  };
+  function developerCaption(row) {
+    const name = row.developer;
+    const id = row.developer_id;
+    const caption = name || (id ? `ID · ${id}` : "开发者未采集");
+    const hints = [];
+    if (name) hints.push(`开发者名称 · ${name}（${developerSources[row.developer_source] || "商店详情"}）`);
+    if (id) hints.push(`开发者 ID · ${id}（${developerSources[row.developer_id_source] || "商店详情"}）`);
+    if (!hints.length) hints.push(row.details_state === "paused" ? "详情采集已暂停，暂无开发者记录" : "暂无开发者记录");
+    return `<small class="member-developer" title="${esc(hints.join(" / "))}">${esc(caption)}</small>`;
+  }
   function memberTable(data) {
     const writable = can("groups", "write");
     const columns = [];
@@ -543,7 +558,7 @@ export function createGroupWorkspace(ctx) {
       "应用",
       "",
       (r) =>
-        `<div class="member-identity">${appIconMarkup(r.store, r.app_id, r.name, r.icon, r.country, r.language)}<div><button class="link member-app-name" data-group-member="${r.id}" title="${esc(r.app_id)}">${esc(r.name || r.app_id)}</button><small class="member-developer" title="${esc(r.developer || "开发者暂无数据")}">${esc(r.developer || "—")}</small></div></div>`,
+        `<div class="member-identity">${appIconMarkup(r.store, r.app_id, r.name, r.icon, r.country, r.language)}<div><button class="link member-app-name" data-group-member="${r.id}" title="${esc(r.app_id)}">${esc(r.name || r.app_id)}</button>${developerCaption(r)}</div></div>`,
     );
     add(
       "country",
@@ -730,6 +745,13 @@ export function createGroupWorkspace(ctx) {
           ? "<small>未入榜</small>"
           : `<b class="member-rank">#${num(item.position)}</b>`;
       }),
+    );
+    add(
+      "developer_id",
+      "开发者 ID",
+      "商店资料",
+      (r) =>
+        `<span title="${esc(developerSources[r.developer_id_source] || "暂无已采集 ID")}">${esc(r.developer_id || "未采集")}</span>`,
     );
     add("app_id", "App ID", "商店资料", (r) => esc(r.app_id));
     add("price", "价格", "商店资料", (r) =>
@@ -1137,7 +1159,10 @@ export function createGroupWorkspace(ctx) {
         ["应用 ID", m.app_id],
         ["国家 / 语言", m.country.toUpperCase() + " / " + m.language],
         ["版本", p.version],
-        ["开发者", p.developer],
+        ["开发者名称", m.developer || p.developer],
+        ["名称来源", developerSources[m.developer_source]],
+        ["开发者 ID", m.developer_id || p.developer_id],
+        ["ID 来源", developerSources[m.developer_id_source]],
         ["关注分类", r.watch?.group_name],
         [
           "详情监控",
