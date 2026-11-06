@@ -439,6 +439,7 @@ test("unified rows show permissions rankings money and ratings without mixing mi
         (el) => el.textContent,
       ),
       [
+        "应用信息",
         "状态监控",
         "权限采集",
         "下载量",
@@ -601,6 +602,55 @@ test("inline corrections keep the market row and permission unknowns distinct an
       "—",
     );
     assert.deepEqual(c.errors, ["本行调整已保存", "本行调整已保存"]);
+  } finally {
+    await c.window.happyDOM.close();
+  }
+});
+
+test("crosshair follows the leaf header and row, supports pinning, and leaves controls independent", async () => {
+  const c = setup((path) => {
+    if (!path.includes("/dashboard?")) return;
+    const data = dashboard();
+    data.items.push({ ...member, id: 12, country: "vn" });
+    return data;
+  });
+  try {
+    await c.workspace.render(1);
+    c.doc.querySelector('[data-group-tab="matrix"]').click();
+    await tick();
+    const grid = c.doc.querySelector(".group-member-table");
+    const cell = grid.querySelector('td[data-col="rating"]');
+    const [band, leaf] = cell
+      .getAttribute("headers")
+      .split(" ")
+      .map((id) => c.doc.getElementById(id));
+    cell.dispatchEvent(new c.window.Event("pointerover", { bubbles: true }));
+    assert.ok(cell.classList.contains("crosshair-cell"));
+    assert.ok(cell.parentElement.classList.contains("crosshair-row"));
+    assert.ok(
+      band.classList.contains("crosshair-band") &&
+        leaf.classList.contains("crosshair-col"),
+    );
+    assert.equal(grid.querySelectorAll("td.crosshair-col").length, 2);
+    cell.click();
+    grid.dispatchEvent(new c.window.Event("pointerleave"));
+    assert.ok(
+      cell.classList.contains("crosshair-pin") &&
+        cell.classList.contains("crosshair-cell"),
+    );
+    grid.parentElement.dispatchEvent(
+      new c.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    );
+    assert.equal(grid.querySelector(".crosshair-cell,.crosshair-pin"), null);
+    const checkbox = grid.querySelector("[data-group-check]");
+    checkbox.click();
+    assert.ok(checkbox.checked);
+    assert.equal(grid.querySelector(".crosshair-pin"), null);
+    const button = grid.querySelector("[data-group-member]");
+    button.focus();
+    assert.ok(button.closest("td").classList.contains("crosshair-cell"));
+    button.blur();
+    assert.equal(grid.querySelector(".crosshair-col"), null);
   } finally {
     await c.window.happyDOM.close();
   }

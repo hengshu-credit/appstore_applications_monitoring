@@ -787,42 +787,136 @@ export function createGroupWorkspace(ctx) {
         () =>
           '<button type="button" class="link" data-adjust-row>调整</button>',
       );
-    const attrs = (c) => `data-col="${c.key}"`;
-    const families = [];
-    for (const col of columns) {
-      const last = families.at(-1);
-      if (col.section && last?.name === col.section) last.cols.push(col);
-      else families.push({ name: col.section, cols: [col] });
+    const bands = [];
+    const headersFor = new Map();
+    for (const column of columns) {
+      const name = ["app", "country"].includes(column.key)
+        ? "应用信息"
+        : column.section;
+      let band = bands.at(-1);
+      if (!band || !name || band.name !== name) {
+        band = { name, id: "member-band-" + bands.length, columns: [] };
+        bands.push(band);
+      }
+      band.columns.push(column);
+      const leaf = "member-field-" + column.key;
+      headersFor.set(column.key, name ? band.id + " " + leaf : leaf);
     }
-    const headings = families
-      .map(({ name, cols }) => {
+    const colgroups = bands
+      .map((band) => `<colgroup span="${band.columns.length}"></colgroup>`)
+      .join("");
+    const headings = bands
+      .map(({ name, id, columns: children }) => {
         if (name)
-          return `<th scope="colgroup" colspan="${cols.length}">${esc(name)}</th>`;
-        const c = cols[0];
+          return `<th id="${id}" scope="colgroup" colspan="${children.length}"><span class="member-band-label">${esc(name)}</span></th>`;
+        const c = children[0];
         const title =
           c.key === "select"
             ? data.items.length
               ? '<input type="checkbox" id="group-select-page" aria-label="选择本页全部应用">'
               : ""
             : esc(c.label);
-        return `<th scope="col" rowspan="2" ${attrs(c)}>${title}</th>`;
+        return `<th id="member-field-${c.key}" scope="col" rowspan="2" data-col="${c.key}">${title}</th>`;
       })
       .join("");
-    const subheads = columns
-      .filter((c) => c.section)
-      .map((c) => `<th scope="col" ${attrs(c)}>${esc(c.label)}</th>`)
+    const subheads = bands
+      .filter((band) => band.name)
+      .flatMap((band) =>
+        band.columns.map(
+          (c) =>
+            `<th id="member-field-${c.key}" scope="col" headers="${band.id}" data-col="${c.key}">${esc(c.label)}</th>`,
+        ),
+      )
       .join("");
     const rows = data.items
       .map(
         (r) =>
-          `<tr data-member-row="${r.id}">${columns.map((c) => `<td ${attrs(c)}>${c.cell(r)}</td>`).join("")}</tr>`,
+          `<tr data-member-row="${r.id}">${columns.map((c) => `<td data-col="${c.key}" headers="${headersFor.get(c.key)}">${c.cell(r)}</td>`).join("")}</tr>`,
       )
       .join("");
-    return `<div class="group-table-tools"><span class="member-permission-key">✓ 已声明　× 未声明　— 暂无数据或不适用</span><div class="actions"><span id="group-selection-count" aria-live="polite"></span>${writable ? '<button id="group-import-metrics" class="secondary small">导入指标</button><button id="group-remove" class="secondary small" disabled>移出本组</button>' : ""}</div></div><div class="group-member-scroll" role="region" aria-label="应用全指标明细" tabindex="0"><table class="group-member-table"><thead><tr>${headings}</tr><tr>${subheads}</tr></thead><tbody>${rows || `<tr><td colspan="${columns.length}" class="empty">没有匹配的应用</td></tr>`}</tbody></table></div><div class="group-table-footer"><span>共 ${num(data.total)} 条 · ${data.total ? data.offset + 1 : 0}–${data.offset + data.items.length}</span><div class="actions"><button id="group-prev" class="secondary small" ${offset === 0 ? "disabled" : ""}>上一页</button><button id="group-next" class="secondary small" ${data.has_more ? "" : "disabled"}>下一页</button></div></div>`;
+    return `<div class="group-table-tools"><span class="member-permission-key">✓ 已声明　× 未声明　— 暂无数据或不适用</span><div class="actions"><span id="group-selection-count" aria-live="polite"></span>${writable ? '<button id="group-import-metrics" class="secondary small">导入指标</button><button id="group-remove" class="secondary small" disabled>移出本组</button>' : ""}</div></div><div class="group-member-scroll" role="region" aria-label="应用全指标明细" tabindex="0"><table class="group-member-table">${colgroups}<thead><tr>${headings}</tr><tr>${subheads}</tr></thead><tbody>${rows || `<tr><td colspan="${columns.length}" class="empty">没有匹配的应用</td></tr>`}</tbody></table></div><div class="group-table-footer"><span>共 ${num(data.total)} 条 · ${data.total ? data.offset + 1 : 0}–${data.offset + data.items.length}</span><div class="actions"><button id="group-prev" class="secondary small" ${offset === 0 ? "disabled" : ""}>上一页</button><button id="group-next" class="secondary small" ${data.has_more ? "" : "disabled"}>下一页</button></div></div>`;
+  }
+  function bindCrosshair(grid) {
+    const columns = new Map();
+    const bands = new Map();
+    for (const cell of grid.querySelectorAll("[data-col]")) {
+      const key = cell.dataset.col;
+      if (!columns.has(key)) columns.set(key, []);
+      columns.get(key).push(cell);
+      if (cell.tagName === "TH" && cell.hasAttribute("headers")) {
+        bands.set(key, grid.querySelector("#" + cell.getAttribute("headers")));
+      }
+    }
+
+    let hovered = null,
+      focused = null,
+      pinned = null,
+      current = null;
+    function mark(cell, active) {
+      if (!cell) return;
+      const key = cell.dataset.col;
+      cell
+        .closest("[data-member-row]")
+        ?.classList.toggle("crosshair-row", active);
+      columns
+        .get(key)
+        .forEach((el) => el.classList.toggle("crosshair-col", active));
+      bands.get(key)?.classList.toggle("crosshair-band", active);
+      cell.classList.toggle("crosshair-cell", active);
+    }
+    function paint() {
+      const cell = hovered || focused || pinned;
+      if (cell === current) return;
+      mark(current, false);
+      mark(cell, true);
+      current = cell;
+    }
+    const findCell = (node) =>
+      node?.closest?.("td[data-col], th[data-col]") || null;
+    grid.addEventListener("pointerover", (event) => {
+      hovered = findCell(event.target);
+      paint();
+    });
+    grid.addEventListener("pointerleave", () => {
+      hovered = null;
+      paint();
+    });
+    grid.addEventListener("focusin", (event) => {
+      hovered = null;
+      focused = findCell(event.target);
+      paint();
+    });
+    grid.addEventListener("focusout", (event) => {
+      focused = grid.contains(event.relatedTarget)
+        ? findCell(event.relatedTarget)
+        : null;
+      paint();
+    });
+    grid.addEventListener("click", (event) => {
+      const cell = findCell(event.target);
+      if (
+        cell?.tagName !== "TD" ||
+        event.target.closest("button, input, select, a, label")
+      )
+        return;
+      pinned?.classList.remove("crosshair-pin");
+      pinned = pinned === cell ? null : cell;
+      pinned?.classList.add("crosshair-pin");
+      // Keep subsequent Escape inside this grid, including after a touch tap.
+      grid.parentElement.focus({ preventScroll: true });
+      paint();
+    });
+    grid.parentElement.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || !pinned) return;
+      pinned.classList.remove("crosshair-pin");
+      pinned = null;
+      paint();
+    });
   }
   function bindMemberGrid(host, data) {
     const grid = host.querySelector(".group-member-table");
     if (!grid) return;
+    bindCrosshair(grid);
     grid.querySelectorAll("[data-adjust-row]").forEach(
       (button) =>
         (button.onclick = () => {

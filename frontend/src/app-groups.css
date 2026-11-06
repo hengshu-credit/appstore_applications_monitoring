@@ -441,20 +441,6 @@
 .member-country small {
   color: var(--muted);
 }
-.group-member-table thead tr:first-child th {
-  height: 32px;
-  padding-block: 4px;
-}
-.group-member-table thead tr:nth-child(2) th {
-  top: 32px;
-  height: 32px;
-  padding-block: 4px;
-}
-.group-member-table th[scope="colgroup"] {
-  border-inline: 1px solid var(--line-soft);
-  text-align: center;
-  color: var(--ink);
-}
 .member-growth {
   margin-left: 6px;
   color: var(--muted);
@@ -502,12 +488,22 @@
 .member-permission-key span {
   color: var(--green);
 }
+/* Composite the tint over the surface so frozen columns stay opaque while scrolling. */
 .group-member-scroll {
   width: 100%;
   overflow: auto;
   max-height: 68vh;
-  border: 1px solid var(--line);
   overscroll-behavior-x: contain;
+  --grid-tint: color-mix(in srgb, var(--accent) 32%, var(--accent-text));
+  --grid-rule: color-mix(in srgb, var(--grid-tint) 55%, var(--line));
+  --grid-top: color-mix(in srgb, var(--grid-tint) 13%, var(--surface));
+  --grid-leaf: color-mix(in srgb, var(--grid-tint) 5%, var(--surface));
+  --grid-axis: color-mix(in srgb, var(--grid-tint) 12%, var(--surface));
+  --grid-hit: color-mix(in srgb, var(--grid-tint) 21%, var(--surface));
+  --grid-brand-ink: color-mix(in srgb, var(--accent-text) 44%, var(--ink));
+  --grid-secondary: color-mix(in srgb, var(--muted) 55%, var(--ink));
+  border-block: 2px solid var(--grid-rule);
+  border-inline: 0;
 }
 .group-member-table {
   width: max-content;
@@ -516,28 +512,81 @@
   border-collapse: separate;
   border-spacing: 0;
   font-size: 13px;
+  color: var(--ink);
 }
 .group-member-table th,
 .group-member-table td {
   padding: 8px 12px;
   white-space: nowrap;
   vertical-align: middle;
-  text-align: start;
   height: 40px;
-  border-bottom: 1px solid var(--line-soft);
-  background: var(--member-row, var(--surface));
+  border: 0;
+  text-align: center;
+}
+.group-member-table td {
+  background: var(--member-row);
+  font-variant-numeric: tabular-nums;
 }
 .group-member-table [hidden] {
   display: none !important;
 }
-.group-member-table th {
+.group-member-table thead {
   position: sticky;
   top: 0;
-  z-index: 2;
-  color: var(--muted);
+  z-index: 4;
+}
+.group-member-table thead th {
+  position: relative;
+  top: auto;
+  box-shadow: none;
+  color: var(--ink);
+  background: var(--grid-top);
+  height: 34px;
+  padding-block: 5px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.group-member-table thead th[scope="colgroup"] {
+  text-align: start;
+}
+.member-band-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: sticky;
+  left: 12px;
+}
+.member-band-label::before {
+  content: "";
+  width: 3px;
+  height: 10px;
+  background: var(--grid-rule);
+}
+.group-member-table thead th.crosshair-band::after {
+  background: var(--grid-rule);
+}
+.group-member-table th[scope="colgroup"]::after {
+  content: "";
+  position: absolute;
+  inset: auto 9px 0;
+  height: 1px;
+  background: color-mix(in srgb, var(--grid-rule) 45%, var(--grid-top));
+}
+.group-member-table thead tr:nth-child(2) th {
+  background: var(--grid-leaf);
+  color: var(--grid-secondary);
   font-size: 12px;
-  font-weight: 600;
-  background: var(--soft);
+  font-weight: 500;
+  letter-spacing: normal;
+}
+.group-member-table thead tr:nth-child(2) th,
+.group-member-table thead th[rowspan] {
+  border-bottom: 1px solid var(--grid-rule);
+}
+.group-member-table [data-col="app"],
+.group-member-table [data-col="country"] {
+  text-align: start;
 }
 .group-member-table :is(td, th)[data-col="app"] {
   position: sticky;
@@ -549,16 +598,52 @@
 .group-member-table th[data-col="app"] {
   z-index: 3;
 }
+.group-member-table tbody tr {
+  --member-row: color-mix(in srgb, var(--grid-tint) 2%, var(--surface));
+}
 .group-member-table tbody tr:nth-child(even) {
-  --member-row: color-mix(in srgb, var(--surface) 70%, var(--soft));
+  --member-row: color-mix(in srgb, var(--grid-tint) 5%, var(--surface));
 }
-.group-member-table tbody tr:hover,
-.group-member-table tr.editing {
-  --member-row: var(--hover);
+.group-member-table
+  tbody
+  tr:is(.crosshair-row, .editing, :has([data-group-check]:checked)) {
+  --member-row: var(--grid-axis);
 }
-.group-member-table [data-section="metrics"] {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
+.group-member-table :is(td, th).crosshair-col,
+.group-member-table thead th.crosshair-band {
+  background: var(--grid-axis);
+}
+.group-member-table thead tr th[data-col].crosshair-col,
+.group-member-table td.crosshair-cell,
+.group-member-table tbody tr:has([data-group-check]:checked) td.crosshair-col {
+  background: var(--grid-hit);
+}
+.group-member-table .crosshair-cell,
+.group-member-table .crosshair-pin {
+  outline: 1px solid var(--grid-rule);
+  outline-offset: -1px;
+}
+.group-member-table .crosshair-pin {
+  outline-width: 2px;
+}
+.group-member-table .link,
+.group-member-table .member-rank,
+.group-member-table .member-score::before {
+  color: var(--grid-brand-ink);
+}
+.group-member-table
+  :is(
+    .member-developer,
+    .member-country small,
+    .member-share,
+    .permission-mark,
+    .member-growth
+  ) {
+  color: var(--grid-secondary);
+}
+.group-member-table .permission-mark[data-value="true"],
+.group-member-table .member-growth[data-up="true"] {
+  color: color-mix(in srgb, var(--green) 60%, var(--ink));
 }
 .group-member-table [data-col^="perm"] {
   text-align: center;
