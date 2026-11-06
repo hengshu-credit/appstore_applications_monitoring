@@ -2,7 +2,6 @@
 import logging
 import os
 import time
-from .db import reserve
 from .intelligence import work_watchlist, work_observations
 from .keywords import work_keywords
 from .alerts import evaluate
@@ -36,17 +35,24 @@ def serve(cfg, host, port):
 
 
 def worker(cfg, db):
-    # A slow chart or review request must not block visible-app icon requests.
     from threading import Thread
-    Thread(target=icon_worker,args=(cfg,),daemon=True,name='app-icons').start()
+    from .dispatcher import worker as collect_worker
+    Thread(target=collect_worker,args=(cfg,'console'),daemon=True,name='collection-dispatcher').start()
     Thread(target=marketdata_worker,args=(cfg,),daemon=True,name='marketdata').start()
-    Thread(target=permission_worker,args=(cfg,),daemon=True,name='permissions').start()
     Thread(target=developer_reference_worker,args=(cfg,),daemon=True,name='developer-references').start()
     while True:
         try:
-            log.info("Console cycle %s", run_once(cfg, db,include_icons=False))
+            from .app_groups import ensure_verification_jobs
+            from .availability import record_daily
+            from .collection import work_plans
+            ensure_verification_jobs(db)
+            work_plans(db,100)
+            evaluate(db)
+            work_export(cfg,db)
+            record_daily(db)
+            db.execute("INSERT INTO schedules VALUES('console-heartbeat',%s) AS incoming ON DUPLICATE KEY UPDATE next_at=incoming.next_at",(time.time(),))
         except Exception as exc:
-            log.error("Console cycle failed: %s", type(exc).__name__)
+            log.error("Console maintenance failed: %s",type(exc).__name__)
         time.sleep(10)
 
 
@@ -74,41 +80,8 @@ def marketdata_worker(cfg):
         try:
             db=connect(cfg,initialize=False)
             result=work(cfg,db)
-            if result['processed'] or result['error']:log.info('市场数据 cycle %s',result)
-        except Exception as exc:log.error('市场数据 cycle failed: %s',type(exc).__name__)
+            if result['processed'] or result['error']:log.info('Marketdata cycle %s',result)
+        except Exception as exc:log.error('Marketdata cycle failed: %s',type(exc).__name__)
         finally:
-            if db is not None:db.close()
-        time.sleep(3)
-
-
-def permission_worker(cfg):
-    from .db import connect
-    from .app_permissions import work
-    while True:
-        db=None
-        try:
-            db=connect(cfg,initialize=False)
-            result=work(cfg,db)
-            if result['processed']:log.info('Permission cycle %s',result)
-        except Exception as exc:log.error('Permission cycle failed: %s',type(exc).__name__)
-        finally:
-            if db is not None:db.close()
-        time.sleep(5)
-
-
-def icon_worker(cfg):
-    from .db import connect
-    from .app_icons import work_icons
-    from .stores import Client
-    while True:
-        db=None;client=None
-        try:
-            db=connect(cfg,initialize=False)
-            client=Client(cfg,db)
-            result=work_icons(cfg,db,5,client)
-            if result['processed']:log.info('Icon cycle %s',result)
-        except Exception as exc:log.error('Icon cycle failed: %s',type(exc).__name__)
-        finally:
-            if client is not None:client.session.close()
             if db is not None:db.close()
         time.sleep(3)

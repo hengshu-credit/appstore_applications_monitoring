@@ -8,6 +8,7 @@ export const taskKinds = {
   reviews: "用户评论",
   featured: "编辑推荐",
   icons: "应用图标",
+  permissions: "声明权限",
 };
 const states = {
   scheduled: "定时采集",
@@ -65,7 +66,7 @@ export function createCollectionCenter(ctx) {
     const editRevision = currentRevision();
     editor(
       "编辑采集任务",
-      `<p class="sub">${esc(taskKinds[row.kind])} · ${esc(row.label)} · ${esc(row.country.toUpperCase())} / ${esc(row.language)}</p><form id="edit-task-form" class="form-grid">${field("刷新周期（小时）", "refresh_hours", row.refresh_hours, "number", 'min="0.25" max="8760" step="0.25" required')}${row.resource === "watchlist" ? field("监控分组", "group_name", row.group_name, "text", "required") : row.resource === "icons" ? "" : field("采集结果上限", "depth", row.depth, "number", `min="1" max="${row.resource === "keywords" ? 200 : 500}" required`)}<p class="sub full">保留已有历史及启用状态。需要切换应用或市场时，请新建独立任务。</p><div class="full form-actions"><button type="submit">保存设置</button></div></form>`,
+      `<p class="sub">${esc(taskKinds[row.kind])} · ${esc(row.label)} · ${esc(row.country.toUpperCase())} / ${esc(row.language)}</p><form id="edit-task-form" class="form-grid">${field("刷新周期（小时）", "refresh_hours", row.refresh_hours, "number", 'min="0.25" max="8760" step="0.25" required')}${row.resource === "watchlist" ? field("监控分组", "group_name", row.group_name, "text", "required") : ["icons","permissions"].includes(row.resource) ? "" : field("采集结果上限", "depth", row.depth, "number", `min="1" max="${row.resource === "keywords" ? 200 : 500}" required`)}<p class="sub full">保留已有历史及启用状态。需要切换应用或市场时，请新建独立任务。</p><div class="full form-actions"><button type="submit">保存设置</button></div></form>`,
     );
     bindForm("#edit-task-form", async (v) => {
       await api(
@@ -74,7 +75,7 @@ export function createCollectionCenter(ctx) {
           refresh_hours: Number(v.refresh_hours),
           ...(row.resource === "watchlist"
             ? { group_name: v.group_name }
-            : row.resource === "icons"
+            : ["icons","permissions"].includes(row.resource)
               ? {}
               : { depth: Number(v.depth) }),
         },
@@ -94,7 +95,7 @@ export function createCollectionCenter(ctx) {
       ${field("计划名称", "name", "应用研究计划", "text", "required")}${field("监控分组", "group_name", "重点应用", "text", "required")}${field("刷新周期（小时）", "refresh_hours", 24, "number", 'min="0.25" max="8760" step="0.25" required')}
       <fieldset class="full task-types"><legend>选择需要采集的数据</legend>${Object.entries(
         Object.fromEntries(
-          Object.entries(taskKinds).filter(([k]) => k !== "icons"),
+          Object.entries(taskKinds).filter(([k]) => !["icons","permissions"].includes(k)),
         ),
       )
         .map(
@@ -178,7 +179,7 @@ export function createCollectionCenter(ctx) {
         collection: v.collection,
         category: v.category,
         ...Object.fromEntries(
-          Object.entries(flags).filter(([key]) => key !== "keywords"),
+          Object.entries(flags).filter(([key]) => !["keywords","permissions"].includes(key)),
         ),
       };
       const result = await api("/research/plans/preview", spec);
@@ -354,12 +355,12 @@ export function createCollectionCenter(ctx) {
             }[p.status],
           ),
           stamp(p.created_at),
-          `<button class="link" data-plan-logs="${p.id}">日志</button> ${p.status === "error" ? `<button class="link" data-retry-plan="${p.id}">重试未完成部分</button>` : ""}`,
+          `<button class="link" data-plan-collection="${p.id}">采集结果</button> <button class="link" data-plan-logs="${p.id}">日志</button> ${p.status === "error" ? `<button class="link" data-retry-plan="${p.id}">重试未完成部分</button>` : ""}`,
         ]),
       )}</details>`;
     if (
       !mount(
-        `<button id="new-collection" data-workspace-action>${icon("plus")}新建采集计划</button>${categoryCards}<div class="collection-result-count">筛选结果 <strong>${num(tasks.total)}</strong></div><div class="collection-tabs" role="tablist" aria-label="采集管理视图">${tab("tasks", "采集任务")}${tab("pipelines", "基础采集流程")}${section === "create" ? tab("create", "新建计划") : ""}</div><details class="panel collection-limits-panel"><summary>整体采集控频 · ${limits.paused ? "已暂停请求" : (limits.daily_request_limit ?? 0) ? "每日预算 " + num(limits.daily_request_limit ?? 0) + " 次" : "每日预算不限"}</summary><div class="spacer"><form id="collection-limits" class="form-grid">${field("整体最小请求间隔（秒）", "global_interval_seconds", limits.global_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Google 最小间隔（秒）", "google_interval_seconds", limits.google_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Apple 最小间隔（秒）", "apple_interval_seconds", limits.apple_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("每日请求预算（UTC，0 为不限）", "daily_request_limit", limits.daily_request_limit ?? 0, "number", 'min="0" max="10000000" step="1" required')}${field("受限后整体冷却（秒）", "cooldown_seconds", limits.cooldown_seconds, "number", 'min="60" max="86400" required')}<label class="check-label"><input type="checkbox" name="paused" ${limits.paused ? "checked" : ""}>暂停所有商店采集请求</label><p class="sub full">同市场 App Store 详情每批最多 50 个，Google 详情、关键词、榜单和评论每批最多 20 个；保留原采集周期与深度。每日预算耗尽后等待下一 UTC 日，所有采集 worker 共用额度，详情、关键词、榜单、评论、推荐和图标请求均计入。403 / 429 / 5xx 会触发共享冷却，并遵守更长的 Retry-After。保存后新请求生效，已发出的请求会完成。此开关不停止种子包同步和第三方数据源手动操作。</p><button type="submit">保存控频设置</button></form></div></details>${body}`,
+        `<button id="new-collection" data-workspace-action>${icon("plus")}新建采集计划</button>${categoryCards}<div class="collection-result-count">筛选结果 <strong>${num(tasks.total)}</strong></div><div class="collection-tabs" role="tablist" aria-label="采集管理视图">${tab("tasks", "采集任务")}${tab("pipelines", "基础采集流程")}${section === "create" ? tab("create", "新建计划") : ""}</div><details class="panel collection-limits-panel"><summary>整体采集控频 · ${limits.paused ? "已暂停请求" : (limits.daily_request_limit ?? 0) ? "每日预算 " + num(limits.daily_request_limit ?? 0) + " 次" : "每日预算不限"}</summary><div class="spacer"><form id="collection-limits" class="form-grid">${field("整体最小请求间隔（秒）", "global_interval_seconds", limits.global_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Google 最小间隔（秒）", "google_interval_seconds", limits.google_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Apple 最小间隔（秒）", "apple_interval_seconds", limits.apple_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("每日请求预算（UTC，0 为不限）", "daily_request_limit", limits.daily_request_limit ?? 0, "number", 'min="0" max="10000000" step="1" required')}${field("受限后整体冷却（秒）", "cooldown_seconds", limits.cooldown_seconds, "number", 'min="60" max="86400" required')}<label class="check-label"><input type="checkbox" name="paused" ${limits.paused ? "checked" : ""}>暂停所有商店采集请求</label><p class="sub full">同市场 App Store 详情每批最多 50 个，Google 详情、关键词、榜单、评论和权限每批最多 20 个；保留原采集周期与深度。每日预算耗尽后等待下一 UTC 日，所有采集 worker 共用额度，详情、关键词、榜单、评论、推荐和图标请求均计入。403 / 429 / 5xx 会触发共享冷却，并遵守更长的 Retry-After。保存后新请求生效，已发出的请求会完成。此开关不停止种子包同步和第三方数据源手动操作。</p><button type="submit">保存控频设置</button></form></div></details>${body}`,
         rev,
         quality.heartbeat?.next_at ? `后台心跳 ${stamp(quality.heartbeat.next_at)}` : "等待后台首次心跳",
       )
@@ -460,6 +461,50 @@ export function createCollectionCenter(ctx) {
               )
               .catch((e) => toast(e.message))),
       );
+    if (quality.dispatcher) {
+      const status = document.createElement("span");
+      status.className = "sub";
+      status.textContent = ` · 动态调度 · ${quality.dispatcher.workers.length} 个采集进程`;
+      document.querySelector(".collection-result-count")?.append(status);
+    }
+    document.querySelectorAll("[data-plan-collection]").forEach(
+      (button) =>
+        (button.onclick = async () => {
+          const dialog = editor("计划采集结果", "<p>正在读取共享目标结果…</p>");
+          try {
+            const result = await api(
+              "/research/plans/" +
+                button.dataset.planCollection +
+                "/collection",
+            );
+            if (!dialog.isConnected) return;
+            const content = document.createElement("div");
+            content.innerHTML = `<p>已采集 ${num(result.finished)} / ${num(result.total)} · 失败 ${num(result.errors)}</p>${table(
+              ["类型", "目标", "状态", "最近结果"],
+              result.tasks.map((t) => [
+                esc(taskKinds[t.kind]),
+                esc(t.label),
+                esc(
+                  {
+                    configuring: "配置中",
+                    complete: "完成",
+                    failed: "失败",
+                    running: "采集中",
+                    paused: "暂停",
+                    pending: "排队",
+                    scheduled: "定时",
+                    error: "重试",
+                  }[t.state] || t.state,
+                ),
+                stamp(t.observed_at),
+              ]),
+            )}`;
+            dialog.querySelector("p").replaceWith(content);
+          } catch (error) {
+            toast(error.message);
+          }
+        }),
+    );
     if (section === "create") {
       bindCreation(rev);
       return;

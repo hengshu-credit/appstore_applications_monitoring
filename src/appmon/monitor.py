@@ -162,13 +162,10 @@ def discover(cfg, db, client=None, max_sources=None, managed=False):
 
 
 def daemon(cfg, db):
-    from .keywords import work_keywords
+    from .dispatcher import dispatch_once
     from .pipelines import configured
     from .task_logs import execution, emit
     while True:
-        keyword_counts = work_keywords(cfg, db, cfg["batch_size"])
-        if keyword_counts["processed"]:
-            log.info("Keyword batch %s", keyword_counts)
         row = db.execute("SELECT next_at FROM schedules WHERE name='seed-sync'").fetchone()
         seed_enabled, seed_cfg = configured(db,cfg,'seed')
         if seed_enabled and (not row or row["next_at"] <= time.time()):
@@ -193,7 +190,7 @@ def daemon(cfg, db):
             if not queued or queued['next_at'] <= time.time():
                 enqueue(db,pool_cfg['countries'],pool_cfg['language'])
                 reserve(db,queue_name,cfg['seed_sync_hours']*3600)
-        counts = work(pool_cfg, db, cfg["batch_size"], managed=True)
+        counts = dispatch_once(db,cfg,'monitor')
         log.info("Batch %s", counts)
         if not counts["processed"]:
             time.sleep(30)

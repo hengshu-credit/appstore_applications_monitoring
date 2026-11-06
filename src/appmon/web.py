@@ -633,9 +633,14 @@ def create_app(cfg):
 
     @api.get('/research/collection/activity')
     def collection_activity(store:str='all',db=DB):
+        from .dispatcher import status
         selected=locales.stores(store);marks=','.join('%s' for _ in selected)
         return {'plans':db.execute("SELECT id,name,status,completed,total,error,created_at FROM collection_plans WHERE COALESCE(JSON_UNQUOTE(JSON_EXTRACT(specification,'$.store')),JSON_UNQUOTE(JSON_EXTRACT(specification,'$.app_request.store'))) IN ("+marks+') ORDER BY id DESC LIMIT 100',selected).fetchall(),
-                'heartbeat':db.execute("SELECT next_at FROM schedules WHERE name='console-heartbeat'").fetchone()}
+                'heartbeat':db.execute("SELECT next_at FROM schedules WHERE name='console-heartbeat'").fetchone(), 'dispatcher':status(db)}
+
+    @api.get('/research/plans/{identifier}/collection')
+    def plan_collection_results(identifier:int,db=DB):
+        return app_collection.report(db,identifier,allow_plan=True)
 
     @api.get('/research/collection/logs/{resource}/{identifier}')
     def collection_task_logs(resource:str,identifier:str,after_id:int=Query(0,ge=0),before_id:int=Query(0,ge=0),

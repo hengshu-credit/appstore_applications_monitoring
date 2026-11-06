@@ -38,13 +38,21 @@ def parse_frames(text, rpc_ids):
 def rpc_many(client, market, calls):
     if not 1<=len(calls)<=20:
         raise ValueError('Google RPC batch must contain 1–20 calls')
+    unique, indices, lookup = [], [], {}
+    for rpc, payload in calls:
+        key = (rpc,json.dumps(payload,separators=(',',':'),sort_keys=True))
+        if key not in lookup:
+            lookup[key] = len(unique)
+            unique.append((rpc,payload))
+        indices.append(lookup[key])
     response=client.request('google','POST','https://play.google.com/_/PlayStoreUi/data/batchexecute',
-        params={'rpcids':','.join(dict.fromkeys(rpc for rpc,_ in calls)),
+        params={'rpcids':','.join(dict.fromkeys(rpc for rpc,_ in unique)),
                 'hl':market['language'],'gl':market['country'],'rt':'c'},
-        data={'f.req':json.dumps([[[rpc,json.dumps(payload),None,str(i)] for i,(rpc,payload) in enumerate(calls)]])})
+        data={'f.req':json.dumps([[[rpc,json.dumps(payload),None,str(i)] for i,(rpc,payload) in enumerate(unique)]])})
     if response.status_code!=200:
         raise FetchError('Google batch endpoint unavailable')
-    return parse_frames(response.text,[rpc for rpc,_ in calls]),response.content
+    results = parse_frames(response.text,[rpc for rpc,_ in unique])
+    return [results[index] for index in indices],response.content
 
 
 def same_market(targets):

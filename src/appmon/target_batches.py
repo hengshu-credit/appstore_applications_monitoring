@@ -7,23 +7,29 @@ from .stores import FetchError
 from .task_logs import Execution
 
 
-def claim_targets(db, table, lease_seconds, size):
-    if table not in ('keyword_targets','observation_targets'):
+def claim_targets(db, table, lease_seconds, size, kind=None):
+    if table not in ('keyword_targets','observation_targets','app_permission_targets'):
         raise ValueError('Unknown batch target table')
     now=time.time()
+    columns = "*,'en' language" if table=='app_permission_targets' else '*'
+    extra = ' AND kind=%s' if kind is not None else ''
+    extra_args = (kind,) if kind is not None else ()
+    if kind is not None and (table!='observation_targets' or kind not in ('chart','reviews','featured')):
+        raise ValueError('Unknown observation kind')
     with db:
         db.execute('INSERT INTO schedules VALUES(%s,0) ON DUPLICATE KEY UPDATE name=schedules.name',('claim:'+table,))
-        first=db.execute(f'''SELECT * FROM {table} WHERE enabled=1 AND due<=%s AND lease_until<=%s
-            ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED''',(now,now)).fetchone()
+        first=db.execute(f'''SELECT {columns} FROM {table} WHERE enabled=1 AND due<=%s AND lease_until<=%s
+            {extra} ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED''',(now,now,*extra_args)).fetchone()
         if not first:
             return []
         rows=[first]
         if first['store']=='google' and first['failures']==0 and size>1:
             kind=' AND kind=%s' if table=='observation_targets' else ''
-            rows+=list(db.execute(f'''SELECT * FROM {table} WHERE enabled=1 AND due<=%s AND lease_until<=%s
-                AND store='google' AND country=%s AND language=%s AND failures=0 AND id<>%s{kind}
+            language = '' if table=='app_permission_targets' else ' AND language=%s'
+            rows+=list(db.execute(f'''SELECT {columns} FROM {table} WHERE enabled=1 AND due<=%s AND lease_until<=%s
+                AND store='google' AND country=%s{language} AND failures=0 AND id<>%s{kind}
                 ORDER BY due,id LIMIT %s FOR UPDATE SKIP LOCKED''',
-                (now,now,first['country'],first['language'],first['id'],*([first['kind']] if kind else []),min(size,20)-1)).fetchall())
+                (now,now,first['country'],*([first['language']] if language else []),first['id'],*([first['kind']] if kind else []),min(size,20)-1)).fetchall())
         token=uuid.uuid4().hex
         db.execute(f'UPDATE {table} SET token=%s,lease_until=%s WHERE id IN ('+','.join('%s' for _ in rows)+')',
                    (token,now+lease_seconds,*[r['id'] for r in rows]))
@@ -32,15 +38,17 @@ def claim_targets(db, table, lease_seconds, size):
     return rows
 
 
-def work_targets(cfg, db, limit, client, *, table, resource, single, multiple, save):
+def work_targets(cfg, db, limit, client, *, table, resource, single, multiple, save, max_batches=None, kind=None):
     counts=dict(processed=0,ok=0,error=0,stale=0)
-    while counts['processed']<limit:
+    batches = 0
+    while counts['processed']<limit and (max_batches is None or batches<max_batches):
         if blocked(db,cfg):
             break
         disk_check(cfg['data_dir'],cfg['min_free_gb'])
-        rows=claim_targets(db,table,max(cfg['lease_seconds'],900),min(cfg.get('google_rpc_batch_size',20),limit-counts['processed']))
+        rows=claim_targets(db,table,max(cfg['lease_seconds'],900),min(cfg.get('google_rpc_batch_size',20),limit-counts['processed']),kind)
         if not rows:
             break
+        batches += 1
         logs=[Execution(db,resource,row['id']) for row in rows]
         old_progress,old_guard=getattr(client,'progress',None),getattr(client,'request_guard',None)
         def guard():

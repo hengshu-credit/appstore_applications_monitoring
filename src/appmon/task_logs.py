@@ -45,12 +45,12 @@ def execution(db, client, resource, identifier, label):
     old_guard = getattr(client,'request_guard',None) if client is not None else None
     if client is not None:
         client.progress = log.write
-        if resource in ('watchlist','keywords','targets','icons'):
+        if resource in ('watchlist','keywords','targets','icons','permissions'):
             def state():
                 if resource == 'watchlist':
                     return db.execute('''SELECT w.enabled,j.token FROM watchlist w LEFT JOIN jobs j
                         USING(store,app_id,country,language) WHERE w.id=%s''',(identifier,)).fetchone()
-                table={'keywords':'keyword_targets','targets':'observation_targets','icons':'app_icons'}[resource]
+                table={'keywords':'keyword_targets','targets':'observation_targets','icons':'app_icons','permissions':'app_permission_targets'}[resource]
                 return db.execute(f'SELECT enabled,token FROM {table} WHERE id=%s',(identifier,)).fetchone()
             initial=state()
             def guard():
@@ -84,7 +84,7 @@ def target_state(db,resource,identifier):
         row=db.execute('''SELECT w.enabled,j.lease_until,j.due,j.failures,j.last_error FROM watchlist w
             LEFT JOIN jobs j USING(store,app_id,country,language) WHERE w.id=%s''',(int(identifier),)).fetchone()
     else:
-        table={'keywords':'keyword_targets','targets':'observation_targets','icons':'app_icons'}.get(resource)
+        table={'keywords':'keyword_targets','targets':'observation_targets','icons':'app_icons','permissions':'app_permission_targets'}.get(resource)
         if table is None: raise ValueError('未知日志类型')
         row=db.execute(f'SELECT enabled,lease_until,due,failures,last_error FROM {table} WHERE id=%s',(int(identifier),)).fetchone()
     if not row: raise ValueError('任务不存在')

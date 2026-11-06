@@ -41,9 +41,9 @@ def schedule_action(db,action):
     return ref
 
 
-def report(db,identifier):
+def report(db,identifier,allow_plan=False):
     plan=db.execute('SELECT * FROM collection_plans WHERE id=%s',(identifier,)).fetchone()
-    if not plan or 'app_request' not in json.loads(plan['specification']):raise ValueError('应用采集请求不存在')
+    if not plan or not allow_plan and 'app_request' not in json.loads(plan['specification']):raise ValueError('应用采集请求不存在')
     actions=json.loads(plan['actions']);tasks=[];finished=0;errors=0
     for action in actions:
         ref=action_target(db,action);state='configuring';observed=None;outcome=None
@@ -66,7 +66,7 @@ def report(db,identifier):
     state='failed' if plan['status']=='error' else ('partial_failure' if errors else 'complete') if finished==len(actions) else 'running'
     deferred=max(0,json.loads(plan['specification']).get('keyword_total',0)-100)
     return {'id':identifier,'state':state,'requested_at':plan['created_at'],'total':len(actions),'finished':finished,'errors':errors,'tasks':tasks,'deferred_keywords':deferred,
-            'scope':'当前市场的公开详情/素材、最多100条近期评论、可用总榜和分类榜、本市场最多100个已跟踪关键词及应用名（缺失时用ID）。会创建或启用对应任务；不承诺全历史评论或全网关键词。'+(f'另有{deferred}个词需在采集中心分批安排。' if deferred else '')}
+            'scope':('共享目标执行进度，多个计划复用同一目标的实际采集结果。' if allow_plan else '当前市场的公开详情/素材、最多100条近期评论、可用总榜和分类榜、本市场最多100个已跟踪关键词及应用名（缺失时用ID）。会创建或启用对应任务；不承诺全历史评论或全网关键词。'+(f'另有{deferred}个词需在采集中心分批安排。' if deferred else ''))}
 
 
 def latest(db,m):

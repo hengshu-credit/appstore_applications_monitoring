@@ -34,15 +34,15 @@ def text(value, limit=120):
     return value.strip()
 
 
-def watch(db, value):
+def watch(db, value, merge_existing=False):
     m = market(value)
     group = text(value.get("group_name", "重点应用"))
     interval = hours(value.get("refresh_hours", 24))
     with db:
         add_apps(db, [(m["store"], m["app_id"], None, None)], "watchlist")
+        update = 'refresh_hours=LEAST(watchlist.refresh_hours,incoming.refresh_hours)' if merge_existing else 'group_name=incoming.group_name,refresh_hours=incoming.refresh_hours'
         db.execute('''INSERT INTO watchlist(store,app_id,country,language,group_name,refresh_hours,created_at)
-            VALUES(%s,%s,%s,%s,%s,%s,%s) AS incoming ON DUPLICATE KEY UPDATE
-            group_name=incoming.group_name,refresh_hours=incoming.refresh_hours''',
+            VALUES(%s,%s,%s,%s,%s,%s,%s) AS incoming ON DUPLICATE KEY UPDATE '''+update,
                    (m["store"], m["app_id"], m["country"], m["language"], group, interval, time.time()))
         db.execute('''INSERT INTO jobs(store,app_id,country,language) VALUES(%s,%s,%s,%s)
             ON DUPLICATE KEY UPDATE app_id=jobs.app_id''',
@@ -50,7 +50,7 @@ def watch(db, value):
     return m | {"group_name": group, "refresh_hours": interval}
 
 
-def add_observation_target(db, value, preserve_existing=False):
+def add_observation_target(db, value, preserve_existing=False, merge_existing=False):
     kind = value.get("kind")
     if kind not in ("chart", "reviews", "featured"):
         raise ValueError("kind must be chart, reviews or featured")
@@ -81,6 +81,9 @@ def add_observation_target(db, value, preserve_existing=False):
     identity = (kind, m["store"], m["app_id"], m["country"], m["language"], collection, category)
     with db:
         update='id=observation_targets.id' if preserve_existing else 'depth=incoming.depth,refresh_hours=incoming.refresh_hours'
+        if merge_existing:
+            update=('due=IF(incoming.depth>observation_targets.depth OR incoming.refresh_hours<observation_targets.refresh_hours,LEAST(observation_targets.due,UNIX_TIMESTAMP()),observation_targets.due),'
+                    'depth=GREATEST(observation_targets.depth,incoming.depth),refresh_hours=LEAST(observation_targets.refresh_hours,incoming.refresh_hours)')
         db.execute('''INSERT INTO observation_targets(kind,store,app_id,country,language,collection,category,depth,refresh_hours)
             VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) AS incoming
             ON DUPLICATE KEY UPDATE '''+update,
@@ -130,6 +133,8 @@ def save_observation(db, cfg, target, result=None, error=None, now=None):
         failures = current["failures"] + 1 if error else 0
         due = now + (max(min(86400, 60 * 2 ** min(failures, 10)), getattr(error, "retry_after", 0))
                      if error else current["refresh_hours"] * 3600)
+        if not error and current['depth']>target['depth']:
+            due = now
         db.execute('''INSERT INTO observation_runs(target_id,observed_at,outcome,source,parser_version,coverage,
             returned_count,raw_path,error) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
                    (target["id"], now, "error" if error else "ok", result.source if result else target["store"],

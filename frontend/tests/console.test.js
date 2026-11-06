@@ -633,7 +633,7 @@ test("category cards drill into state and batch interval preserves scope", async
     await tick();
     assert.equal(
       window.document.querySelectorAll(".collection-category").length,
-      6,
+      7,
     );
     assert.equal(
       window.document.querySelectorAll(".collection-legend").length,

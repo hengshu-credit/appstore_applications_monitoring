@@ -42,15 +42,18 @@ def validate_target(value):
                 depth=depth, refresh_hours=hours)
 
 
-def add_targets(db, values):
+def add_targets(db, values, merge_existing=False):
     targets = [validate_target(value) for value in values]
     ids = []
     with db:
         for target in targets:
             # Reimports update settings, preserving pause state, history and due time.
+            update = ('due=IF(incoming.depth>keyword_targets.depth OR incoming.refresh_hours<keyword_targets.refresh_hours,LEAST(keyword_targets.due,UNIX_TIMESTAMP()),keyword_targets.due),'
+                      'depth=GREATEST(keyword_targets.depth,incoming.depth),refresh_hours=LEAST(keyword_targets.refresh_hours,incoming.refresh_hours)'
+                      if merge_existing else 'depth=incoming.depth,refresh_hours=incoming.refresh_hours')
             db.execute('''INSERT INTO keyword_targets(store,country,language,keyword,depth,refresh_hours)
                 VALUES(%s,%s,%s,%s,%s,%s) AS incoming
-                ON DUPLICATE KEY UPDATE depth=incoming.depth,refresh_hours=incoming.refresh_hours''',
+                ON DUPLICATE KEY UPDATE '''+update,
                        tuple(target.values()))
             row = db.execute('''SELECT id FROM keyword_targets
                 WHERE store=%s AND country=%s AND language=%s AND keyword=%s''',
@@ -98,6 +101,8 @@ def save_search(db, cfg, target, result=None, error=None, now=None):
         failures = current["failures"] + 1 if error else 0
         due = now + (max(min(86400, 60 * 2 ** min(failures, 10)), getattr(error, "retry_after", 0))
                      if error else current["refresh_hours"] * 3600)
+        if not error and current['depth']>target['depth']:
+            due = now  # A deeper request arrived while this batch was in flight.
         db.execute('''INSERT INTO keyword_runs(target_id,observed_at,outcome,source,parser_version,
             requested_depth,returned_count,coverage,raw_path,error) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
                    (target["id"], now, "error" if error else "ok",
@@ -166,11 +171,8 @@ def work_keywords(cfg, db, limit=200, client=None, target_id=None, refresh=False
 
 
 def keyword_daemon(cfg, db):
-    while True:
-        counts = work_keywords(cfg, db, cfg["batch_size"])
-        log.info("Keyword batch %s", counts)
-        if not counts["processed"]:
-            time.sleep(10)
+    from .dispatcher import worker
+    return worker(cfg,role='keywords')
 
 
 def target_detail(db, target_id):

@@ -3,8 +3,8 @@ import time
 from .intelligence import hours, text
 from .task_logs import emit
 
-TABLES = {'watchlist': 'watchlist', 'keywords': 'keyword_targets', 'targets': 'observation_targets', 'icons':'app_icons'}
-KINDS = ('details','keywords','chart','reviews','featured','icons')
+TABLES = {'watchlist': 'watchlist', 'keywords': 'keyword_targets', 'targets': 'observation_targets', 'icons':'app_icons','permissions':'app_permission_targets'}
+KINDS = ('details','keywords','chart','reviews','featured','icons','permissions')
 STATES = ('paused','running','error','pending','scheduled')
 UNION = '''SELECT 'watchlist' resource,w.id,'details' kind,w.store,w.country,w.language,w.app_id,
     COALESCE(a.name,w.app_id) label,'' category,'' collection,w.group_name,NULL depth,
@@ -23,7 +23,11 @@ UNION = '''SELECT 'watchlist' resource,w.id,'details' kind,w.store,w.country,w.l
     UNION ALL
     SELECT 'icons',i.id,'icons',i.store,i.country,i.language,i.app_id,COALESCE(i.name,i.app_id),'','','',NULL,
     i.refresh_hours,i.enabled,i.failures,i.last_error,i.due,i.lease_until,i.checked_at
-    FROM app_icons i WHERE i.requested=1'''
+    FROM app_icons i WHERE i.requested=1
+    UNION ALL
+    SELECT 'permissions',p.id,'permissions',p.store,p.country,'en',p.app_id,COALESCE(a.name,p.app_id),'','','',NULL,
+    p.refresh_hours,p.enabled,p.failures,p.last_error,p.due,p.lease_until,p.success_at
+    FROM app_permission_targets p LEFT JOIN apps a USING(store,app_id)'''
 
 
 def task_query(*, kind='', store='', country='', language='', state='', q=''):
@@ -92,8 +96,8 @@ def edit_task(db, resource, identifier, value):
             db.execute('''UPDATE jobs SET due=LEAST(due,%s),token=NULL,lease_until=0
                 WHERE store=%s AND app_id=%s AND country=%s AND language=%s''',
                        (time.time()+interval*3600, *[row[k] for k in ('store','app_id','country','language')]))
-        elif resource=='icons':
-            db.execute('UPDATE app_icons SET refresh_hours=%s,due=LEAST(due,%s),token=NULL,lease_until=0 WHERE id=%s',(interval,time.time()+interval*3600,identifier))
+        elif resource in ('icons','permissions'):
+            db.execute(f'UPDATE {table} SET refresh_hours=%s,due=LEAST(due,%s),token=NULL,lease_until=0 WHERE id=%s',(interval,time.time()+interval*3600,identifier))
         else:
             depth = value.get('depth',row['depth'])
             maximum = 200 if resource=='keywords' else 500

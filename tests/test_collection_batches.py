@@ -90,7 +90,7 @@ class CollectionBatchTest(MySQLTestCase):
         self.db.execute('UPDATE keyword_targets SET failures=2 WHERE id=2')
         result=list_tasks(self.db,kind='keywords',state='error')
         self.assertEqual(result['total'],1)
-        self.assertEqual(len(result['categories']),6)
+        self.assertEqual(len(result['categories']),7)
         c=next(c for c in result['categories'] if c['kind']=='keywords')
         self.assertEqual((c['total'],c['summary']['paused'],c['summary']['error'],c['summary']['pending']),(3,1,1,1))
         self.assertEqual(sum(c['total'] for c in list_tasks(self.db,country='th')['categories']),0)

@@ -6,6 +6,61 @@ from .db import dump
 from .stores import Client, FetchError
 from .monitor import raw_save
 from .collection_limits import settings
+from dataclasses import dataclass
+
+
+@dataclass
+class PermissionResult:
+    payload: dict
+    raw: bytes
+
+
+class PermissionClient(Client):
+    def collect(self, row):
+        from appgoblin_play_scraper.constants.request import Formats
+        response = self.request('google','POST',Formats.Permissions.build(lang='en',country=row['country']),
+                                data=Formats.Permissions.build_body(row['app_id']),headers={'Content-Type':'application/x-www-form-urlencoded'})
+        if response.status_code!=200:
+            raise FetchError('权限接口暂不可用')
+        return PermissionResult(parse(response.content),response.content)
+
+    def collect_many(self, rows):
+        from .google_rpc import rpc_many, same_market
+        same_market(rows)
+        values,raw = rpc_many(self,rows[0],[('xdSrCf',[[None,[r['app_id'],7],[]]]) for r in rows])
+        results = []
+        for value in values:
+            if isinstance(value,FetchError):
+                results.append(value)
+                continue
+            try:
+                envelope = json.dumps([['wrb.fr','xdSrCf',json.dumps(value)]]).encode()
+                results.append(PermissionResult(parse(envelope),raw))
+            except FetchError as error:
+                results.append(error)
+        return results
+
+
+def save_batch_result(db, cfg, target, result=None, error=None):
+    raw = raw_save(cfg['data_dir'],result.raw) if result else None
+    with db:
+        current = db.execute('SELECT * FROM app_permission_targets WHERE id=%s AND token=%s AND enabled=1 FOR UPDATE',
+                             (target['id'],target['token'])).fetchone()
+        if not current:
+            return False
+        now = time.time()
+        payload = dump(result.payload) if result else None
+        db.execute('''INSERT INTO app_permission_runs(target_id,observed_at,outcome,payload,raw_path,error)
+            VALUES(%s,%s,%s,%s,%s,%s)''',(target['id'],now,'error' if error else 'ok',payload,raw,str(error) if error else None))
+        if error:
+            delay = max(getattr(error,'retry_after',0),min(86400,300*2**min(current['failures'],8)))
+            db.execute('''UPDATE app_permission_targets SET failures=failures+1,last_error=%s,checked_at=%s,due=%s,
+                token=NULL,lease_until=0 WHERE id=%s''',(str(error),now,now+delay,target['id']))
+        else:
+            db.execute('''UPDATE app_permission_targets SET failures=0,last_error=NULL,checked_at=%s,success_at=%s,due=%s,
+                payload=%s,permission_count=%s,raw_path=%s,token=NULL,lease_until=0 WHERE id=%s''',
+                (now,now,now+current['refresh_hours']*3600,payload,sum(len(v) for v in result.payload.values()),raw,target['id']))
+    return True
 
 
 def parse(raw):
@@ -59,6 +114,8 @@ def work(cfg, db, limit=5, client=None):
         for _ in range(limit):
             from .ingest import disk_check
             disk_check(cfg['data_dir'],cfg.get('min_free_gb',2))
+            from .collection_limits import blocked
+            if blocked(db,cfg):break
             if own:
                 if settings(db,cfg)['paused']:break
                 cooldown=db.execute("SELECT MAX(next_at) at FROM schedules WHERE name IN ('rate:global','rate:google')").fetchone()['at']
@@ -70,6 +127,10 @@ def work(cfg, db, limit=5, client=None):
                 token=uuid.uuid4().hex
                 db.execute('UPDATE app_permission_targets SET token=%s,lease_until=%s WHERE id=%s',(token,time.time()+cfg['lease_seconds'],row['id']))
             payload=raw_path=None;error=None;delay=0
+            from .task_logs import Execution
+            task_log = Execution(db,'permissions',row['id'])
+            task_log.write('started',f"开始权限采集：{row['store']} / {row['app_id']} / {row['country']}")
+            client.progress = task_log.write
             try:
                 def guard():
                     current=db.execute('SELECT enabled,token FROM app_permission_targets WHERE id=%s',(row['id'],)).fetchone()
@@ -84,7 +145,9 @@ def work(cfg, db, limit=5, client=None):
             except Exception as exc:error='权限采集失败：'+type(exc).__name__
             with db:
                 current=db.execute('SELECT token,enabled FROM app_permission_targets WHERE id=%s FOR UPDATE',(row['id'],)).fetchone()
-                if not current or current['token']!=token or not current['enabled']:continue
+                if not current or current['token']!=token or not current['enabled']:
+                    task_log.finish('ok',False)
+                    continue
                 now=time.time();outcome='error' if error else 'ok'
                 db.execute('INSERT INTO app_permission_runs(target_id,observed_at,outcome,payload,raw_path,error) VALUES(%s,%s,%s,%s,%s,%s)',
                     (row['id'],now,outcome,dump(payload) if payload is not None else None,raw_path,error))
@@ -96,6 +159,7 @@ def work(cfg, db, limit=5, client=None):
                         due=%s,lease_until=0,token=NULL,payload=%s,permission_count=%s,raw_path=%s WHERE id=%s''',
                         (now,now,now+row['refresh_hours']*3600,dump(payload),sum(len(v) for v in payload.values()),raw_path,row['id']))
             count['processed']+=1;count[outcome]+=1
+            task_log.finish(outcome,True,error or '权限声明已保存')
     finally:
         if own:client.session.close()
     return count
