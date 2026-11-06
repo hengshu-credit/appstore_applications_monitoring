@@ -31,74 +31,26 @@ export const navigationSections = [
 ];
 
 export const pageInfo = {
-  overview: [
-    "监控概览",
-    "store",
-    "先看采集覆盖与异常，再进入分组处理关注的应用。",
-  ],
-  groups: [
-    "应用分组",
-    "group",
-    "按业务分类管理一组 APP，在同一看板查看国家分布、上下架、权限、排名与经营指标。",
-  ],
-  availability: [
-    "市场上下架",
-    "market",
-    "查看当前市场的状态快照和上下架事件；成组的应用监控请进入应用分组。",
-  ],
-  events: [
-    "事件记录",
-    "market",
-    "追踪已观察到的变化，核查事件证据并记录处理结果。",
-  ],
-  alerts: ["告警与日报", "store", "设置提醒规则、处理告警并查看日报。"],
-  apps: [
-    "应用库",
-    "market",
-    "发现与检索应用，查看档案，勾选应用加入监控分组。",
-  ],
-  globalcharts: [
-    "全球排行榜",
-    "countries",
-    "跨国家浏览排行榜，进入具体市场查看应用排名。",
-  ],
-  charts: ["榜单追踪", "market", "查看当前市场的榜单与已保存的采样历史。"],
-  featured: ["精品推荐", "market", "查看商店推荐位及已采集的推荐记录。"],
-  keywords: [
-    "关键词研究",
-    "market",
-    "发现关键词、查看搜索结果和应用的有效排名。",
-  ],
-  aso: [
-    "ASO 文案",
-    "market",
-    "结合应用详情和关键词覆盖，管理本地商店文案草稿。",
-  ],
-  compare: [
-    "竞品对比",
-    "market",
-    "对比同市场的少量竞品；批量分类监控请使用应用分组。",
-  ],
-  developers: ["开发者", "store", "按开发者查看已知应用及关联资料。"],
-  market: ["市场分布", "market", "分析已观察应用的分类、开发者与事件分布。"],
-  ads: ["广告观察", "store", "管理广告观察证据与自有账户报表。"],
-  reviews: [
-    "评论记录",
-    "market",
-    "按应用收集和检索商店评论，查看原文、星级及采集历史。",
-  ],
-  collection: [
-    "采集任务",
-    "collection",
-    "按类型查看采集任务，配置周期与限速，查看进度、日志并处理异常。",
-  ],
-  watchlist: [
-    "详情监控任务",
-    "store",
-    "管理单个 APP 的详情复查任务；按业务打包查看数据请进入应用分组。",
-  ],
-  exports: ["数据导出", "store", "选择数据集与范围，创建导出并下载已有结果。"],
-  datasources: ["数据源配置", "none", "管理采集连接、授权配置与可用能力。"],
+  overview: ["监控概览", "store", "查看所选商店的采集进度与异常。"],
+  groups: ["应用分组", "group", "按国家对比组内应用的状态与指标。"],
+  availability: ["市场上下架", "market", "按市场核查上下架变化。"],
+  events: ["事件记录", "market", "对照变更前后的商店记录。"],
+  alerts: ["告警与日报", "store", "查看告警和最近 24 小时日报。"],
+  apps: ["应用库", "market", "勾选应用可批量加入监控分组。"],
+  globalcharts: ["全球排行榜", "countries", "选择国家并排比较各地榜单。"],
+  charts: ["榜单追踪", "market", "按市场追踪榜单排名与历史快照。"],
+  featured: ["精品推荐", "market", "查看商店推荐记录。"],
+  keywords: ["关键词研究", "market", "按市场查看关键词排名。"],
+  aso: ["ASO 文案", "market", "编辑本地商店文案草稿。"],
+  compare: ["竞品对比", "market", "对比同一市场的应用表现。"],
+  developers: ["开发者", "store", "按商店开发者标识查询旗下应用。"],
+  market: ["市场分布", "market", "仅统计当前市场已观察到的应用。"],
+  ads: ["广告观察", "store", "查看广告观察证据与账户日报。"],
+  reviews: ["评论记录", "market", "按应用筛选评论原文与采集历史。"],
+  collection: ["采集任务", "collection", "点击任务分类筛选采集记录。"],
+  watchlist: ["详情监控任务", "store", "按应用设置详情复查周期。"],
+  exports: ["数据导出", "store", "按数据集和条件导出 JSONL。"],
+  datasources: ["数据源配置", "none", "配置采集授权或导入数据文件。"],
   administration: ["账户管理", "none", "管理账户、角色权限与个人设置。"],
 };
 
@@ -131,8 +83,20 @@ export function workspacePage(name) {
     page,
     title: detail || info[0],
     scope: ["keyword", "target", "chart"].includes(part) ? "detail" : info[1],
-    description: info[2],
+    description:
+      {
+        app: "查看该应用的市场表现与采集历史。",
+        chart: "查看当前榜单快照中的应用。",
+        target: "查看该目标的采集记录。",
+        keyword: "查看该关键词的搜索排名。",
+      }[part] || info[2],
   };
+}
+
+export function setWorkspaceHint(doc, text) {
+  const hint = doc.querySelector("#workspace-description");
+  hint.textContent = text;
+  hint.title = text;
 }
 
 export function updateWorkspace(document, name, can) {
@@ -147,8 +111,7 @@ export function updateWorkspace(document, name, can) {
     else a.removeAttribute("aria-current");
   });
   document.querySelector("#page-title").textContent = current.title;
-  document.querySelector("#workspace-description").textContent =
-    current.description;
+  setWorkspaceHint(document, current.description);
   const tabs = document.querySelector("#workspace-pages");
   const pages = (module?.pages || []).filter((page) => can(page));
   tabs.hidden = pages.length < 2;

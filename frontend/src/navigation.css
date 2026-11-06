@@ -25,9 +25,22 @@
   padding: 18px 38px 0;
 }
 #workspace-description {
-  color: var(--muted);
+  flex: 1 1 0;
+  min-width: 0;
   margin: 0;
-  line-height: 1.7;
+  padding: 6px 12px;
+  border-inline-start: 3px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#workspace-actions:empty {
+  display: none;
 }
 #workspace-pages {
   display: flex;
@@ -51,7 +64,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 10px;
 }
 #workspace-actions {
@@ -85,6 +98,10 @@
   }
 }
 @media (max-width: 750px) {
+  #workspace-description {
+    padding-inline: 8px;
+    font-size: 12px;
+  }
   .nav-section {
     display: contents;
   }

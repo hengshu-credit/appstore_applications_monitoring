@@ -106,7 +106,7 @@ export function createAvailabilityPage(ctx) {
       r.counts.find((c) => c.state === state)?.count || 0;
     if (
       !mount(
-        `<p><a class="button secondary" href="#groups">应用分组看板：按国家查看全部指标</a></p><p class="lead">上下架观察 · ${esc(m.country.toUpperCase())} / ${esc(m.language)}</p><p class="sub">${esc(r.scope)}</p><div class="cards">${Object.entries(
+        `<a class="button secondary" data-workspace-action href="#groups">应用分组看板</a><div class="cards">${Object.entries(
           labels,
         )
           .map(([s, label]) =>
@@ -114,7 +114,7 @@ export function createAvailabilityPage(ctx) {
           )
           .join(
             "",
-          )}${metric("未验证的重点应用", r.unobserved_watched, "当前市场已启用但尚无观察")}</div>${panel("观察范围与新鲜度", `<form id="availability-period" class="toolbar"><label>趋势区间<select name="days">${[7, 30, 90, 365].map((n) => `<option value="${n}" ${n === Number(days) ? "selected" : ""}>最近${n}天</option>`).join("")}</select></label><button>查看</button><a class="button secondary" href="#collection">管理采集与复核</a></form><p>统计时间 ${stamp(r.observed_at)} · 最近48小时检查 ${num(r.counts.reduce((s, c) => s + Number(c.fresh), 0))} / 已观察 ${num(r.counts.reduce((s, c) => s + c.count, 0))} 个应用。请求失败保留原状态。</p>`)}<div class="grid2">${Object.entries(
+          )}${metric("未验证的重点应用", r.unobserved_watched, "当前市场已启用但尚无观察")}</div>${panel("观察范围与新鲜度", `<form id="availability-period" class="toolbar"><label>趋势区间<select name="days">${[7, 30, 90, 365].map((n) => `<option value="${n}" ${n === Number(days) ? "selected" : ""}>最近${n}天</option>`).join("")}</select></label><button>查看</button><a class="button secondary" href="#collection">管理采集与复核</a></form><p class="sub">${esc(r.scope)}</p><p>统计时间 ${stamp(r.observed_at)} · 最近48小时检查 ${num(r.counts.reduce((s, c) => s + Number(c.fresh), 0))} / 已观察 ${num(r.counts.reduce((s, c) => s + c.count, 0))} 个应用。请求失败保留原状态。</p>`)}<div class="grid2">${Object.entries(
           labels,
         )
           .map(([state, label]) =>

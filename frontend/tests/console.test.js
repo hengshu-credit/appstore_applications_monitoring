@@ -80,7 +80,10 @@ const newModules = (
   await Promise.all([
     wrappedModule("icons.js", "icon,storeLogo"),
     wrappedModule("shell-layout.js", "initShellLayout"),
-    wrappedModule("navigation.js", "navigationMarkup,updateWorkspace"),
+    wrappedModule(
+      "navigation.js",
+      "navigationMarkup,setWorkspaceHint,updateWorkspace",
+    ),
     wrappedModule(
       "monitoring-charts.js",
       "monitoringChart,bindMonitoringCharts",
@@ -298,7 +301,7 @@ async function setup(responder) {
       "\n" +
       newModules +
       "\n" +
-      source.replace(/^import .*;$/gm, ""),
+      source.replace(/^import\s[^;]*;$/gm, ""),
   );
   await tick();
   return { window, calls };
@@ -323,6 +326,9 @@ test("navigation queries the API and escapes upstream application content", asyn
       : undefined,
   );
   try {
+    const hint = window.document.querySelector("#workspace-description");
+    assert.equal(hint.tagName, "BLOCKQUOTE");
+    assert.equal(hint.textContent, "等待后台首次心跳");
     window.location.hash = "apps";
     await tick();
     assert.match(
@@ -330,6 +336,9 @@ test("navigation queries the API and escapes upstream application content", asyn
       /<img src=x onerror=alert\(1\)>/,
     );
     assert.equal(window.document.querySelector("img[onerror]"), null);
+    assert.equal(hint.textContent, "勾选应用可批量加入监控分组。");
+    assert.equal(hint.title, hint.textContent);
+    assert.equal(window.document.querySelector("main .lead"), null);
     assert.ok(calls.some((c) => c.path.startsWith("/api/apps?")));
     assert.equal(window.document.querySelectorAll("#navigation a").length, 12);
     assert.equal(

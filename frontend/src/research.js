@@ -157,7 +157,7 @@ export function createResearchPages(ctx) {
       days.set(row.day, (days.get(row.day) || 0) + Number(row.count));
     if (
       !mount(
-        `<p class="lead">汇总版本、文案、素材、售价与地区状态的真实变化，用前后对照复盘每次调整。</p><div class="cards">${metric("观察事件", total, "当前市场与筛选区间")}${metric("资料变化", changed, "包含版本、素材、价格等字段")}${metric("地区不可用", data.summary.find((r) => r.kind === "region_unavailable")?.count || 0, "保留多次确认口径")}${metric("人工注记", data.annotations.length, "手工记录，不冒充采集事件")}</div>${panel(
+        `<div class="cards">${metric("观察事件", total, "当前市场与筛选区间")}${metric("资料变化", changed, "包含版本、素材、价格等字段")}${metric("地区不可用", data.summary.find((r) => r.kind === "region_unavailable")?.count || 0, "保留多次确认口径")}${metric("人工注记", data.annotations.length, "手工记录，不冒充采集事件")}</div>${panel(
           "事件筛选",
           `<form id="event-filter" class="toolbar">${field("应用 ID", "app_id", filters.app_id || "")}${select("事件", "kind", [["", "全部"], ...Object.entries(eventNames)])}${select("变更字段", "field", [["", "全部"], ...Object.entries(fieldNames)])}${field("关注分组", "group_name", filters.group_name || "")}${select(
             "观察区间",
@@ -270,7 +270,7 @@ export function createResearchPages(ctx) {
     }
     if (
       !mount(
-        `<p class="lead">编辑本地元数据草稿，对照实际关键词排名与文本覆盖；保存版本后再到自己的商店后台发布。</p>${panel("选择应用市场", `<form id="aso-load" class="toolbar">${field("应用 ID", "app_id", appId, "text", "required")}<button type="submit">加载已采文案</button></form><p class="sub">${esc(marketCaption(market()))}。Apple后台关键词和未采集副标题需由用户提供。</p>`)}<div id="aso-workspace">${empty("选择应用开始文案核查", "公开详情会作为基准快照；不会读取竞品私有后台。")}</div>`,
+        `${panel("选择应用市场", `<form id="aso-load" class="toolbar">${field("应用 ID", "app_id", appId, "text", "required")}<button type="submit">加载已采文案</button></form><p class="sub">${esc(marketCaption(market()))}。Apple后台关键词和未采集副标题需由用户提供。</p>`)}<div id="aso-workspace">${empty("选择应用开始文案核查", "公开详情会作为基准快照；不会读取竞品私有后台。")}</div>`,
         rev,
       )
     )
@@ -593,7 +593,7 @@ export function createResearchPages(ctx) {
     const sets = await api("/research/comparisons");
     if (
       !mount(
-        `<p class="lead">把反复研究的竞品保存为同市场集合。应用角色由你指定，跨商店和跨市场排名不会混合相加。</p>${panel("保存竞品集合", `<form id="set-form" class="form-grid">${field("集合名称", "name", "", "text", "required")}${field("主比较应用ID", "primary", "", "text", "required")}<label class="full">对照应用ID（每行一个，最多5个）<textarea name="competitors" required></textarea></label><label class="check-label"><input type="checkbox" name="owned">主比较应用是我的自有应用</label><button type="submit">保存集合</button></form>`)}${panel(
+        `${panel("保存竞品集合", `<form id="set-form" class="form-grid">${field("集合名称", "name", "", "text", "required")}${field("主比较应用ID", "primary", "", "text", "required")}<label class="full">对照应用ID（每行一个，最多5个）<textarea name="competitors" required></textarea></label><label class="check-label"><input type="checkbox" name="owned">主比较应用是我的自有应用</label><button type="submit">保存集合</button></form>`)}${panel(
           "我的竞品集合",
           table(
             ["名称", "市场", "成员", "操作"],
@@ -717,7 +717,7 @@ export function createResearchPages(ctx) {
     );
     if (
       !mount(
-        `<p class="lead">以商店开发者标识查看已观察产品和地区版本，不按同名推断跨商店公司关系。</p>${panel(
+        `${panel(
           "开发者检索",
           `<form id="developer-filter" class="toolbar">${field("开发者名称", "q", q)}<button type="submit">搜索</button></form>` +
             table(

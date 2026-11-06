@@ -176,8 +176,7 @@ body {
   }
 }
 @media (max-height: 600px) and (max-width: 750px) {
-  .app-sidebar .brand,
-  #workspace-description {
+  .app-sidebar .brand {
     display: none;
   }
   .app-sidebar {
