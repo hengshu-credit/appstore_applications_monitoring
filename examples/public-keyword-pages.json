@@ -1,0 +1,15 @@
+[
+  {"country":"ph","language":"en","kind":"website","url":"https://tala.ph/","phrases":["online loan","loan app","cash loan","loan limits"]},
+  {"country":"ke","language":"en","kind":"website","url":"https://tala.co.ke/","phrases":["loan app","fast loans","mobile loans","digital credit"]},
+  {"country":"mx","language":"es","kind":"website","url":"https://www.kueski.com/prestamos-personales","phrases":["préstamos personales","préstamo personal","créditos personales","préstamos inmediatos"]},
+  {"country":"id","language":"id","kind":"website","url":"https://www.kredivo.com/","phrases":["pinjaman tunai","pinjaman online","beli sekarang bayar nanti","cicilan tanpa kartu kredit"]},
+  {"country":"in","language":"en","kind":"website","url":"https://pay.google.com/intl/en_in/about/personalloans/","phrases":["personal loans","instant personal loans","loan amount","loan application"]},
+  {"country":"id","language":"en","kind":"ad_case","url":"https://ads.tiktok.com/business/da-DK/inspiration/how-kredivo-optimized-loan-approvals-using-tiktok-smart-solutions","phrases":["buy now, pay later","loan approvals","personal loans","instant credit financing","installment payments"]},
+  {"country":"mx","language":"en","kind":"ad_case","url":"https://ads.tiktok.com/business/en/inspiration/banco-azteca-kdrama?redirected=1","phrases":["cash loan","credit solutions","loan application","cash loan applications"]},
+  {"country":"ng","language":"en","kind":"website","url":"https://fairmoney.io/","phrases":["personal loans","consumer loans","credit line","quick loans","flexible credit"]},
+  {"country":"vn","language":"vi","kind":"website","url":"https://f88.vn/lp/F88-ho-tro-vay-tien-nhanh-chong","phrases":["vay tiền nhanh","vay bằng đăng ký xe","vay online"]},
+  {"country":"kz","language":"ru","kind":"website","url":"https://solva.kz/","phrases":["микрокредит","кредит онлайн","кредит на карту"]},
+  {"country":"br","language":"pt-br","kind":"website","url":"https://nubank.com.br/nu/emprestimos/pessoal","phrases":["empréstimo pessoal","simular empréstimo","empréstimo online"]},
+  {"country":"th","language":"th","kind":"website","url":"https://www.monix.co.th/product","phrases":["สินเชื่อ","สินเชื่อนาโนไฟแนนซ์","สินเชื่อหมุนเวียน","ฟินนิกซ์"]},
+  {"country":"id","language":"id","kind":"website","url":"https://kredivo.id/new_faq/pinjaman-tunai/","phrases":["pinjaman tunai","pinjaman online","cicilan","tanpa jaminan"]}
+]
