@@ -142,20 +142,24 @@ def save_observation(db, cfg, target, result=None, error=None, now=None):
                     len(result.items) if result else None, raw, str(error) if error else None))
         run_id = db.cursor.lastrowid
         if result:
-            for i, item in enumerate(result.items, 1):
-                db.execute("INSERT INTO observation_items VALUES(%s,%s,%s,%s)", (run_id, item["id"], i, dump(item)))
-                if target["kind"] == "reviews":
-                    db.execute('''INSERT INTO reviews VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) AS incoming
+            if result.items:
+                db.executemany("INSERT INTO observation_items VALUES(%s,%s,%s,%s)",
+                               [(run_id,item['id'],i,dump(item)) for i,item in enumerate(result.items,1)])
+            if target['kind']=='reviews' and result.items:
+                db.executemany('''INSERT INTO reviews VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) AS incoming
                         ON DUPLICATE KEY UPDATE rating=incoming.rating,content=incoming.content,title=incoming.title,
                         version=incoming.version,published_at=incoming.published_at,last_seen=incoming.last_seen,payload=incoming.payload''',
-                               (target["store"], target["app_id"], target["country"], target["language"], item["id"],
-                                item["rating"], item.get("content", ""), item.get("title"), item.get("version"),
-                                item.get("published_at"), now, now, dump(item)))
-                elif valid_id(target["store"], item.get("app_id", "")):
+                    [(target['store'],target['app_id'],target['country'],target['language'],item['id'],
+                      item['rating'],item.get('content',''),item.get('title'),item.get('version'),item.get('published_at'),now,now,dump(item))
+                     for item in result.items])
+            elif target['kind']!='reviews':
+                apps = [item for item in result.items if valid_id(target['store'],item.get('app_id',''))]
+                if apps:
+                    add_apps(db,[(target['store'],item['app_id'],item.get('name'),target['category'] or None) for item in apps],
+                             f"{target['kind']}:{target['id']}",now)
                     from .app_icons import remember
-                    remember(db,target['store'],item['app_id'],target['country'],target['language'],item.get('icon'),item.get('name'))
-                    add_apps(db, [(target["store"], item["app_id"], item.get("name"), target["category"] or None)],
-                             f"{target['kind']}:{target['id']}", now)
+                    for item in apps:
+                        remember(db,target['store'],item['app_id'],target['country'],target['language'],item.get('icon'),item.get('name'))
             db.execute('''UPDATE observation_targets SET previous_success_id=latest_success_id,
                 latest_success_id=%s WHERE id=%s''', (run_id, target["id"]))
         db.execute('''UPDATE observation_targets SET latest_attempt_id=%s,failures=%s,last_error=%s,

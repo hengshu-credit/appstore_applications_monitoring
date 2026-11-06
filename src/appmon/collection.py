@@ -1,6 +1,7 @@
 """Reviewable collection plans expanded through existing idempotent collectors."""
 import json
 import time
+import uuid
 from .db import dump
 from .intelligence import market, hours, text, watch, add_observation_target
 from .keywords import validate_target, add_targets
@@ -82,6 +83,84 @@ def create_plan(db, value):
     return {'id':identifier,'total':result['total'],'status':'queued'}
 
 
+def enqueue(db, value):
+    """Durable intake for APIs, other systems and schedulers; retries reuse the receipt."""
+    source = text(value.get('source','api'),64)
+    request_id = text(value.get('request_id',uuid.uuid4().hex),120)
+    tasks = value.get('tasks')
+    if not isinstance(tasks,list) or not 1<=len(tasks)<=500:
+        raise ValueError('一次提交1–500个任务')
+    actions = []
+    for task in tasks:
+        if not isinstance(task,dict):raise ValueError('采集任务须为对象')
+        kind = task.get('kind')
+        if kind in ('icons','permissions'):
+            target = market(task)
+            if kind=='permissions' and target['store']!='google':raise ValueError('权限采集仅支持 Google Play')
+            if kind=='permissions':target['language']='en'
+            actions.append({'kind':kind,'value':target|{'refresh_hours':hours(task.get('refresh_hours',24))}})
+        elif kind in ('details','keywords','chart','reviews','featured'):
+            spec = task | {k:k==kind for k in ('details','chart','reviews','featured')}
+            spec['app_ids'] = [task.get('app_id','')] if kind in ('details','reviews') else []
+            spec['keywords'] = [task.get('keyword','')] if kind=='keywords' else []
+            spec['keyword_depth'] = task.get('depth',50) if kind=='keywords' else 50
+            result = preview_plan(spec)
+            if len(result['actions'])!=1:raise ValueError('采集目标无效')
+            actions.extend(result['actions'])
+        else:
+            raise ValueError('未知采集类型')
+    with db.named_lock('enqueue:'+dump([source,request_id]),timeout=10):
+        old = db.execute('''SELECT id,total,status,actions FROM collection_plans WHERE
+            JSON_UNQUOTE(JSON_EXTRACT(specification,'$.input_source'))=%s AND
+            JSON_UNQUOTE(JSON_EXTRACT(specification,'$.request_id'))=%s LIMIT 1''',(source,request_id)).fetchone()
+        if old:
+            if json.loads(old['actions'])!=actions:raise ValueError('同一来源请求编号不能对应不同任务')
+            return {k:old[k] for k in ('id','total','status')} | {'reused':True,'request_id':request_id}
+        now=time.time()
+        with db:
+            db.execute('INSERT INTO collection_plans(name,specification,actions,total,created_at,updated_at) VALUES(%s,%s,%s,%s,%s,%s)',
+                (text(value.get('name',source+' 采集请求')),dump({'input_source':source,'request_id':request_id}),dump(actions),len(actions),now,now))
+            identifier=db.cursor.lastrowid
+            emit(db,'plans',identifier,'queued',f'统一入队：{source}，{len(actions)} 个请求目标')
+        return {'id':identifier,'total':len(actions),'status':'queued','reused':False,'request_id':request_id}
+
+
+def configure_asset(db, action):
+    target=action['value']
+    with db:
+        if action['kind']=='permissions':
+            from .app_permissions import enqueue as enqueue_permissions
+            enqueue_permissions(db,[target])
+            db.execute('''UPDATE app_permission_targets SET refresh_hours=LEAST(refresh_hours,%s)
+                WHERE store=%s AND app_id=%s AND country=%s''',
+                (target['refresh_hours'],target['store'],target['app_id'],target['country']))
+        else:
+            db.execute('''INSERT INTO app_icons(store,app_id,country,language,requested,status,refresh_hours)
+                VALUES(%s,%s,%s,%s,1,'queued',%s) AS incoming ON DUPLICATE KEY UPDATE
+                status=IF(app_icons.requested=0,'queued',app_icons.status),
+                due=IF(app_icons.requested=0,0,app_icons.due),requested=1,refresh_hours=LEAST(app_icons.refresh_hours,incoming.refresh_hours)''',
+                (target['store'],target['app_id'],target['country'],target['language'],target['refresh_hours']))
+
+
+def schedule_submission(db, action, submitted_at):
+    from .app_collection import action_target
+    ref=action_target(db,action)
+    if ref['resource']=='watchlist':
+        db.execute('''UPDATE jobs j JOIN watchlist w USING(store,app_id,country,language)
+            LEFT JOIN listings l USING(store,app_id,country,language) SET j.due=0
+            WHERE w.id=%s AND w.enabled=1 AND j.failures=0 AND (l.checked_at IS NULL OR l.checked_at<%s)''',
+            (ref['id'],submitted_at))
+    elif ref['resource'] in ('keywords','targets'):
+        table,runs = ('keyword_targets','keyword_runs') if ref['resource']=='keywords' else ('observation_targets','observation_runs')
+        db.execute(f'''UPDATE {table} t LEFT JOIN {runs} r ON r.id=t.latest_success_id SET t.due=0
+            WHERE t.id=%s AND t.enabled=1 AND t.failures=0 AND (r.observed_at IS NULL OR r.observed_at<%s)''',
+            (ref['id'],submitted_at))
+    else:
+        table='app_icons' if ref['resource']=='icons' else 'app_permission_targets'
+        db.execute(f'''UPDATE {table} SET due=0 WHERE id=%s AND enabled=1 AND failures=0
+            AND (checked_at IS NULL OR checked_at<%s)''',(ref['id'],submitted_at))
+
+
 def work_plans(db, limit=20):
     # A MySQL named lock survives the helper transactions and is released if the
     # process disconnects. A crash between action and checkpoint safely replays it.
@@ -100,13 +179,18 @@ def work_plans(db, limit=20):
                         schedule_action(db,action)
                     elif action['kind']=='details':watch(db,action['value'],merge_existing=True)
                     elif action['kind']=='keywords':add_targets(db,[action['value']],merge_existing=True)
+                    elif action['kind'] in ('icons','permissions'):configure_asset(db,action)
                     else:add_observation_target(db,action['value'],preserve_existing=action.get('preserve_existing',False),merge_existing=not action.get('preserve_existing',False))
+                    if 'input_source' in json.loads(row['specification']):
+                        schedule_submission(db,action,row['created_at'])
                     completed+=1;processed+=1
                     db.execute("UPDATE collection_plans SET completed=%s,updated_at=%s WHERE id=%s",(completed,time.time(),row['id']))
                     emit(db,'plans',row['id'],'progress',f'已配置 {completed}/{len(actions)} 个目标；类型 {action["kind"]}')
                 status='complete' if completed==len(actions) else 'running'
                 db.execute('UPDATE collection_plans SET status=%s,error=NULL WHERE id=%s',(status,row['id']))
                 emit(db,'plans',row['id'],status,'计划目标已全部配置' if status=='complete' else '本批次已完成，等待下一批')
+                from .collection_batch import touch
+                touch(db)
                 return {'processed':processed,'error':0,'id':row['id'],'status':status}
             except Exception as exc:
                 db.execute("UPDATE collection_plans SET status='error',error=%s,updated_at=%s WHERE id=%s",(type(exc).__name__,time.time(),row['id']))

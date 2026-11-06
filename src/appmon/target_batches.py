@@ -5,6 +5,7 @@ from .collection_limits import blocked
 from .ingest import disk_check
 from .stores import FetchError
 from .task_logs import Execution
+from .collection_batch import can_batch, retry_condition, NETWORK_ERRORS, write_batch
 
 
 def claim_targets(db, table, lease_seconds, size, kind=None):
@@ -23,13 +24,13 @@ def claim_targets(db, table, lease_seconds, size, kind=None):
         if not first:
             return []
         rows=[first]
-        if first['store']=='google' and first['failures']==0 and size>1:
+        if first['store']=='google' and can_batch(first) and size>1:
             kind=' AND kind=%s' if table=='observation_targets' else ''
             language = '' if table=='app_permission_targets' else ' AND language=%s'
             rows+=list(db.execute(f'''SELECT {columns} FROM {table} WHERE enabled=1 AND due<=%s AND lease_until<=%s
-                AND store='google' AND country=%s{language} AND failures=0 AND id<>%s{kind}
+                AND store='google' AND country=%s{language} AND {retry_condition()} AND id<>%s{kind}
                 ORDER BY due,id LIMIT %s FOR UPDATE SKIP LOCKED''',
-                (now,now,first['country'],*([first['language']] if language else []),first['id'],*([first['kind']] if kind else []),min(size,20)-1)).fetchall())
+                (now,now,first['country'],*([first['language']] if language else []),NETWORK_ERRORS,first['id'],*([first['kind']] if kind else []),min(size,20)-1)).fetchall())
         token=uuid.uuid4().hex
         db.execute(f'UPDATE {table} SET token=%s,lease_until=%s WHERE id IN ('+','.join('%s' for _ in rows)+')',
                    (token,now+lease_seconds,*[r['id'] for r in rows]))
@@ -72,14 +73,15 @@ def work_targets(cfg, db, limit, client, *, table, resource, single, multiple, s
                     raise FetchError('批次结果数量异常')
             except (FetchError,ValueError,TypeError,KeyError,IndexError) as exc:
                 results=[exc if isinstance(exc,FetchError) else FetchError('批次解析失败：'+type(exc).__name__)]*len(rows)
-            for row,result,task_log in zip(rows,results,logs):
-                error=result if isinstance(result,FetchError) else None
-                accepted=save(db,cfg,row,error=error) if error else save(db,cfg,row,result=result)
-                outcome='error' if error else 'ok'
-                from .pagination import completion_note
-                task_log.finish(outcome,accepted,completion_note(result) or '按目标独立保存，保留原采集深度与周期',error=error)
-                counts['processed']+=1
-                counts[outcome if accepted else 'stale']+=1
+            with write_batch(db) as writer:
+                for row,result,task_log in zip(rows,results,logs):
+                    error=result if isinstance(result,FetchError) else None
+                    accepted=save(writer,cfg,row,error=error) if error else save(writer,cfg,row,result=result)
+                    outcome='error' if error else 'ok'
+                    from .pagination import completion_note
+                    task_log.finish(outcome,accepted,completion_note(result) or '按目标独立保存，保留原采集深度与周期',error=error)
+                    counts['processed']+=1
+                    counts[outcome if accepted else 'stale']+=1
             if any(isinstance(r,FetchError) and r.retry_after>=300 for r in results):
                 break
         finally:

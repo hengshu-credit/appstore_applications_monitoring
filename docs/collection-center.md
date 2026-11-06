@@ -108,3 +108,20 @@ Google 同市场批次内，相同 RPC 内容只发送一次，结果映射回�
 本地整理命令为 `python scripts/reconcile_collection.py --apply --pool-service-stopped --output <报告路径>`，在采集进程停止期间执行。清理过期租约、补回缺失详情任务，将已停止的全池服务映射为流程暂停。前后核对任务数、启用/暂停数、周期合计和深度合计，保留任务 ID 与历史。已启用全池的环境省略 `--pool-service-stopped`。
 
 种子同步、发现和新市场队列扩展仍由 monitor 流程负责。显式启用全池后，现存队列可由共享调度器领取。第三方授权数据源保留自己的更新流程。
+
+## 系统接入与批次提交
+
+`POST /api/research/collection/enqueue` 沿用采集写权限，可由平台页面、外部系统或定时调用者提交。请求示例：
+
+```json
+{"source":"crm","request_id":"2026-11-06-refresh","tasks":[
+  {"kind":"keywords","store":"google","country":"us","language":"en","keyword":"loan","depth":100,"refresh_hours":24},
+  {"kind":"permissions","store":"google","country":"us","app_id":"com.example.app"}
+]}
+```
+
+一次接受 1–500 个目标，支持 details、keywords、chart、reviews、featured、icons、permissions。整份提交先校验再保存。同一来源、同一请求编号、同一任务内容会返回同一个回执；编号相同而任务内容不同会拒绝。返回的 id 可用于 `GET /api/research/plans/{id}/collection` 查询每个任务的实际结果。周期目标到期后再次进入可领取状态，各来源共享同一目标身份。已有暂停状态和失败退避继续生效。
+
+消费者在商店、国家、语言和协议兼容范围内尽量取满配置批量。HTTP 限流与网络超时的到期重试仍可组批，结构异常及缺失项保持单目标核验。结果写入和任务确认在同一数据库事务提交，评论、榜单与关键词明细使用批量插入。批次中途写入失败则整批回滚，任务保持未完成并在租约过期后重新领取。
+
+`GET /api/research/collection/revision` 是轻量变更检查。入库提交后递增版本，采集中心每 5 秒检查一次，仅发生变化时刷新数据。用户编辑设置、打开弹窗、选择任务或离开页面时会延后或停止自动刷新。刷新显示的是已提交的结果。

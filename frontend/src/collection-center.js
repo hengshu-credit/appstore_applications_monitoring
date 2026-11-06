@@ -51,6 +51,59 @@ export function createCollectionCenter(ctx) {
     recentRegistry;
   const options = (obj) => Object.entries(obj);
   const refresh = () => render(nextRevision());
+  let refreshTimer;
+  function watchDataRevision(rev, baseline) {
+    clearTimeout(refreshTimer);
+    if (!Number.isInteger(baseline)) return;
+    let dirty = false;
+    for (const form of document.querySelectorAll(
+      "#task-filters, #collection-limits",
+    )) {
+      form.addEventListener("input", () => {
+        dirty = true;
+      });
+      form.addEventListener("change", () => {
+        dirty = true;
+      });
+    }
+    const editing = () =>
+      dirty ||
+      document.querySelector("#collection-editor, [data-task-index]:checked") ||
+      document.activeElement?.closest(
+        "#task-filters, #collection-limits, [data-pipeline], #plan-form, [data-task-action]",
+      ) ||
+      document.querySelector("#selected-count")?.textContent.includes("所有");
+    const schedule = () => {
+      refreshTimer = setTimeout(check, 5000);
+    };
+    async function check() {
+      if (
+        rev !== currentRevision() ||
+        location.hash.split("?")[0] !== "#collection"
+      )
+        return;
+      if (document.hidden || editing()) {
+        schedule();
+        return;
+      }
+      try {
+        const result = await api("/research/collection/revision");
+        if (rev !== currentRevision()) return;
+        if (
+          Number.isInteger(result.revision) &&
+          result.revision !== baseline &&
+          !editing()
+        ) {
+          await refresh();
+          return;
+        }
+      } catch {
+        /* Keep the current rows visible until the next successful check. */
+      }
+      schedule();
+    }
+    schedule();
+  }
   function closeEditor() {
     $("#collection-editor")?.remove();
   }
@@ -225,6 +278,7 @@ export function createCollectionCenter(ctx) {
     });
   }
   async function render(rev) {
+    clearTimeout(refreshTimer);
     closeEditor();
     const params = new URLSearchParams(location.hash.split("?")[1] || "");
     if (params.has("new")) {
@@ -404,6 +458,7 @@ export function createCollectionCenter(ctx) {
       )
     )
       return;
+    if (section === "tasks") watchDataRevision(rev, tasks.data_revision);
     document.querySelectorAll("[data-category]").forEach(
       (b) =>
         (b.onclick = () => {

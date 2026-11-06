@@ -59,6 +59,8 @@ def task_query(*, kind='', store='', country='', language='', state='', q=''):
 
 
 def list_tasks(db, *, page=1, limit=50, **filters):
+    from .collection_batch import revision
+    data_revision = revision(db)
     if not 1 <= page <= 100000 or not 1 <= limit <= 200:
         raise ValueError('分页参数无效')
     filtered, args = task_query(**filters)
@@ -75,7 +77,7 @@ def list_tasks(db, *, page=1, limit=50, **filters):
             summary[row['task_state']] += row['n']
     total = sum(summary.values())
     rows = db.execute(filtered+' ORDER BY resource,id DESC LIMIT %s OFFSET %s', (*args,limit,(page-1)*limit)).fetchall()
-    return {'items':rows,'total':total,'summary':summary,'categories':list(categories.values()),'page':page,'limit':limit,'has_more':page*limit<total}
+    return {'items':rows,'total':total,'summary':summary,'categories':list(categories.values()),'page':page,'limit':limit,'has_more':page*limit<total,'data_revision':data_revision}
 
 
 def _target(db, resource, identifier):

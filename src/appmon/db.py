@@ -103,9 +103,9 @@ class Database:
         self.connection.close()
 
     @contextmanager
-    def named_lock(self, resource):
+    def named_lock(self, resource, timeout=0):
         name = 'appmon:' + hashlib.sha256((self.database + ':' + resource).encode()).hexdigest()[:56]
-        acquired = self.execute('SELECT GET_LOCK(%s,0) acquired', (name,)).fetchone()['acquired']
+        acquired = self.execute('SELECT GET_LOCK(%s,%s) acquired', (name,timeout)).fetchone()['acquired']
         if acquired != 1:
             raise RuntimeError('Another process is already importing this dataset')
         try:
@@ -225,6 +225,7 @@ def key(job):
 
 def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=False, now=None, google_limit=20, apple_limit=50):
     """Claim only the jobs served by the next HTTP request, in a short transaction."""
+    from .collection_batch import can_batch, retry_condition, NETWORK_ERRORS
     now = time.time() if now is None else now
     where = 'j.due<=%s AND j.lease_until<=%s'
     args = [now,now]
@@ -247,11 +248,11 @@ def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=Fa
             return []
         jobs = [first]
         batch_limit=min(limit,apple_limit if first['store']=='apple' else google_limit)
-        if first['failures']==0 and batch_limit>1:
+        if can_batch(first) and batch_limit>1:
             jobs += list(db.execute(f'''SELECT {columns} FROM {source} WHERE {where}
-                AND j.store=%s AND j.country=%s AND j.language=%s AND j.app_id<>%s AND j.failures=0
+                AND j.store=%s AND j.country=%s AND j.language=%s AND j.app_id<>%s AND {retry_condition('j.')}
                 ORDER BY j.due LIMIT %s FOR UPDATE SKIP LOCKED''',
-                (*args,first['store'],first['country'],first['language'],first['app_id'],batch_limit-1)).fetchall())
+                (*args,first['store'],first['country'],first['language'],first['app_id'],NETWORK_ERRORS,batch_limit-1)).fetchall())
         token = uuid.uuid4().hex
         db.execute('UPDATE jobs SET token=%s,lease_until=%s WHERE store=%s AND country=%s AND language=%s AND app_id IN ('+
                    ','.join('%s' for _ in jobs)+')',

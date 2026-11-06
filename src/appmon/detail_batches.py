@@ -4,6 +4,7 @@ from .db import claim_details
 from .ingest import disk_check
 from .stores import FetchError
 from .task_logs import Execution
+from .collection_batch import write_batch
 
 
 def work_details(cfg, db, limit, client, *, watchlist=False, managed=False, max_requests=None):
@@ -59,14 +60,15 @@ def work_details(cfg, db, limit, client, *, watchlist=False, managed=False, max_
                     raise FetchError('批次结果数量异常，保留原有数据')
             except FetchError as exc:
                 results = [exc]*len(jobs)
-            for job,result,task_log in zip(jobs,results,logs):
-                local_cfg = cfg | {'refresh_hours':job['refresh_hours']} if watchlist else cfg
-                failure = result if isinstance(result,FetchError) else None
-                accepted = save_result(db,local_cfg,job,error=failure) if failure else save_result(db,local_cfg,job,result=result)
-                outcome = 'error' if failure else result.outcome
-                task_log.finish(outcome,accepted,'批次结果按应用独立保存',error=failure)
-                counts['processed'] += 1
-                counts[('ok' if watchlist and outcome=='missing' else outcome) if accepted else 'stale'] += 1
+            with write_batch(db) as writer:
+                for job,result,task_log in zip(jobs,results,logs):
+                    local_cfg = cfg | {'refresh_hours':job['refresh_hours']} if watchlist else cfg
+                    failure = result if isinstance(result,FetchError) else None
+                    accepted = save_result(writer,local_cfg,job,error=failure) if failure else save_result(writer,local_cfg,job,result=result)
+                    outcome = 'error' if failure else result.outcome
+                    task_log.finish(outcome,accepted,'批次结果按应用独立保存',error=failure)
+                    counts['processed'] += 1
+                    counts[('ok' if watchlist and outcome=='missing' else outcome) if accepted else 'stale'] += 1
             if any(isinstance(result,FetchError) and result.retry_after>=300 for result in results):
                 break
         finally:

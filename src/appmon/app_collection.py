@@ -15,6 +15,11 @@ def action_target(db,action):
         row=db.execute('SELECT id FROM watchlist WHERE store=%s AND app_id=%s AND country=%s AND language=%s',tuple(v[k] for k in ('store','app_id','country','language'))).fetchone();resource='watchlist'
     elif kind=='keywords':
         row=db.execute('SELECT id FROM keyword_targets WHERE store=%s AND country=%s AND language=%s AND keyword=%s',tuple(v[k] for k in ('store','country','language','keyword'))).fetchone();resource='keywords'
+    elif kind in ('icons','permissions'):
+        resource=kind
+        table='app_icons' if kind=='icons' else 'app_permission_targets'
+        keys=('store','app_id','country','language') if kind=='icons' else ('store','app_id','country')
+        row=db.execute(f'SELECT id FROM {table} WHERE '+' AND '.join(k+'=%s' for k in keys),tuple(v[k] for k in keys)).fetchone()
     else:
         row=db.execute('''SELECT id FROM observation_targets WHERE kind=%s AND store=%s AND app_id=%s
             AND country=%s AND language=%s AND collection=%s AND category=%s''',
@@ -53,6 +58,10 @@ def report(db,identifier,allow_plan=False):
             if ref['resource']=='watchlist':
                 attempted=db.execute('''SELECT observed_at,outcome FROM requests WHERE store=%s AND app_id=%s AND country=%s AND language=%s
                     ORDER BY id DESC LIMIT 1''',tuple(v[k] for k in ('store','app_id','country','language'))).fetchone()
+            elif ref['resource']=='icons':
+                attempted=db.execute("SELECT checked_at observed_at,IF(failures>0,'error','ok') outcome FROM app_icons WHERE id=%s AND checked_at IS NOT NULL",(ref['id'],)).fetchone()
+            elif ref['resource']=='permissions':
+                attempted=db.execute('SELECT observed_at,outcome FROM app_permission_runs WHERE target_id=%s ORDER BY id DESC LIMIT 1',(ref['id'],)).fetchone()
             else:
                 table='keyword_runs' if ref['resource']=='keywords' else 'observation_runs'
                 attempted=db.execute(f'SELECT observed_at,outcome FROM {table} WHERE target_id=%s ORDER BY id DESC LIMIT 1',(ref['id'],)).fetchone()
