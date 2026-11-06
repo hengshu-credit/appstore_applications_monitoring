@@ -123,6 +123,6 @@ def worker(cfg, role='collector'):
 
 def status(db):
     now = time.time()
-    workers = db.execute("SELECT name,next_at FROM schedules WHERE name LIKE 'collector:%' AND next_at>=%s ORDER BY name",(now-1800,)).fetchall()
+    workers = db.execute("SELECT name,next_at FROM schedules WHERE name LIKE %s AND next_at>=%s ORDER BY name",('collector:%',now-1800)).fetchall()
     return {'mode':'dynamic','workers':[{'name':r['name'][10:],'heartbeat':r['next_at']} for r in workers],
             'lanes':list(LANES)}

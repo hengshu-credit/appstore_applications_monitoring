@@ -51,6 +51,7 @@ class DispatcherTest(MySQLTestCase):
         with patch('appmon.keyword_stores.KeywordClient.search',return_value=SearchResult([],b'empty','test')):
             result=dispatcher.dispatch_once(self.db,self.cfg,'fixture')
         self.assertEqual(result['processed'],1)
+        self.assertEqual(dispatcher.status(self.db)['workers'][0]['name'],'fixture')
         self.assertEqual(report(self.db,a,True)['finished'],1)
         self.assertEqual(report(self.db,b,True)['finished'],1)
         self.assertEqual(report(self.db,a,True)['tasks'][0]['ref'],report(self.db,b,True)['tasks'][0]['ref'])
