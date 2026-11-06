@@ -7,41 +7,45 @@ from .intelligence import market, text, compare_apps
 from .db import dump
 
 
-def event_feed(db, filters):
-    m=market(filters,require_app=False)
-    days=filters.get('days',30)
-    if type(days) is not int or not 1<=days<=365:
-        raise ValueError('观察区间必须为1–365天')
-    clauses=['e.store=%s','e.country=%s','e.language=%s','e.observed_at>=%s']
-    args=[m['store'],m['country'],m['language'],time.time()-days*86400]
+def event_feed(db, filters, markets=None):
+    from datetime import date, datetime, timezone
+    selected=markets or [market(filters,require_app=False)]
+    days=filters.get('days',30);offset=filters.get('offset',0);limit=filters.get('limit',50)
+    if type(days) is not int or not 1<=days<=365:raise ValueError('观察区间必须为1–365天')
+    if type(offset) is not int or offset<0 or type(limit) is not int or not 1<=limit<=200:raise ValueError('分页参数无效')
+    day=filters.get('day','');at=None
+    if day:
+        try:at=datetime.combine(date.fromisoformat(day),datetime.min.time(),timezone.utc).timestamp()
+        except (ValueError,TypeError):raise ValueError('请选择有效日期') from None
+    scope='('+' OR '.join('(e.store=%s AND e.country=%s AND e.language=%s)' for _ in selected)+')'
+    market_args=[v for m in selected for v in (m['store'],m['country'],m['language'])]
+    clauses=[scope,'e.observed_at>=%s'];args=[*market_args,time.time()-days*86400]
     for field in ('app_id','kind'):
-        if filters.get(field):
-            clauses.append(f'e.{field}=%s');args.append(filters[field])
+        if filters.get(field):clauses.append(f'e.{field}=%s');args.append(filters[field])
     if filters.get('field'):
-        allowed={'version','name','description','screenshots','icon','price','developer','release_notes','rating','ratings'}
-        if filters['field'] not in allowed:
-            raise ValueError('未知变更字段')
-        clauses.append('JSON_CONTAINS_PATH(e.changes,\'one\',%s)');args.append('$.'+filters['field'])
+        allowed={'version','name','description','summary','subtitle','keywords','screenshots','icon','price','developer','release_notes','rating','ratings'}
+        if filters['field'] not in allowed:raise ValueError('未知变更字段')
+        clauses.append("JSON_CONTAINS_PATH(e.changes,'one',%s)");args.append('$.'+filters['field'])
     if filters.get('group_name'):
-        clauses.append('EXISTS (SELECT 1 FROM watchlist w WHERE w.store=e.store AND w.app_id=e.app_id AND w.country=e.country AND w.language=e.language AND w.group_name=%s)')
-        args.append(filters['group_name'])
+        clauses.append('EXISTS (SELECT 1 FROM watchlist w WHERE w.store=e.store AND w.app_id=e.app_id AND w.country=e.country AND w.language=e.language AND w.group_name=%s)');args.append(filters['group_name'])
     where=' WHERE '+' AND '.join(clauses)
-    rows=list(db.execute('SELECT e.*,a.name FROM events e LEFT JOIN apps a USING(store,app_id)'+where+' ORDER BY e.id DESC LIMIT 300',args).fetchall())
-    for row in rows:
-        row['changes']=json.loads(row['changes'])
-    days_data=db.execute('SELECT FLOOR(e.observed_at/86400)*86400 day,e.kind,count(*) count FROM events e'+where+' GROUP BY day,e.kind ORDER BY day',args).fetchall()
-    summary=db.execute('SELECT e.kind,count(*) count FROM events e'+where+' GROUP BY e.kind',args).fetchall()
-    # Annotations use the same market and time filters, and remain labeled manual.
-    annotation_where=' WHERE store=%s AND country=%s AND language=%s AND event_at>=%s'
-    annotation_args=args[:4]
-    if m['app_id']:
-        annotation_where+=' AND app_id=%s';annotation_args=[*annotation_args,m['app_id']]
+    daily=db.execute('SELECT FLOOR(e.observed_at/86400)*86400 day,e.kind,count(*) count FROM events e'+where+' GROUP BY day,e.kind ORDER BY day',args).fetchall()
+    summary={}
+    for row in daily:summary[row['kind']]=summary.get(row['kind'],0)+row['count']
+    total=sum(r['count'] for r in daily if at is None or r['day']==at)
+    row_where=where;row_args=list(args)
+    if at is not None:row_where+=' AND e.observed_at>=%s AND e.observed_at<%s';row_args.extend([at,at+86400])
+    rows=list(db.execute('SELECT e.*,a.name FROM events e LEFT JOIN apps a USING(store,app_id)'+row_where+' ORDER BY e.id DESC LIMIT %s OFFSET %s',(*row_args,limit,offset)).fetchall())
+    for row in rows:row['changes']=json.loads(row['changes'])
+    annotations_where=' WHERE '+scope+' AND e.event_at>=%s';annotation_args=[*market_args,args[len(market_args)]]
+    if filters.get('app_id'):annotations_where+=' AND e.app_id=%s';annotation_args.append(filters['app_id'])
+    if at is not None:annotations_where+=' AND e.event_at>=%s AND e.event_at<%s';annotation_args.extend([at,at+86400])
     if filters.get('group_name'):
-        annotation_where+=' AND EXISTS (SELECT 1 FROM watchlist w WHERE w.store=event_annotations.store AND w.app_id=event_annotations.app_id AND w.country=event_annotations.country AND w.language=event_annotations.language AND w.group_name=%s)'
-        annotation_args=[*annotation_args,filters['group_name']]
-    annotations=[] if filters.get('kind') or filters.get('field') else db.execute('SELECT * FROM event_annotations'+annotation_where+' ORDER BY event_at DESC LIMIT 100',annotation_args).fetchall()
-    return {'items':rows,'daily':days_data,'summary':summary,'annotations':annotations,
-            'scope':'事件时间为本系统观察时间；首次验证不是新上架。与排名同时变化不代表因果。','limit':300}
+        annotations_where+=' AND EXISTS (SELECT 1 FROM watchlist w WHERE w.store=e.store AND w.app_id=e.app_id AND w.country=e.country AND w.language=e.language AND w.group_name=%s)';annotation_args.append(filters['group_name'])
+    annotations=[] if filters.get('kind') or filters.get('field') else db.execute('SELECT e.* FROM event_annotations e'+annotations_where+' ORDER BY e.event_at DESC LIMIT 100',annotation_args).fetchall()
+    groups=[r['group_name'] for r in db.execute('SELECT DISTINCT e.group_name FROM watchlist e WHERE '+scope+' ORDER BY e.group_name',market_args).fetchall()]
+    return {'items':rows,'daily':daily,'summary':[{'kind':k,'count':v} for k,v in summary.items()],'annotations':annotations,'groups':groups,
+            'scope':'事件时间为本系统观察时间；首次验证不是新上架。','limit':limit,'offset':offset,'total':total,'has_more':offset+len(rows)<total,'day':day}
 
 
 def add_annotation(db, value):

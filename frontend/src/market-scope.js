@@ -50,3 +50,11 @@ export function languageChoices(preferences, store, country, common) {
     return true;
   });
 }
+export function toggleStore(current, selected) {
+  if (current === selected) return current;
+  return current === "all"
+    ? selected === "google"
+      ? "apple"
+      : "google"
+    : "all";
+}

@@ -5,9 +5,11 @@
   vertical-align: middle;
 }
 /* Common form controls share one size; text actions and choice tiles stay semantic. */
-button:not(.content-card):not(.link):not(.theme-swatch):not(
-    .country-option
-  ):not([role="option"]):not([role="tab"]),
+button:where(
+  :not(.content-card):not(.link):not(.theme-swatch):not(.country-option):not(
+      [role="option"]
+    ):not([role="tab"])
+),
 .button {
   min-height: 42px;
   height: 42px;
@@ -652,4 +654,153 @@ input[type="file"]:not([type="hidden"]):not([type="radio"]):not(
   dialog .form-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+.data-table-wrap {
+  border: 1px solid var(--line-soft);
+  border-top: 2px solid color-mix(in srgb, var(--accent) 65%, var(--surface));
+}
+.data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.data-table thead th {
+  background: var(--accent-soft);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, var(--surface));
+  text-align: left;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.data-table th,
+.data-table td {
+  padding: 12px 14px;
+}
+.data-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--accent) 3%, var(--surface));
+}
+.data-table tbody tr:hover {
+  background: var(--hover);
+}
+.data-table tbody td {
+  border-bottom: 1px solid var(--line-soft);
+}
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.overview-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.overview-actions a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+}
+.overview-actions a:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.overview-actions span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.overview-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 20px;
+  margin: 20px 0;
+  align-items: start;
+}
+.overview-main .table-wrap {
+  max-height: 520px;
+  overflow: auto;
+}
+.overview-coverage summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.app-detail-hero {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.app-detail-hero .app-link {
+  font-size: 18px;
+}
+.detail-section-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--line);
+  margin: 22px 0 18px;
+  padding-bottom: 6px;
+}
+.detail-section-tabs button {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  padding: 10px 16px;
+}
+.detail-section-tabs [aria-selected="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+.detail-section {
+  min-width: 0;
+}
+.detail-section[hidden] {
+  display: none;
+}
+.detail-section > .panel + .panel {
+  margin-top: 20px;
+}
+.detail-section .grid2 {
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .overview-main {
+    grid-template-columns: 1fr;
+  }
+  .overview-actions a {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+@media (max-width: 650px) {
+  .overview-actions {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .overview-actions a {
+    flex-direction: row;
+  }
+  .app-detail-hero {
+    padding: 14px;
+  }
+}
+.table-selection-col {
+  width: 36px;
+}
+table tr > :first-child:has(input[type="checkbox"]) {
+  width: 36px;
+  min-width: 36px;
+  max-width: 36px;
+  padding-inline: 8px;
+  text-align: center;
+}
+table td {
+  vertical-align: middle;
 }

@@ -36,13 +36,14 @@ export function createSelectors({
     loading,
     countryRegion = "",
     categoryState,
-    countrySelection;
+    countrySelection,
+    countrySingle;
   const countsCache = new Map();
   const countryDialog = doc.createElement("dialog");
   countryDialog.id = "country-picker";
   countryDialog.className = "selection-dialog";
   countryDialog.setAttribute("aria-labelledby", "country-picker-title");
-  countryDialog.innerHTML = `<form method="dialog" class="picker-heading"><h2 id="country-picker-title">选择国家 / 地区</h2><button class="secondary small" aria-label="关闭国家选择">关闭</button></form><input class="picker-search" type="search" placeholder="搜索国家/地区" aria-label="搜索国家或地区"><div class="picker-bulk" hidden><button type="button" class="secondary" data-country-action="all">全选</button><button type="button" class="secondary" data-country-action="clear">清空</button><span class="sub" id="country-selection-count" role="status"></span></div><div class="picker-scroll" id="country-options"></div><p class="sub picker-note">地区按地理位置分组；热门地区为快捷入口。Apple 暂未支持的地区不可选。</p><div class="picker-footer" hidden><button type="button" class="secondary" data-country-action="cancel">取消</button><button type="button" data-country-action="apply">应用所选地区</button></div>`;
+  countryDialog.innerHTML = `<form method="dialog" class="picker-heading"><h2 id="country-picker-title">选择国家 / 地区</h2><button class="secondary small" aria-label="关闭国家选择">关闭</button></form><input class="picker-search" type="search" placeholder="搜索国家/地区" aria-label="搜索国家或地区"><div class="picker-bulk" hidden><button type="button" class="secondary" data-country-action="all">全部国家 / 地区</button><button type="button" class="secondary" data-country-action="clear">清空选择</button><span class="sub" id="country-selection-count" role="status"></span></div><div class="picker-scroll" id="country-options"></div><p class="sub picker-note">地区按地理位置分组；热门地区为快捷入口。Apple 暂未支持的地区不可选。</p><div class="picker-footer" hidden><button type="button" class="secondary" data-country-action="cancel">取消</button><button type="button" data-country-action="apply">应用所选地区</button></div>`;
   doc.body.append(countryDialog);
   const categoryDialog = doc.createElement("dialog");
   categoryDialog.id = "category-picker";
@@ -87,12 +88,16 @@ export function createSelectors({
       value.innerHTML = `${catalog?.countries.some((c) => c.code === code) ? `<img class="country-flag" src="/flags/${pickerEscape(code)}.svg" alt="">` : ""}<span>${pickerEscape(countryName(code))}</span>`;
   }
   function countryButton(c) {
-    const disabled = countrySelection
-      ? !countrySelection.allowed.has(c.code)
-      : getMarket().store === "apple" && !c.apple_supported;
-    const selected = countrySelection
-      ? countrySelection.selected.has(c.code)
-      : getMarket().country === c.code;
+    const disabled = countrySingle
+      ? !countrySingle.allowed.has(c.code)
+      : countrySelection
+        ? !countrySelection.allowed.has(c.code)
+        : getMarket().store === "apple" && !c.apple_supported;
+    const selected = countrySingle
+      ? countrySingle.value === c.code
+      : countrySelection
+        ? countrySelection.selected.has(c.code)
+        : getMarket().country === c.code;
     return `<button type="button" class="country-option" data-country-code="${c.code}" aria-pressed="${selected}" ${disabled ? "disabled" : ""} title="${pickerEscape(c.name + " · " + c.english + " (" + c.code.toUpperCase() + ")" + (disabled ? " · 所选商店暂不支持此地区" : ""))}"><img class="country-flag" src="/flags/${c.code}.svg" alt="" loading="lazy"><span>${pickerEscape(c.name)}</span><small>${c.code.toUpperCase()}</small>${countrySelection ? '<span class="choice-check" aria-hidden="true">✓</span>' : ""}</button>`;
   }
   function selectionHeading(name, rows) {
@@ -100,7 +105,7 @@ export function createSelectors({
     const complete =
       available.length &&
       available.every((c) => countrySelection.selected.has(c.code));
-    return `<h3>${pickerEscape(name)}</h3>${countrySelection ? `<button type="button" class="secondary picker-group-toggle" data-country-group="${available.map((c) => c.code).join(",")}" ${available.length ? "" : "disabled"} aria-label="${complete ? "取消选择" : "全选"}${pickerEscape(name)}">${complete ? "取消全选" : "区域全选"}</button>` : ""}`;
+    return `<h3>${pickerEscape(name)}</h3>${countrySelection ? `<button type="button" class="secondary picker-group-toggle" data-country-group="${available.map((c) => c.code).join(",")}" ${available.length ? "" : "disabled"} aria-label="${complete ? "取消选择" : "全选"}${pickerEscape(name)}">${complete ? "清空此地区" : "全选此地区"}</button>` : ""}`;
   }
   function renderCountries() {
     const query = countryDialog.querySelector("input").value;
@@ -128,7 +133,10 @@ export function createSelectors({
         html += `<section><div class="picker-section-heading">${selectionHeading(name, countries)}${continent.id === "asia" ? `<div class="region-tabs" role="tablist" aria-label="亚洲分区">${[{ id: "", name: "全亚洲" }, ...catalog.asia_regions].map((r) => `<button type="button" role="tab" aria-selected="${r.id === countryRegion}" data-region="${r.id}">${r.name}</button>`).join("")}</div>` : ""}</div><div class="country-grid">${countries.map(countryButton).join("")}</div></section>`;
       }
     }
-    countryDialog.querySelector("#country-options").innerHTML = html;
+    countryDialog.querySelector("#country-options").innerHTML =
+      (countrySingle?.allowAll
+        ? `<button type="button" class="country-option country-all" data-country-code="" aria-pressed="${!countrySingle.value}">全部国家 / 地区</button>`
+        : "") + html;
     if (countrySelection) {
       countryDialog.querySelector("#country-selection-count").textContent =
         `已选 ${countrySelection.selected.size} / ${countrySelection.allowed.size} 个地区`;
@@ -138,10 +146,23 @@ export function createSelectors({
   }
   async function chooseCountries({ selected, allowed, onApply, trigger }) {
     await ready();
+    countrySingle = null;
     const available = new Set(allowed);
     countrySelection = {
       selected: new Set(selected.filter((c) => available.has(c))),
       allowed: available,
+      onApply,
+      trigger,
+    };
+    openCountries();
+  }
+  async function chooseCountry({ value, allowed, allowAll, onApply, trigger }) {
+    await ready();
+    countrySelection = null;
+    countrySingle = {
+      value,
+      allowed: new Set(allowed),
+      allowAll,
       onApply,
       trigger,
     };
@@ -159,7 +180,9 @@ export function createSelectors({
     renderCountries();
     countryDialog.showModal();
     (
-      countrySelection?.trigger || doc.querySelector("#country-trigger")
+      countrySingle?.trigger ||
+      countrySelection?.trigger ||
+      doc.querySelector("#country-trigger")
     )?.setAttribute("aria-expanded", "true");
     countryDialog.querySelector("input").focus();
   }
@@ -167,6 +190,7 @@ export function createSelectors({
     try {
       await ready();
       countrySelection = null;
+      countrySingle = null;
       openCountries();
     } catch (e) {
       onError?.(e.message);
@@ -214,6 +238,11 @@ export function createSelectors({
     }
     const option = event.target.closest("[data-country-code]");
     if (option && !option.disabled) {
+      if (countrySingle) {
+        countrySingle.onApply(option.dataset.countryCode);
+        countryDialog.close();
+        return;
+      }
       if (countrySelection) {
         const code = option.dataset.countryCode;
         if (countrySelection.selected.has(code))
@@ -238,10 +267,13 @@ export function createSelectors({
   });
   countryDialog.addEventListener("close", () => {
     const trigger =
-      countrySelection?.trigger || doc.querySelector("#country-trigger");
+      countrySingle?.trigger ||
+      countrySelection?.trigger ||
+      doc.querySelector("#country-trigger");
     trigger?.setAttribute("aria-expanded", "false");
     if (trigger?.isConnected) trigger.focus();
     countrySelection = null;
+    countrySingle = null;
   });
 
   function categoryField(
@@ -414,8 +446,13 @@ export function createSelectors({
     chartDefinitions: (store) => catalog?.charts?.[store] || [],
     ready,
     chooseCountries,
+    chooseCountry,
     syncCountry,
     countryName,
+    languageName: (code) =>
+      catalog?.locales?.languages?.[code] ||
+      catalog?.locales?.languages?.[code.split("-")[0]] ||
+      code,
     categoryName,
     categoryField,
     categorySidebar,

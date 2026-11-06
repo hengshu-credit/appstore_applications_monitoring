@@ -574,8 +574,8 @@ def create_app(cfg):
 
     @api.get('/research/events')
     def event_center(store: str, country: str='us', language: str='en', app_id: str='', kind: str='', field: str='',
-                     group_name: str='', days: int=Query(30,ge=1,le=365), db=DB):
-        return scoped_views.events(db,dict(store=store,country=country,language=language,app_id=app_id,kind=kind,field=field,group_name=group_name,days=days))
+                     group_name: str='', days: int=Query(30,ge=1,le=365), day:str='', offset:int=Query(0,ge=0), limit:int=Query(50,ge=1,le=200), db=DB):
+        return scoped_views.events(db,dict(store=store,country=country,language=language,app_id=app_id,kind=kind,field=field,group_name=group_name,days=days,day=day,offset=offset,limit=limit))
 
     @api.post('/research/annotations')
     def annotate(value:dict=Body(...),db=DB):return insights.add_annotation(db,value)

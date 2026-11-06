@@ -126,6 +126,7 @@ const qs = (obj) =>
     Object.entries(obj).filter(([, v]) => v !== "" && v != null),
   ).toString();
 initFilterBars({
+  chooseCountry: (options) => selectors.chooseCountry(options),
   suggest: (field, q, form) =>
     field === "developer-directory"
       ? api("/research/developers?" + qs({ store: market().store, q })).then(
@@ -226,7 +227,14 @@ function empty(
 }
 function table(headers, rows) {
   return rows.length
-    ? `<div class="table-wrap"><table><thead><tr>${headers.map((x) => `<th>${x}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((x) => `<td>${x ?? "—"}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`
+    ? `<div class="table-wrap data-table-wrap"><table class="data-table">${
+        headers[0]?.includes('type="checkbox"')
+          ? `<colgroup><col class="table-selection-col">${headers
+              .slice(1)
+              .map(() => "<col>")
+              .join("")}</colgroup>`
+          : ""
+      }<thead><tr>${headers.map((x) => `<th>${x}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((x) => `<td>${x ?? "—"}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`
     : empty();
 }
 const stateLabels = {
@@ -261,10 +269,18 @@ function appIconMarkup(store, id, name, imageURL, country, language) {
     lang = language || m.language;
   return `<span class="appicon-wrap" data-icon-store="${esc(store)}" data-icon-app="${esc(id)}" data-icon-country="${esc(country || m.country)}" data-icon-language="${esc(lang)}" data-icon-source="${esc(imageURL || "")}" data-icon-name="${esc(name || id)}"><img class="appicon" alt="" hidden><span class="appicon appicon-placeholder">${storeLogo(store)}</span><button type="button" class="appicon-refresh link" data-icon-refresh aria-label="补采图标">${icon("refresh")}</button></span>`;
 }
-function appLink(store, id, name, imageURL, country, language) {
+function appLink(
+  store,
+  id,
+  name,
+  imageURL,
+  country,
+  language,
+  { showId = true } = {},
+) {
   const m = market(store),
     lang = language || m.language;
-  return `<div class="appcell">${appIconMarkup(store, id, name, imageURL, country, language)}<div><button class="link appname" title="${esc(name || id)}" data-app="${esc(id)}" data-store="${esc(store)}" data-country="${esc(country || m.country)}" data-language="${esc(lang)}">${esc(name || id)}</button><div class="appid">${market().store === "all" ? `<span class="store-scope-badge">${storeLogo(store)} ${store === "apple" ? "App Store" : "Google Play"}</span> · ` : ""}${esc(id)}</div></div></div>`;
+  return `<div class="appcell">${appIconMarkup(store, id, name, imageURL, country, language)}<div><button class="link appname" title="${esc(name || id)}" data-app="${esc(id)}" data-store="${esc(store)}" data-country="${esc(country || m.country)}" data-language="${esc(lang)}">${esc(name || id)}</button>${showId ? `<div class="appid">${market().store === "all" ? `<span class="store-scope-badge">${storeLogo(store)} ${store === "apple" ? "App Store" : "Google Play"}</span> · ` : ""}${esc(id)}</div>` : ""}</div></div>`;
 }
 function field(label, name, value = "", type = "text", extra = "") {
   return `<label>${label}<input name="${name}" value="${esc(value)}" type="${type}" ${extra}></label>`;
@@ -333,52 +349,47 @@ function mount(html, rev, hint) {
 async function overview(rev) {
   const data = await api("/overview");
   const c = data.counts;
-  mount(
-    `<div class="cards">${metric("已知应用池", null, "<span id=pool-caption>正在读取精确行数…</span>").replace('class="value"', 'class="value" id="pool-count"')}${metric("重点应用", c.watchlist, "按商店 / 国家 / 语言独立监控")}${metric("跟踪关键词", c.keyword_targets, "保存有序搜索快照")}${metric("未读告警", c.unread_alerts, "基于观察证据触发")}</div><div class="grid2">${panel(
-      "地区覆盖",
-      table(
+  const failures = Object.entries(data.failures).flatMap(([kind, rows]) =>
+    rows.map((row) => [
+      esc(kindLabel(kind)),
+      row.id,
+      row.failures,
+      esc(row.last_error),
+    ]),
+  );
+  if (
+    !mount(
+      `<div class="overview-actions"><a href="#groups"><strong>应用分组</strong><span>查看国家覆盖与应用指标 →</span></a><a href="#events"><strong>事件记录</strong><span>按日期复核应用变化 →</span></a><a href="#collection"><strong>采集中心</strong><span>管理任务进度与异常 →</span></a></div><div class="cards overview-metrics">${metric("监控目标", c.watchlist, "应用 × 国家 × 语言")}${metric("跟踪关键词", c.keyword_targets, "独立市场词任务")}${metric("未读告警", c.unread_alerts, "待查看的观察事件")}${metric("已知应用池", null, "<span id=pool-caption>正在读取统计…</span>").replace('class="value"', 'class="value" id="pool-count"')}</div><div class="overview-main">${panel(
+        "最新应用变化",
+        table(
+          ["应用", "地区", "事件", "观察时间"],
+          data.recent_events.map((r) => [
+            appLink(r.store, r.app_id, r.name, null, r.country, r.language),
+            esc(selectors.countryName(r.country)),
+            esc(kindLabel(r.kind)),
+            stamp(r.observed_at),
+          ]),
+        ),
+        '<a href="#events">全部事件 →</a>',
+      )}${panel("采集异常", failures.length ? table(["类型", "任务 ID", "失败次数", "最近原因"], failures) : empty("暂无采集异常", "已监控任务尚无连续失败记录。"), '<a href="#collection">管理任务 →</a>')}</div><details class="panel overview-coverage"><summary>市场覆盖与新鲜度 <span class="sub">${data.freshness.length} 个地区状态</span></summary>${table(
         ["商店", "国家 / 语言", "状态", "已观察应用", "最后成功"],
         data.freshness.map((r) => [
-          esc(r.store),
-          esc(r.country.toUpperCase()) + " / " + esc(r.language || "—"),
+          esc(r.store === "apple" ? "App Store" : "Google Play"),
+          esc(selectors.countryName(r.country)) +
+            " / " +
+            esc(r.language || "—"),
           badge(r.state),
           num(r.count),
           stamp(r.last_success),
         ]),
-      ),
-    )}${panel(
-      "采集异常",
-      Object.entries(data.failures)
-        .map(([kind, rows]) =>
-          rows.length
-            ? table(
-                ["任务类型 / ID", "连续失败", "原因"],
-                rows.map((r) => [
-                  esc(kindLabel(kind)) + " / " + r.id,
-                  r.failures,
-                  esc(r.last_error),
-                ]),
-              )
-            : '<p class="sub">' + esc(kindLabel(kind)) + "：暂无失败记录</p>",
-        )
-        .join(""),
-    )}</div>${panel(
-      "最新变更",
-      table(
-        ["应用", "地区", "事件", "观察时间"],
-        data.recent_events.map((r) => [
-          appLink(r.store, r.app_id, r.name, null, r.country, r.language),
-          esc(r.country),
-          esc(kindLabel(r.kind)),
-          stamp(r.observed_at),
-        ]),
-      ),
-    )}`,
-    rev,
-    data.worker?.next_at
-      ? `后台心跳 ${stamp(data.worker.next_at)}`
-      : "等待后台首次心跳",
-  );
+      )}</details>`,
+      rev,
+      data.worker?.next_at
+        ? `后台心跳 ${stamp(data.worker.next_at)}`
+        : "等待后台首次心跳",
+    )
+  )
+    return;
   api("/pool")
     .then((pool) => {
       if (rev !== revision) return;
@@ -685,8 +696,84 @@ async function appDetail(store, id, rev = ++revision) {
     )
   )
     return;
-  appInsights.monitoring(m);
-  researchPages.marketMatrix(store, id, rev).catch((e) => toast(e.message));
+  const content = $("#content");
+  content
+    .querySelector(":scope > .panel-heading")
+    ?.classList.add("app-detail-hero");
+  const sections = [
+    ["profile", "商店资料"],
+    ["performance", "监控趋势"],
+    ["markets", "国家 / 地区"],
+    ["rankings", "关键词与榜单"],
+    ["history", "版本与事件"],
+    ["aso", "ASO 核查"],
+  ];
+  const panels = new Map();
+  const nav = document.createElement("nav");
+  nav.className = "detail-section-tabs";
+  nav.setAttribute("aria-label", "应用详情内容");
+  nav.setAttribute("role", "tablist");
+  const wrapper = document.createElement("div");
+  wrapper.className = "detail-sections";
+  for (const [key, label] of sections) {
+    const pane = document.createElement("section");
+    pane.id = "detail-section-" + key;
+    pane.setAttribute("role", "tabpanel");
+    pane.setAttribute("aria-labelledby", "detail-tab-" + key);
+    pane.className = "detail-section";
+    panels.set(key, pane);
+    wrapper.append(pane);
+    nav.insertAdjacentHTML(
+      "beforeend",
+      `<button type="button" id="detail-tab-${key}" data-detail-section="${key}" role="tab" aria-controls="${pane.id}" class="secondary">${label}</button>`,
+    );
+  }
+  const titles = {
+    应用档案: "profile",
+    素材与版本历史: "history",
+    变更时间线: "history",
+    关键词覆盖: "rankings",
+    榜单表现: "rankings",
+    "ASO 核查与候选词": "aso",
+  };
+  const ids = {
+    "monitoring-trends": "performance",
+    "app-market-matrix": "markets",
+    "app-keyword-markets": "rankings",
+  };
+  for (const el of [...content.children]) {
+    const key =
+      ids[el.id] ||
+      titles[el.querySelector("h2")?.textContent] ||
+      (el.classList.contains("grid2") ? "profile" : "");
+    if (key) panels.get(key).append(el);
+  }
+  content.append(nav, wrapper);
+  const loaded = new Set();
+  const showSection = (key) => {
+    panels.forEach((el, k) => (el.hidden = k !== key));
+    nav
+      .querySelectorAll("[data-detail-section]")
+      .forEach((b) =>
+        b.setAttribute(
+          "aria-selected",
+          String(b.dataset.detailSection === key),
+        ),
+      );
+    if (!loaded.has(key)) {
+      loaded.add(key);
+      if (key === "performance") appInsights.monitoring(m);
+      if (key === "markets")
+        researchPages
+          .marketMatrix(store, id, rev)
+          .catch((e) => toast(e.message));
+    }
+  };
+  nav.addEventListener("click", (e) => {
+    const button = e.target.closest("[data-detail-section]");
+    if (button) showSection(button.dataset.detailSection);
+  });
+  showSection("profile");
   const progressState = {
     running: "采集中",
     complete: "本轮采集完成",

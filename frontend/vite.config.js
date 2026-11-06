@@ -8,7 +8,13 @@ export default defineConfig(({ mode }) => {
     "/health": { target, changeOrigin: false },
   };
   return {
-    server: { host: "127.0.0.1", port: 5173, strictPort: true, proxy },
+    server: {
+      host: "127.0.0.1",
+      port: 5173,
+      strictPort: true,
+      proxy,
+      watch: { usePolling: env.DEV_POLLING === "true", interval: 400 },
+    },
     preview: { host: "127.0.0.1", port: 4173, strictPort: true, proxy },
     build: { outDir: "dist", target: "es2022" },
   };

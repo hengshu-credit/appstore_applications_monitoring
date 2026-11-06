@@ -50,9 +50,18 @@ export function createCollectionCenter(ctx) {
     section = "tasks";
   let preset = null,
     pendingPool,
+    poolSnapshot,
     recentRegistry;
+  const compact = (value) =>
+    Number(value) >= 10000
+      ? new Intl.NumberFormat("zh-CN", {
+          notation: "compact",
+          maximumFractionDigits: 1,
+          maximumSignificantDigits: 3,
+        }).format(value)
+      : num(value);
   const options = (obj) => Object.entries(obj);
-  const refresh = () => render(nextRevision());
+  const refresh = (reuse = false) => render(nextRevision(), reuse);
   let refreshTimer;
   function watchDataRevision(rev, baseline) {
     clearTimeout(refreshTimer);
@@ -186,7 +195,7 @@ export function createCollectionCenter(ctx) {
     $("#back-to-tasks").onclick = () => {
       section = "tasks";
       preset = null;
-      refresh().catch((e) => toast(e.message));
+      location.hash = "#collection";
     };
     const form = $("#plan-form");
     if (!form) return;
@@ -212,7 +221,7 @@ export function createCollectionCenter(ctx) {
       toast("词库已导入");
       section = "tasks";
       preset = null;
-      if (rev === currentRevision()) await refresh();
+      if (rev === currentRevision()) location.hash = "#collection";
     });
     bindForm("#plan-form", async (v, f) => {
       const flags = Object.fromEntries(
@@ -271,7 +280,7 @@ export function createCollectionCenter(ctx) {
           toast("计划已提交，后台正在配置任务");
           section = "tasks";
           preset = null;
-          await refresh();
+          location.hash = "#collection";
         } catch (err) {
           toast(err.message);
           b.disabled = false;
@@ -279,10 +288,13 @@ export function createCollectionCenter(ctx) {
       };
     });
   }
-  async function render(rev) {
+  async function render(rev, reuse = false) {
     clearTimeout(refreshTimer);
     closeEditor();
+    const previousSection = section;
     const params = new URLSearchParams(location.hash.split("?")[1] || "");
+    section = params.get("view") || (params.has("new") ? "create" : "tasks");
+    reuse ||= previousSection !== section;
     if (params.has("new")) {
       section = "create";
       preset = {
@@ -293,7 +305,7 @@ export function createCollectionCenter(ctx) {
       history.replaceState(
         null,
         "",
-        location.pathname + location.search + "#collection",
+        location.pathname + location.search + "#collection?view=create",
       );
     }
     filters.store = market().store;
@@ -308,47 +320,41 @@ export function createCollectionCenter(ctx) {
         location.pathname + location.search + "#collection",
       );
     }
-    if (["tasks", "pipelines", "lineage"].includes(params.get("view"))) {
-      section = params.get("view");
-      history.replaceState(
-        null,
-        "",
-        location.pathname + location.search + "#collection",
-      );
-    }
     if (section === "lineage") {
-      if (
-        !mount(
-          `<div class="collection-tabs" role="tablist" aria-label="采集管理视图"><button class="secondary" data-lineage-tab="tasks" role="tab" aria-selected="false">采集任务</button><button class="secondary selected" role="tab" aria-selected="true">采集血缘</button><button class="secondary" data-lineage-tab="pipelines" role="tab" aria-selected="false">基础采集流程</button></div><section id="collection-lineage"></section>`,
-          rev,
-        )
-      )
-        return;
-      document.querySelectorAll("[data-lineage-tab]").forEach(
-        (b) =>
-          (b.onclick = () => {
-            section = b.dataset.lineageTab;
-            refresh().catch((e) => toast(e.message));
-          }),
-      );
+      if (!mount('<section id="collection-lineage"></section>', rev)) return;
       await lineage.render($("#collection-lineage"), rev);
       return;
     }
     const registryPath =
       "/research/collection/tasks?" +
       new URLSearchParams({ ...filters, page, limit: pageSize });
-    const registry =
-      section !== "tasks" && recentRegistry?.path === registryPath
-        ? recentRegistry.data
+    const cached =
+      recentRegistry?.path === registryPath &&
+      Date.now() - recentRegistry.at < 30000;
+    const useCached = cached && (reuse || section !== "tasks");
+    const registry = useCached
+      ? recentRegistry.data
+      : section !== "tasks"
+        ? { items: [], summary: {}, categories: [], total: 0 }
         : api(registryPath);
     const [tasks, pipelines, quality, limits] = await Promise.all([
       registry,
-      api("/research/collection/pipelines?counts=false"),
-      api("/research/collection/activity"),
-      api("/research/collection/limits"),
+      useCached
+        ? recentRegistry.pipelines
+        : api("/research/collection/pipelines?counts=false"),
+      useCached ? recentRegistry.quality : api("/research/collection/activity"),
+      useCached ? recentRegistry.limits : api("/research/collection/limits"),
     ]);
     if (rev !== currentRevision()) return;
-    recentRegistry = { path: registryPath, data: tasks };
+    if (section === "tasks" && !useCached)
+      recentRegistry = {
+        path: registryPath,
+        data: tasks,
+        pipelines,
+        quality,
+        limits,
+        at: Date.now(),
+      };
     const stateLabels = { ...states, out_of_scope: "未启用市场" };
     const stateSymbols = {
       scheduled: "◷",
@@ -368,19 +374,22 @@ export function createCollectionCenter(ctx) {
         (sum, [state]) => sum + (summary[state] || 0),
         0,
       );
-      return `<div class="category-distribution" aria-hidden="true">${entries
+      let position = 0;
+      return `<svg class="category-distribution" viewBox="0 0 1000 10" preserveAspectRatio="none" aria-hidden="true">${entries
         .filter(([state]) => summary[state] > 0)
-        .map(
-          ([state]) =>
-            `<span data-state="${state}" style="flex-grow:${summary[state] / total}"></span>`,
-        )
-        .join("")}</div><div class="category-counts">${entries
+        .map(([state]) => {
+          const width = (summary[state] / total) * 1000,
+            start = position;
+          position += width;
+          return `<rect x="${start}" width="${width}" height="10" data-state="${state}"></rect>`;
+        })
+        .join("")}</svg><div class="category-counts">${entries
         .map(([state, label]) => {
           const caption = `${label}：${num(summary[state] || 0)}`;
           const attrs = kind
             ? `data-category="${kind}" data-category-state="${state}" aria-pressed="${filters.kind === kind && filters.state === state}"`
             : "data-pool-card";
-          return `<button type="button" ${attrs} title="${caption}" aria-label="${caption}">${stateMark(state)}<b>${num(summary[state] || 0)}</b></button>`;
+          return `<button type="button" ${attrs} title="${caption}" aria-label="${caption}">${stateMark(state)}<b>${compact(summary[state] || 0)}</b></button>`;
         })
         .join("")}</div>`;
     };
@@ -398,17 +407,15 @@ export function createCollectionCenter(ctx) {
           total: 0,
           summary: {},
         };
-        return `<article class="collection-category ${filters.kind === kind ? "active" : ""}"><button type="button" class="category-heading" data-category="${kind}" aria-pressed="${filters.kind === kind}"><span>${esc(label)}</span><strong>${num(category.total)}</strong></button>${distribution(category.summary, kind)}</article>`;
+        return `<article class="collection-category ${filters.kind === kind ? "active" : ""}"><button type="button" class="category-heading" data-category="${kind}" aria-pressed="${filters.kind === kind}"><span>${esc(label)}</span><strong title="${num(category.total)}">${compact(category.total)}</strong></button>${distribution(category.summary, kind)}</article>`;
       })
       .join("")}${pipelines
       .filter((p) => p.id === "pool")
       .map(
         (p) =>
-          `<article class="collection-category" id="pool-task-card"><button type="button" class="category-heading" data-pool-card title="所有商店与市场；管理基础流程"><span>全池应用详情</span><strong>—</strong></button><div class="pool-summary" role="status">正在统计…</div></article>`,
+          `<article class="collection-category" id="pool-task-card"><button type="button" class="category-heading" data-pool-card title="所有商店与市场；管理基础流程"><span>全池应用详情</span><strong class="stat-skeleton" aria-label="统计中"></strong></button><div class="pool-summary" role="status" aria-live="polite"><span class="stat-loading">正在统计全池…</span></div></article>`,
       )
       .join("")}</div>`;
-    const tab = (key, label) =>
-      `<button class="secondary ${section === key ? "selected" : ""}" type="button" data-collection-tab="${key}" role="tab" aria-selected="${section === key}">${label}</button>`;
     const body =
       section === "create"
         ? panel("配置目标", creationForm())
@@ -452,22 +459,64 @@ export function createCollectionCenter(ctx) {
               })}<div class="task-bulk"><span id="selected-count">已选 0 项</span><button type="button" class="secondary small" data-batch="refresh">立即采集</button><button type="button" class="secondary small" data-batch="pause">暂停</button><button type="button" class="secondary small" data-batch="resume">恢复</button><button type="button" class="secondary small" data-batch="interval">修改周期</button><button type="button" class="secondary small" id="retry-failed-tasks">重试筛选内失败任务</button><button type="button" class="secondary small" id="select-filtered-tasks">全选筛选结果（跨页）</button><button type="button" class="secondary small" id="select-every-task">全选配置任务（所有商店）</button><button type="button" class="secondary small" id="clear-task-selection">取消选择</button></div>${table(
                 [
                   '<input type="checkbox" id="select-all-tasks" aria-label="选择当前页全部任务">',
-                  "采集类型 / 目标",
-                  "商店 / 市场",
-                  "周期 / 深度",
-                  "最近成功 / 下次到期",
+                  "目标",
+                  "App ID",
+                  "采集类型",
+                  "商店",
+                  "国家 / 地区",
+                  "语言",
+                  "分类",
+                  "周期",
+                  "采集深度",
+                  "最近成功",
+                  "下次到期",
                   "状态",
                   "操作",
                 ],
                 tasks.items.map((t, index) => [
                   `<input type="checkbox" data-task-index="${index}" aria-label="选择任务 ${esc(t.kind === "chart" ? selectors.chartDefinitions(t.store).find((d) => d.id === t.collection)?.name || t.label : t.label)}">`,
-                  `<span class="task-kind">${icon(t.kind === "details" ? "apps" : t.kind === "chart" ? "charts" : t.kind)}${esc(taskKinds[t.kind])}</span><div class="task-label">${t.app_id ? appLink(t.store, t.app_id, t.label, null, t.country, t.language) : esc(t.kind === "chart" ? selectors.chartDefinitions(t.store).find((d) => d.id === t.collection)?.name || t.label : t.label)}</div>${t.category ? `<div class="sub">${esc(selectors.categoryName(t.store, t.category))}</div>` : ""}`,
-                  `<span class="store-caption">${storeLogo(t.store)}${t.store === "apple" ? "App Store" : "Google Play"}</span><div class="sub">${esc(t.country.toUpperCase())} · ${esc(t.language)}</div>`,
-                  `${t.refresh_hours} 小时<div class="sub">${t.depth ? num(t.depth) + " 条" : t.kind === "permissions" ? "权限声明" : t.kind === "icons" ? "图标缓存" : "单应用详情"}</div>`,
-                  `${stamp(t.success_at)}<div class="sub">${t.enabled ? "到期 " + (t.due ? stamp(t.due) : "尽快执行") : "已暂停"}</div>`,
+                  t.app_id
+                    ? appLink(
+                        t.store,
+                        t.app_id,
+                        t.label,
+                        null,
+                        t.country,
+                        t.language,
+                        { showId: false },
+                      )
+                    : esc(
+                        t.kind === "chart"
+                          ? selectors
+                              .chartDefinitions(t.store)
+                              .find((d) => d.id === t.collection)?.name ||
+                              t.label
+                          : t.label,
+                      ),
+                  `<span class="task-app-id" title="${esc(t.app_id)}">${esc(t.app_id || "—")}</span>`,
+                  `<span class="task-kind">${icon(t.kind === "details" ? "apps" : t.kind === "chart" ? "charts" : t.kind)}${esc(taskKinds[t.kind])}</span>`,
+                  `<span class="store-caption">${storeLogo(t.store)}${t.store === "apple" ? "App Store" : "Google Play"}</span>`,
+                  `<span class="market-caption"><img class="country-flag" src="/flags/${esc(t.country)}.svg" alt="">${esc(selectors.countryName(t.country))}</span>`,
+                  `${esc(selectors.languageName(t.language))} · ${esc(t.language)}`,
+                  t.category
+                    ? esc(selectors.categoryName(t.store, t.category))
+                    : "—",
+                  `${t.refresh_hours} 小时`,
+                  t.depth
+                    ? num(t.depth) + " 条"
+                    : t.kind === "permissions"
+                      ? "权限声明"
+                      : t.kind === "icons"
+                        ? "图标缓存"
+                        : "单应用详情",
+                  stamp(t.success_at),
+                  t.enabled ? (t.due ? stamp(t.due) : "尽快执行") : "已暂停",
                   `<span class="badge ${t.task_state === "error" ? "warn" : t.task_state === "running" ? "good" : ""}">${esc(states[t.task_state])}</span>`,
                   `<div class="task-actions"><button class="link" data-task-logs="${index}">日志${t.task_state === "running" ? " · 实时" : ""}</button><button class="link" data-edit-task="${index}">编辑</button><button class="link" data-task-action="${index}" data-action="${t.enabled ? "pause" : "resume"}">${t.enabled ? "暂停" : "恢复"}</button><button class="link" data-task-action="${index}" data-action="refresh" ${t.enabled ? "" : "disabled"}>立即采集</button></div>`,
                 ]),
+              ).replace(
+                "data-table-wrap",
+                "data-table-wrap collection-task-table",
               )}${pagination({ id: "task-pages", offset: (page - 1) * pageSize, limit: pageSize, total: tasks.total, hasMore: tasks.has_more, prevId: "previous-tasks", nextId: "next-tasks", sizes: [25, 50, 100, 200] })}</div>`,
             )}
       <details class="panel plan-history"><summary>计划执行记录 <span class="sub">最近 100 个</span></summary>${table(
@@ -489,7 +538,7 @@ export function createCollectionCenter(ctx) {
       )}</details>`;
     if (
       !mount(
-        `<button id="new-collection" data-workspace-action>${icon("plus")}新建采集计划</button>${categoryCards}<div class="collection-result-count">筛选结果 <strong>${num(tasks.total)}</strong></div><div class="collection-tabs" role="tablist" aria-label="采集管理视图">${tab("tasks", "采集任务")}${tab("lineage", "采集血缘")}${tab("pipelines", "基础采集流程")}${section === "create" ? tab("create", "新建计划") : ""}</div><details class="panel collection-limits-panel"><summary>整体采集控频 · ${limits.paused ? "已暂停请求" : (limits.daily_request_limit ?? 0) ? "每日预算 " + num(limits.daily_request_limit ?? 0) + " 次" : "每日预算不限"}</summary><div class="spacer"><form id="collection-limits" class="form-grid">${field("整体最小请求间隔（秒）", "global_interval_seconds", limits.global_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Google 最小间隔（秒）", "google_interval_seconds", limits.google_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Apple 最小间隔（秒）", "apple_interval_seconds", limits.apple_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("每日请求预算（UTC，0 为不限）", "daily_request_limit", limits.daily_request_limit ?? 0, "number", 'min="0" max="10000000" step="1" required')}${field("受限后整体冷却（秒）", "cooldown_seconds", limits.cooldown_seconds, "number", 'min="60" max="86400" required')}<label class="check-label"><input type="checkbox" name="paused" ${limits.paused ? "checked" : ""}>暂停所有商店采集请求</label><p class="sub full">同市场 App Store 详情每批最多 50 个，Google 详情、关键词、榜单、评论和权限每批最多 20 个；保留原采集周期与深度。每日预算耗尽后等待下一 UTC 日，所有采集 worker 共用额度，详情、关键词、榜单、评论、推荐和图标请求均计入。403 / 429 / 5xx 会触发共享冷却，并遵守更长的 Retry-After。保存后新请求生效，已发出的请求会完成。此开关不停止种子包同步和第三方数据源手动操作。</p><button type="submit">保存控频设置</button></form></div></details>${body}`,
+        `<button id="new-collection" data-workspace-action>${icon("plus")}新建采集计划</button>${section === "tasks" ? categoryCards + `<div class="collection-result-count">筛选结果 <strong>${num(tasks.total)}</strong></div>` : ""}<details class="panel collection-limits-panel"><summary>整体采集控频 · ${limits.paused ? "已暂停请求" : (limits.daily_request_limit ?? 0) ? "每日预算 " + num(limits.daily_request_limit ?? 0) + " 次" : "每日预算不限"}</summary><div class="spacer"><form id="collection-limits" class="form-grid">${field("整体最小请求间隔（秒）", "global_interval_seconds", limits.global_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Google 最小间隔（秒）", "google_interval_seconds", limits.google_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Apple 最小间隔（秒）", "apple_interval_seconds", limits.apple_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("每日请求预算（UTC，0 为不限）", "daily_request_limit", limits.daily_request_limit ?? 0, "number", 'min="0" max="10000000" step="1" required')}${field("受限后整体冷却（秒）", "cooldown_seconds", limits.cooldown_seconds, "number", 'min="60" max="86400" required')}<label class="check-label"><input type="checkbox" name="paused" ${limits.paused ? "checked" : ""}>暂停所有商店采集请求</label><p class="sub full">同市场 App Store 详情每批最多 50 个，Google 详情、关键词、榜单、评论和权限每批最多 20 个；保留原采集周期与深度。每日预算耗尽后等待下一 UTC 日，所有采集 worker 共用额度，详情、关键词、榜单、评论、推荐和图标请求均计入。403 / 429 / 5xx 会触发共享冷却，并遵守更长的 Retry-After。保存后新请求生效，已发出的请求会完成。此开关不停止种子包同步和第三方数据源手动操作。</p><button type="submit">保存控频设置</button></form></div></details>${body}`,
         rev,
         quality.heartbeat?.next_at
           ? `后台心跳 ${stamp(quality.heartbeat.next_at)}`
@@ -505,37 +554,53 @@ export function createCollectionCenter(ctx) {
           filters.state = b.dataset.categoryState || "";
           page = 1;
           section = "tasks";
-          refresh().catch((e) => toast(e.message));
+          refresh(true).catch((e) => toast(e.message));
         }),
     );
     const poolCard = $("#pool-task-card");
     if (poolCard) {
       poolCard.onclick = (event) => {
-        if (!event.target.closest("[data-pool-card]")) return;
-        section = "pipelines";
-        refresh().catch((e) => toast(e.message));
+        if (event.target.closest("[data-pool-card]"))
+          location.hash = "#collection?view=pipelines";
+        if (event.target.closest("[data-retry-pool]")) loadPool();
       };
-      pendingPool ||= api("/research/collection/pipelines").finally(() => {
-        pendingPool = null;
-      });
-      pendingPool
-        .then((rows) => {
+      async function loadPool() {
+        poolCard.querySelector(".pool-summary").innerHTML =
+          '<span class="stat-loading">正在统计全池…</span>';
+        try {
+          if (!poolSnapshot || Date.now() - poolSnapshot.at > 60000) {
+            pendingPool ||= api("/research/collection/pipelines")
+              .then((rows) => {
+                poolSnapshot = { rows, at: Date.now() };
+                return rows;
+              })
+              .finally(() => (pendingPool = null));
+            await pendingPool;
+          }
           if (!poolCard.isConnected || rev !== currentRevision()) return;
-          const info = rows.find((p) => p.id === "pool");
+          const info = poolSnapshot.rows.find((p) => p.id === "pool");
           if (!info) return;
-          poolCard.querySelector("strong").textContent = num(info.total);
+          const count = poolCard.querySelector("strong");
+          count.classList.remove("stat-skeleton");
+          count.textContent = compact(info.total);
+          count.title = num(info.total);
           poolCard.querySelector(".pool-summary").innerHTML = distribution(
             info.summary || {},
           );
           if (info.observed_at)
             poolCard.title = "统计时间 " + stamp(info.observed_at);
-        })
-        .catch(() => {
-          if (poolCard.isConnected)
-            poolCard.querySelector(".pool-summary").textContent =
-              "统计暂不可用";
-        });
+        } catch {
+          if (poolCard.isConnected) {
+            poolCard.querySelector("strong").classList.remove("stat-skeleton");
+            poolCard.querySelector("strong").textContent = "—";
+            poolCard.querySelector(".pool-summary").innerHTML =
+              '<button type="button" class="secondary small" data-retry-pool>统计失败，点击重试</button>';
+          }
+        }
+      }
+      loadPool();
     }
+
     bindForm("#collection-limits", async (v, f) => {
       await api(
         "/research/collection/limits",
@@ -566,17 +631,9 @@ export function createCollectionCenter(ctx) {
         );
       };
     $("#new-collection").onclick = () => {
-      section = "create";
       preset = null;
-      refresh().catch((e) => toast(e.message));
+      location.hash = "#collection?view=create";
     };
-    document.querySelectorAll("[data-collection-tab]").forEach(
-      (b) =>
-        (b.onclick = () => {
-          section = b.dataset.collectionTab;
-          refresh().catch((e) => toast(e.message));
-        }),
-    );
     document.querySelectorAll("[data-task-logs]").forEach(
       (b) =>
         (b.onclick = () => {
@@ -882,9 +939,9 @@ export function createCollectionCenter(ctx) {
   render.prepare = (ids) => {
     preset = { kind: "details", app_ids: ids };
     section = "create";
-    if (location.hash === "#collection")
-      refresh().catch((e) => toast(e.message));
-    else location.hash = "collection";
+    if (location.hash === "#collection?view=create")
+      refresh(true).catch((e) => toast(e.message));
+    else location.hash = "#collection?view=create";
   };
   return render;
 }

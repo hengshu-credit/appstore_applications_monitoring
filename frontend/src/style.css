@@ -324,7 +324,7 @@ th {
 td {
   padding: 13px;
   border-bottom: 1px solid var(--line-soft);
-  vertical-align: top;
+  vertical-align: middle;
   max-width: 420px;
   overflow-wrap: anywhere;
 }

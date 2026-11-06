@@ -30,7 +30,37 @@ UNION = '''SELECT 'watchlist' resource,w.id,'details' kind,w.store,w.country,w.l
     FROM app_permission_targets p LEFT JOIN apps a USING(store,app_id)'''
 
 
-def task_query(*, kind='', store='', country='', language='', state='', q=''):
+def _task_union(kind='', light=False, search=False, refs=None):
+    parts=UNION.split('UNION ALL')
+    if light:
+        name='COALESCE(a.name,w.app_id)' if search else "''"
+        keyword='t.keyword' if search else "''"
+        ident=lambda alias:alias+'.app_id' if search else "''"
+        label="CASE WHEN t.kind='reviews' THEN t.app_id WHEN t.kind='featured' THEN 'Apple Today' ELSE t.collection END" if search else "''"
+        category='t.category' if search else "''"
+        icon_label='COALESCE(i.name,i.app_id)' if search else "''"
+        app_join=' LEFT JOIN apps a USING(store,app_id)' if search else ''
+        permission_name='COALESCE(a.name,p.app_id)' if search else "''"
+        parts=[f'''SELECT 'watchlist' resource,w.id,'details' kind,w.store,w.country,w.language,{ident('w')} app_id,{name} label,'' category,
+            w.enabled,COALESCE(j.failures,0) failures,j.due,j.lease_until FROM watchlist w{app_join}
+            LEFT JOIN jobs j USING(store,app_id,country,language)''',
+            f"SELECT 'keywords',t.id,'keywords',t.store,t.country,t.language,'',{keyword},'',t.enabled,t.failures,t.due,t.lease_until FROM keyword_targets t",
+            f"SELECT 'targets',t.id,t.kind,t.store,t.country,t.language,{ident('t')},{label},{category},t.enabled,t.failures,t.due,t.lease_until FROM observation_targets t",
+            f"SELECT 'icons',i.id,'icons',i.store,i.country,i.language,{ident('i')},{icon_label},'',i.enabled,i.failures,i.due,i.lease_until FROM app_icons i WHERE i.requested=1",
+            f"SELECT 'permissions',p.id,'permissions',p.store,p.country,'en',{ident('p')},{permission_name},'',p.enabled,p.failures,p.due,p.lease_until FROM app_permission_targets p{app_join}"]
+    selected=[];args=[]
+    for part,(resource,alias,kinds) in zip(parts,[('watchlist','w',('details',)),('keywords','t',('keywords',)),('targets','t',('chart','reviews','featured')),('icons','i',('icons',)),('permissions','p',('permissions',))]):
+        if kind and kind not in kinds:continue
+        if refs is not None:
+            ids=[r['id'] for r in refs if r['resource']==resource]
+            if not ids:continue
+            part+=(' AND ' if resource=='icons' else ' WHERE ')+alias+'.id IN ('+','.join('%s' for _ in ids)+')'
+            args.extend(ids)
+        selected.append(part)
+    return ' UNION ALL '.join(selected),args
+
+
+def task_query(*, kind='', store='', country='', language='', state='', q='', light=False, refs=None):
     if any(not isinstance(v,str) for v in (kind,store,country,language,state,q)):
         raise ValueError('筛选参数须为文本')
     if kind and kind not in KINDS:
@@ -41,10 +71,12 @@ def task_query(*, kind='', store='', country='', language='', state='', q=''):
     if len(q) > 255:
         raise ValueError('搜索参数无效')
     now = time.time()
+    union,args=_task_union(kind,light,bool(q),refs)
+    columns='resource,id,kind,store,country,language,app_id,label,category,'+('enabled,failures,due,lease_until' if light else 'collection,group_name,depth,refresh_hours,enabled,failures,last_error,due,lease_until,success_at')
     query = f'''SELECT task.*,CASE WHEN enabled=0 THEN 'paused' WHEN lease_until>{now} THEN 'running'
         WHEN failures>0 THEN 'error' WHEN COALESCE(due,0)<={now} THEN 'pending'
-        ELSE 'scheduled' END task_state FROM ({UNION}) task'''
-    where, args = [], []
+        ELSE 'scheduled' END task_state FROM ({union}) task ({columns})'''
+    where = []
     for key, value in [('kind',kind),('store',store),('country',country.lower()),('language',language.lower())]:
         if value:
             where.append(key+'=%s'); args.append(value)
@@ -63,10 +95,16 @@ def list_tasks(db, *, page=1, limit=50, **filters):
     data_revision = revision(db)
     if not 1 <= page <= 100000 or not 1 <= limit <= 200:
         raise ValueError('分页参数无效')
-    filtered, args = task_query(**filters)
+    filtered, args = task_query(**filters,light=True)
     # Cards retain every category and state while the list is drilled down.
-    overview, overview_args = task_query(**(filters | {'kind':'','state':''}))
-    counts = db.execute(f'SELECT kind,task_state,count(*) n FROM ({overview}) f GROUP BY kind,task_state', overview_args).fetchall()
+    # Aggregate each indexed resource before combining; avoid materializing every
+    # task label/history join just to render the seven summary cards.
+    count_sql=[];count_args=[]
+    for kind in KINDS:
+        overview,overview_args=task_query(**(filters|{'kind':kind,'state':''}),light=True)
+        count_sql.append(f'SELECT kind,task_state,count(*) n FROM ({overview}) f GROUP BY kind,task_state')
+        count_args.extend(overview_args)
+    counts=db.execute(' UNION ALL '.join(count_sql),count_args).fetchall()
     categories = {kind:dict(kind=kind,total=0,summary=dict.fromkeys(STATES,0)) for kind in KINDS}
     summary = dict.fromkeys(STATES,0)
     for row in counts:
@@ -76,7 +114,11 @@ def list_tasks(db, *, page=1, limit=50, **filters):
         if (not filters.get('kind') or filters['kind']==row['kind']) and (not filters.get('state') or filters['state']==row['task_state']):
             summary[row['task_state']] += row['n']
     total = sum(summary.values())
-    rows = db.execute(filtered+' ORDER BY resource,id DESC LIMIT %s OFFSET %s', (*args,limit,(page-1)*limit)).fetchall()
+    refs = db.execute('SELECT resource,id FROM ('+filtered+') matches ORDER BY resource,id DESC LIMIT %s OFFSET %s', (*args,limit,(page-1)*limit)).fetchall()
+    rows=[]
+    if refs:
+        detail,detail_args=task_query(refs=refs)
+        rows=db.execute(detail+' ORDER BY resource,id DESC',detail_args).fetchall()
     return {'items':rows,'total':total,'summary':summary,'categories':list(categories.values()),'page':page,'limit':limit,'has_more':page*limit<total,'data_revision':data_revision}
 
 

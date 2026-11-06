@@ -164,6 +164,7 @@ export function createResearchPages(ctx) {
           `${filterBar({
             id: "event-filter",
             values: { days: 30, ...filters },
+            resetValues: { days: 30 },
             submit: "查询",
             fields: [
               {
@@ -186,7 +187,8 @@ export function createResearchPages(ctx) {
               {
                 name: "group_name",
                 label: "关注分组",
-                options: data.items.map((r) => r.group_name).filter(Boolean),
+                type: "panel",
+                options: [["", "全部分组"], ...(data.groups || [])],
               },
               {
                 name: "days",
@@ -198,7 +200,7 @@ export function createResearchPages(ctx) {
             actions:
               '<button type="button" class="secondary" id="add-annotation">添加复盘注记</button>',
           })}<p class="sub">${esc(data.scope)}</p>`,
-        )}${panel("每日观察日历（UTC）", `<div class="event-calendar">${[...days].map(([at, count]) => `<button class="calendar-cell content-card secondary" data-event-day="${at}"><span>${esc(dateInput(at))}</span><strong>${num(count)}</strong><small>观察事件</small></button>`).join("") || empty("区间内暂无事件")}</div><div id="day-selection" class="sub"></div>`)}${panel("变更记录 · 最近300条", `<div id="event-table"></div>`)}${panel(
+        )}${panel("每日观察事件（UTC）", `<div class="event-day-toolbar"><span class="sub">点击日期查看当天事件</span><button type="button" class="secondary small" data-event-day="" aria-pressed="${!filters.day}">全部日期</button><span id="day-selection" role="status">${filters.day ? esc(filters.day) : "全部日期"} · ${num(data.total ?? total)} 条</span></div><div class="event-calendar">${[...days].map(([at, count]) => `<button type="button" class="calendar-cell content-card secondary" data-event-day="${at}" aria-pressed="${dateInput(at) === filters.day}" aria-label="查看 ${dateInput(at)} 的 ${num(count)} 条事件"><span>${esc(dateInput(at))}</span><strong>${num(count)}</strong><small>条事件 →</small></button>`).join("") || empty("区间内暂无事件")}</div>`)}${panel("变更记录", `<div id="event-table"></div>${pagination({ id: "event-pages", offset: data.offset || 0, limit: data.limit || 50, total: data.total ?? total, sizes: [25, 50, 100, 200] })}`)}${panel(
           "人工复盘注记",
           table(
             ["事件时间", "应用", "标题", "备注 / 证据"],
@@ -237,6 +239,9 @@ export function createResearchPages(ctx) {
     };
     renderRows(data.items);
     bindForm("#event-filter", (v) => events(nextRevision(), v));
+    bindPagination(document, "event-pages", (offset, limit) =>
+      events(nextRevision(), { ...filters, offset, limit }),
+    );
     $("#content").addEventListener("click", async function handler(event) {
       if (rev !== currentRevision()) {
         this.removeEventListener("click", handler);
@@ -245,14 +250,14 @@ export function createResearchPages(ctx) {
       const detail = event.target.closest("[data-event-detail]"),
         day = event.target.closest("[data-event-day]");
       if (day) {
-        const at = Number(day.dataset.eventDay);
-        renderRows(
-          data.items.filter(
-            (r) => Math.floor(r.observed_at / 86400) * 86400 === at,
-          ),
-        );
-        $("#day-selection").textContent =
-          "当前列表：" + dateInput(at) + "（UTC）；重新查询恢复全部";
+        await events(nextRevision(), {
+          ...filters,
+          day: day.dataset.eventDay
+            ? dateInput(Number(day.dataset.eventDay))
+            : "",
+          offset: 0,
+        });
+        $("#event-table")?.scrollIntoView({ block: "nearest" });
       }
       if (detail) {
         const row = data.items.find(

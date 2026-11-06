@@ -99,7 +99,36 @@
   color: var(--accent-text);
 }
 [data-filter-type="panel"] .filter-popup [role="listbox"] {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
+  display: flex;
+  flex-direction: column;
+}
+.filter-popup .choice-check {
+  margin-left: auto;
+  opacity: 0;
+  color: var(--accent-text);
+}
+.filter-popup [aria-selected="true"] .choice-check {
+  opacity: 1;
+}
+.select-control {
+  display: inline-flex;
+  vertical-align: middle;
+  width: 100%;
+}
+.table-pager .select-control {
+  width: 110px;
+}
+.select-control .filter-trigger {
+  min-height: 36px;
+}
+select,
+select option,
+select optgroup {
+  color: var(--ink);
+  background: var(--surface);
+}
+.country-all {
+  margin: 8px 0;
+  width: 100%;
+  border-color: var(--accent);
 }

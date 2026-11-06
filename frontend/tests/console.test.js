@@ -106,7 +106,7 @@ const newModules = (
     wrappedModule("app-groups.js", "createGroupWorkspace"),
     wrappedModule(
       "market-scope.js",
-      "effectiveLanguage,autoCaption,languageChoices,recommendedLanguage,selectedStores,languageName",
+      "effectiveLanguage,autoCaption,languageChoices,recommendedLanguage,selectedStores,languageName,toggleStore",
     ),
     wrappedModule("app-icons.js", "createAppIconManager"),
     wrappedModule("market-controls.js", "initMarketControls"),
@@ -2134,6 +2134,86 @@ test("store lookup reuses shared query controls and reset clears without fetchin
     assert.equal(
       calls.some((c) => c.path === "/api/discovery/search"),
       false,
+    );
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+test("collection view tabs reuse loaded registry while explicit query refreshes", async () => {
+  const { window, calls } = await setup();
+  try {
+    window.location.hash = "collection";
+    await tick();
+    const loaded = calls.filter((c) =>
+      c.path.startsWith("/api/research/collection/"),
+    ).length;
+    window.document
+      .querySelector('#workspace-pages a[href="#collection?view=pipelines"]')
+      .click();
+    await tick();
+    window.document
+      .querySelector('#workspace-pages a[href="#collection"]')
+      .click();
+    await tick();
+    assert.equal(
+      calls.filter((c) => c.path.startsWith("/api/research/collection/"))
+        .length,
+      loaded,
+    );
+    window.document
+      .querySelector("#task-filters")
+      .dispatchEvent(
+        new window.Event("submit", { bubbles: true, cancelable: true }),
+      );
+    await tick();
+    assert.ok(
+      calls.filter((c) => c.path.startsWith("/api/research/collection/"))
+        .length > loaded,
+    );
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("event dates request a complete server-filtered page and clear the date", async () => {
+  const day = Date.UTC(2026, 10, 5) / 1000;
+  const { window, calls } = await setup((path) => {
+    if (path.startsWith("/api/research/events?"))
+      return {
+        items: [],
+        daily: [{ day, kind: "first_verified", count: 350 }],
+        summary: [{ kind: "first_verified", count: 350 }],
+        annotations: [],
+        groups: ["贷款组"],
+        total: 350,
+        limit: 50,
+        offset: 0,
+      };
+  });
+  try {
+    window.location.hash = "events";
+    await tick();
+    assert.ok(
+      window.document.querySelector(
+        '#event-filter [name=group_name] option[value="贷款组"]',
+      ),
+    );
+    window.document
+      .querySelector(`.calendar-cell[data-event-day="${day}"]`)
+      .click();
+    await tick();
+    assert.ok(calls.at(-1).path.includes("day=2026-11-05"));
+    assert.equal(
+      window.document
+        .querySelector(".calendar-cell")
+        .getAttribute("aria-pressed"),
+      "true",
+    );
+    window.document.querySelector('[data-event-day=""]').click();
+    await tick();
+    assert.equal(
+      new URL(calls.at(-1).path, "http://local").searchParams.get("day"),
+      null,
     );
   } finally {
     await window.happyDOM.close();

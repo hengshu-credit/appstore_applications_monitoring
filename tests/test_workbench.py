@@ -235,6 +235,26 @@ class WorkbenchTest(MySQLTestCase):
         self.assertEqual(event_feed(self.db,m|{'field':'price'})['items'],[])
         self.assertEqual(event_feed(self.db,m|{'field':'version'})['annotations'],[])
 
+    def test_event_day_reads_beyond_recent_rows_and_cross_store_pages_are_unique(self):
+        from datetime import datetime,timezone
+        from appmon import scoped_views
+        from appmon.intelligence import watch
+        m=self.seed_listing('123');now=time.time();yesterday=(int(now)//86400-1)*86400
+        watch(self.db,m|{'group_name':'关注组'})
+        rows=[('apple','123','us','en',now,'metadata_changed','{}') for _ in range(320)]
+        rows += [('apple','123','us','en',yesterday+100,'first_verified','{}'),('google','com.example.app','us','en',yesterday+200,'first_verified','{}')]
+        self.db.executemany('INSERT INTO events(store,app_id,country,language,observed_at,kind,changes) VALUES(%s,%s,%s,%s,%s,%s,%s)',rows)
+        day=datetime.fromtimestamp(yesterday,timezone.utc).date().isoformat()
+        selected=event_feed(self.db,m|{'day':day})
+        self.assertEqual((selected['total'],len(selected['items'])),(1,1))
+        self.assertEqual(selected['groups'],['关注组'])
+        query={'store':'all','country':'us','language':'en','day':day,'limit':1}
+        first=scoped_views.events(self.db,query);second=scoped_views.events(self.db,query|{'offset':1})
+        self.assertEqual(first['total'],2)
+        self.assertNotEqual(first['items'][0]['id'],second['items'][0]['id'])
+        self.assertFalse(second['has_more'])
+        with self.assertRaises(ValueError):event_feed(self.db,m|{'day':'invalid'})
+
     def test_api_advanced_filters_exclude_unknown_and_workbench_endpoints(self):
         m=self.seed_listing('123');self.seed_listing('456',rating=2,price=5,updated='2020-01-01T00:00:00Z')
         add_apps(self.db,[('apple','789','Unknown',None)],'fixture')

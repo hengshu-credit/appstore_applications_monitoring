@@ -49,6 +49,35 @@
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
 }
+.event-day-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.event-day-toolbar [role="status"] {
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: auto;
+}
+.event-calendar .calendar-cell {
+  cursor: pointer;
+  gap: 6px;
+  min-height: 96px;
+  height: auto;
+  align-items: flex-start;
+}
+.event-calendar .calendar-cell:hover {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+.event-calendar .calendar-cell[aria-pressed="true"],
+.event-day-toolbar [aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
 .calendar-cell {
   display: flex;
   flex-direction: column;

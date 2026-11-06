@@ -54,6 +54,8 @@ function choices(field) {
   return [];
 }
 function decoration(type, value) {
+  if (type === "store" && value === "all")
+    return '<span class="store-logo-stack"><img class="store-logo" src="/stores/google.svg" alt=""><img class="store-logo" src="/stores/apple.svg" alt=""></span>';
   if (type === "store" && ["apple", "google"].includes(value))
     return `<img class="store-logo" src="/stores/${value}.svg" alt="">`;
   if (type === "country" && /^[a-z]{2}$/.test(value))
@@ -96,10 +98,8 @@ export function filterFields(id, fields, values = {}) {
         value = values[f.name] ?? f.value ?? "";
       const rows = optionRows(choices(f)),
         opts = optionMarkup(rows, value);
-      if (type === "select")
-        return `<label>${label}<select name="${name}">${opts}</select></label>`;
       const popup = `<div class="filter-popup" popover="manual" hidden><div role="listbox" id="${uid}-options" aria-label="${label}"></div></div>`;
-      if (["store", "country", "language", "panel"].includes(type)) {
+      if (["store", "country", "language", "panel", "select"].includes(type)) {
         const selected = rows.find((r) => r[0] === String(value)) ||
           rows[0] || ["", "请选择"];
         return `<div class="filter-control" data-filter-type="${type}"><span id="${uid}-label">${label}</span><select hidden name="${name}">${opts}</select><button class="picker-trigger secondary filter-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="${uid}-options" aria-labelledby="${uid}-label ${uid}-caption"><span id="${uid}-caption" class="filter-caption">${caption(type, selected[0], selected[1])}</span><span aria-hidden="true">⌄</span></button>${popup}</div>`;
@@ -160,7 +160,12 @@ export function bindFilterBar(form, onApply, onError) {
 }
 
 // One delegated controller also handles forms replaced by pagination or a tab switch.
-export function initFilterBars({ doc = document, win = window, suggest } = {}) {
+export function initFilterBars({
+  doc = document,
+  win = window,
+  suggest,
+  chooseCountry,
+} = {}) {
   let active = null,
     timer,
     version = 0,
@@ -214,7 +219,7 @@ export function initFilterBars({ doc = document, win = window, suggest } = {}) {
     box.innerHTML = rows
       .map(
         ([v, l], i) =>
-          `<button type="button" role="option" id="${box.id}-${i}" tabindex="-1" aria-selected="${root.querySelector("select")?.value === v}" data-filter-index="${i}">${caption(type, v, l)}${type === "suggest" && v !== l ? `<small>${escapeFilter(v)}</small>` : ""}</button>`,
+          `<button type="button" role="option" id="${box.id}-${i}" tabindex="-1" aria-selected="${root.querySelector("select")?.value === v || (type === "store" && root.querySelector("select")?.value === "all")}" data-filter-index="${i}">${caption(type, v, l)}${type === "store" ? '<span class="choice-check" aria-hidden="true">✓</span>' : ""}${type === "suggest" && v !== l ? `<small>${escapeFilter(v)}</small>` : ""}</button>`,
       )
       .join("");
     if (!rows.length && type === "suggest") {
@@ -235,11 +240,14 @@ export function initFilterBars({ doc = document, win = window, suggest } = {}) {
     win.clearTimeout(timer);
     const free = root.dataset.filterType === "suggest",
       needle = query.trim().toLowerCase();
-    const local = Array.from(root.querySelectorAll("option"), (o) => [
-      o.value,
-      o.textContent,
-      o.dataset.alias || "",
-    ]).filter((r) => !needle || r.join(" ").toLowerCase().includes(needle));
+    const local = Array.from(root.querySelectorAll("option"))
+      .filter(
+        (o) =>
+          !o.disabled &&
+          !(root.dataset.filterType === "store" && o.value === "all"),
+      )
+      .map((o) => [o.value, o.textContent, o.dataset.alias || ""])
+      .filter((r) => !needle || r.join(" ").toLowerCase().includes(needle));
     draw(free ? local.slice(0, 12) : local);
     if (!free || !suggest || !root.dataset.filterSource || needle.length < 2)
       return;
@@ -264,16 +272,46 @@ export function initFilterBars({ doc = document, win = window, suggest } = {}) {
   }
   function open(root) {
     if (active !== root) close();
+    if (root.dataset.filterType === "country" && chooseCountry) {
+      const input = root.querySelector("select"),
+        trigger = control(root);
+      chooseCountry({
+        value: input.value,
+        allowed: [...input.options]
+          .filter((o) => o.value && !o.disabled)
+          .map((o) => o.value),
+        allowAll: [...input.options].some((o) => o.value === ""),
+        trigger,
+        onApply: (value) => {
+          if (!root.isConnected) return;
+          input.value = value;
+          root.querySelector(".filter-caption").innerHTML = caption(
+            "country",
+            value,
+            [...input.options].find((o) => o.value === input.value)
+              ?.textContent || "全部国家",
+          );
+          input.dispatchEvent(new win.Event("change", { bubbles: true }));
+        },
+      });
+      return;
+    }
     active = root;
     const type = root.dataset.filterType,
       popup = root.querySelector(".filter-popup");
     if (
-      ["country", "language"].includes(type) &&
+      (["country", "language"].includes(type) ||
+        (type === "select" && root.querySelectorAll("option").length > 8)) &&
       !popup.querySelector("input")
     ) {
       const search = doc.createElement("input");
       search.type = "search";
-      search.placeholder = type === "country" ? "搜索国家或地区" : "搜索语言";
+      search.placeholder =
+        type === "country"
+          ? "搜索国家或地区"
+          : type === "language"
+            ? "搜索语言"
+            : "搜索选项";
       search.setAttribute("aria-label", search.placeholder);
       popup.prepend(search);
     }
@@ -289,16 +327,23 @@ export function initFilterBars({ doc = document, win = window, suggest } = {}) {
     const entry = root.querySelector("[data-filter-input]"),
       select = root.querySelector("select"),
       target = entry || select;
-    target.value = row[0];
+    const multiStore =
+      root.dataset.filterType === "store" &&
+      [...select.options].some((o) => o.value === "all");
+    if (multiStore && target.value === row[0]) return;
+    target.value = multiStore ? toggleStore(target.value, row[0]) : row[0];
     if (select)
       root.querySelector(".filter-caption").innerHTML = caption(
         root.dataset.filterType,
-        ...row,
+        target.value,
+        [...select.options].find((o) => o.value === select.value)
+          ?.textContent || row[1],
       );
     const flag = root.querySelector("[data-filter-match]");
     if (flag) flag.value = flag.dataset.picked;
     control(root).focus();
-    close();
+    if (multiStore) update();
+    else close();
     target.dispatchEvent(new win.Event("change", { bubbles: true }));
   }
   doc.addEventListener("focusin", (e) => {
@@ -346,7 +391,8 @@ export function initFilterBars({ doc = document, win = window, suggest } = {}) {
           root.querySelector(".filter-caption").innerHTML = caption(
             root.dataset.filterType,
             input.value,
-            input.selectedOptions[0]?.textContent || "",
+            [...input.options].find((o) => o.value === input.value)
+              ?.textContent || "",
           );
         if (input.name === "category") {
           const field = input.closest(".category-field");
@@ -372,8 +418,8 @@ export function initFilterBars({ doc = document, win = window, suggest } = {}) {
   });
   doc.addEventListener("keydown", (e) => {
     const form = e.target.closest?.("form[data-filter-bar]");
-    if (!form || e.isComposing || e.keyCode === 229) return;
     const root = e.target.closest("[data-filter-type]");
+    if ((!form && !root) || e.isComposing || e.keyCode === 229) return;
     if (root && ["ArrowDown", "ArrowUp"].includes(e.key)) {
       e.preventDefault();
       if (active !== root) open(root);
@@ -406,10 +452,66 @@ export function initFilterBars({ doc = document, win = window, suggest } = {}) {
       else if (root && e.target.closest(".filter-popup") && visible.length)
         choose(0);
       else close();
-      if (form.isConnected) form.requestSubmit();
+      if (form?.isConnected) form.requestSubmit();
     }
   });
   doc.addEventListener("submit", close, true);
+  // Theme native selects in editors, pagers and detail views with the same popup.
+  let selectId = 0;
+  function syncSelect(root) {
+    const input = root.querySelector("select"),
+      text =
+        [...input.options].find((o) => o.value === input.value)?.textContent ||
+        "请选择";
+    const key = input.value + "\u0000" + text;
+    if (root.dataset.selection !== key) {
+      root.dataset.selection = key;
+      root.querySelector(".filter-caption").innerHTML = caption(
+        "select",
+        input.value,
+        text,
+      );
+    }
+    if (control(root).disabled !== input.disabled)
+      control(root).disabled = input.disabled;
+  }
+  function enhanceSelects() {
+    for (const input of doc.querySelectorAll(
+      "select:not([hidden]):not([multiple])",
+    )) {
+      if (
+        input.closest("[data-filter-type]") ||
+        input.closest("#global-market")
+      )
+        continue;
+      const root = doc.createElement("span"),
+        id = "shared-select-" + ++selectId;
+      root.className = "filter-control select-control";
+      root.dataset.filterType = "select";
+      const label =
+        input.getAttribute("aria-label") ||
+        input.closest("label")?.childNodes[0]?.textContent?.trim() ||
+        "选择选项";
+      input.before(root);
+      root.append(input);
+      input.hidden = true;
+      root.insertAdjacentHTML(
+        "beforeend",
+        `<button type="button" class="picker-trigger secondary filter-trigger" aria-label="${escapeFilter(label)}" aria-haspopup="listbox" aria-expanded="false" aria-controls="${id}"><span class="filter-caption"></span><span aria-hidden="true">⌄</span></button><div class="filter-popup" popover="manual" hidden><div role="listbox" id="${id}" aria-label="${escapeFilter(label)}"></div></div>`,
+      );
+    }
+    doc.querySelectorAll(".select-control").forEach(syncSelect);
+  }
+  enhanceSelects();
+  const observer = new win.MutationObserver(enhanceSelects);
+  observer.observe(doc.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["disabled", "selected"],
+  });
+  doc.addEventListener("click", enhanceSelects);
+  doc.addEventListener("change", enhanceSelects);
   win.addEventListener("hashchange", close);
   win.addEventListener("resize", close);
   win.addEventListener(
@@ -426,3 +528,4 @@ export function initFilterBars({ doc = document, win = window, suggest } = {}) {
     true,
   );
 }
+import { toggleStore } from "./market-scope.js";

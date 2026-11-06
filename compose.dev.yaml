@@ -1,0 +1,46 @@
+name: appstore-applications-monitoring
+services:
+  monitor:
+    extends:
+      file: compose.yaml
+      service: monitor
+  console:
+    extends:
+      file: compose.yaml
+      service: console
+  keywords:
+    extends:
+      file: compose.yaml
+      service: keywords
+  mysql:
+    extends:
+      file: compose.yaml
+      service: mysql
+  web:
+    extends:
+      file: compose.yaml
+      service: web
+    command: ["python", "-m", "uvicorn", "appmon.dev_server:create_development_app", "--factory", "--host", "0.0.0.0", "--port", "8765", "--reload", "--reload-dir", "/app/src", "--reload-delay", "0.5"]
+    environment:
+      PYTHONPATH: /app/src
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      - ./src:/app/src:ro
+  frontend:
+    image: node:22-alpine
+    working_dir: /app/frontend
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${APPMON_BIND_ADDRESS:-127.0.0.1}:${APPMON_FRONTEND_PORT:-5173}:5173"
+    volumes:
+      - ./frontend:/app/frontend
+      - frontend_dev_modules:/app/frontend/node_modules
+    environment:
+      API_PROXY_TARGET: http://web:8765
+      DEV_POLLING: "true"
+    command: ["sh", "-c", "npm ci --no-audit --no-fund && npm run dev -- --host 0.0.0.0 --port 5173 --strictPort"]
+    depends_on:
+      - web
+volumes:
+  frontend_dev_modules:

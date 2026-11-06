@@ -83,6 +83,30 @@
 .shell > header .page-heading {
   flex-shrink: 0;
 }
+#page-breadcrumbs {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 13px;
+}
+#page-breadcrumbs a {
+  color: var(--muted);
+  text-decoration: none;
+}
+#page-breadcrumbs a:hover {
+  color: var(--accent-text);
+  text-decoration: underline;
+}
+.page-heading {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.page-heading h1 {
+  margin: 0;
+  font-size: 20px;
+}
 #content {
   min-width: 0;
 }

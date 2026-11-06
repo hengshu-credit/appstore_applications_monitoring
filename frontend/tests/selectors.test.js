@@ -300,3 +300,34 @@ test("multiple countries support regional selection, cancel, all, and clear with
     await win.happyDOM.close();
   }
 });
+test("filter country selection reuses the dialog without changing header market", async () => {
+  const { win, selector } = setup();
+  let value = "";
+  try {
+    await selector.chooseCountry({
+      value: "th",
+      allowed: ["th", "us"],
+      allowAll: true,
+      trigger: win.document.querySelector("#country-trigger"),
+      onApply: (v) => (value = v),
+    });
+    const dialog = win.document.querySelector("#country-picker");
+    assert.equal(
+      dialog.querySelector('[data-country-code="cn"]').disabled,
+      true,
+    );
+    dialog.querySelector('[data-country-code="th"]').click();
+    assert.equal(value, "th");
+    assert.equal(win.document.querySelector("#global-country").value, "us");
+    await selector.chooseCountry({
+      value: "th",
+      allowed: ["th", "us"],
+      allowAll: true,
+      onApply: (v) => (value = v),
+    });
+    dialog.querySelector('[data-country-code=""]').click();
+    assert.equal(value, "");
+  } finally {
+    await win.happyDOM.close();
+  }
+});

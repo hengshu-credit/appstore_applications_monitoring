@@ -205,3 +205,40 @@ test("reset-only queries and disabled providers cannot accidentally submit", asy
     await win.happyDOM.close();
   }
 });
+test("store filters share header toggling and regular selects use themed popups", async () => {
+  const win = new Window(),
+    doc = win.document;
+  try {
+    doc.body.innerHTML =
+      filterBar({
+        id: "stores",
+        fields: [{ name: "store", label: "商店", type: "store" }],
+      }) +
+      '<label>周期<select name="period"><option value="7">7 天</option><option value="30">30 天</option></select></label>';
+    initFilterBars({ doc, win });
+    const root = doc.querySelector("[data-filter-type=store]");
+    root.querySelector(".filter-trigger").click();
+    assert.equal(root.querySelectorAll("[role=option]").length, 2);
+    root.querySelector('[data-filter-index="0"]').click();
+    assert.equal(root.querySelector("select").value, "apple");
+    root.querySelector('[data-filter-index="0"]').click();
+    assert.equal(root.querySelector("select").value, "all");
+    const normal = doc.querySelector("[name=period]");
+    assert.equal(normal.hidden, true);
+    normal.parentElement.querySelector(".filter-trigger").click();
+    normal.parentElement.querySelector('[data-filter-index="1"]').click();
+    assert.equal(normal.value, "30");
+    assert.match(
+      normal.parentElement.querySelector(".filter-caption").textContent,
+      /30 天/,
+    );
+    normal.value = "7";
+    doc.querySelector("#stores [data-filter-reset-button]").click();
+    assert.match(
+      normal.parentElement.querySelector(".filter-caption").textContent,
+      /7 天/,
+    );
+  } finally {
+    await win.happyDOM.close();
+  }
+});

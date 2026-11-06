@@ -101,6 +101,20 @@ export function setWorkspaceHint(doc, text) {
 
 export function updateWorkspace(document, name, can) {
   const current = workspacePage(name);
+  const query = new URLSearchParams(
+    document.defaultView?.location.hash.split("?")[1] || "",
+  );
+  const collectionView = query.has("new")
+    ? "create"
+    : query.get("view") || "tasks";
+  if (current.page === "collection")
+    current.title =
+      {
+        tasks: "采集任务",
+        lineage: "采集血缘",
+        pipelines: "基础采集流程",
+        create: "新建采集计划",
+      }[collectionView] || current.title;
   const module = navigationSections
     .flatMap((s) => s.modules)
     .find((m) => m.pages.includes(current.page));
@@ -111,6 +125,24 @@ export function updateWorkspace(document, name, can) {
     else a.removeAttribute("aria-current");
   });
   document.querySelector("#page-title").textContent = current.title;
+  let crumbs = document.querySelector("#page-breadcrumbs");
+  if (!crumbs) {
+    crumbs = document.createElement("nav");
+    crumbs.id = "page-breadcrumbs";
+    crumbs.setAttribute("aria-label", "面包屑");
+    document.querySelector("#page-title").before(crumbs);
+  }
+  const parents = [];
+  if (current.page !== "overview") parents.push(["#overview", "工作台"]);
+  if (module && module.label !== current.title && current.page !== "overview")
+    parents.push(["#" + module.pages[0], module.label]);
+  crumbs.innerHTML = parents
+    .map(
+      ([href, label]) =>
+        `<a href="${href}">${label}</a><span aria-hidden="true">/</span>`,
+    )
+    .join("");
+  crumbs.hidden = !parents.length;
   setWorkspaceHint(document, current.description);
   const tabs = document.querySelector("#workspace-pages");
   const pages = (module?.pages || []).filter((page) => can(page));
@@ -121,6 +153,25 @@ export function updateWorkspace(document, name, can) {
         `<a href="#${page}" ${page === current.page ? 'aria-current="page"' : ""}>${pageInfo[page][0]}</a>`,
     )
     .join("");
+  if (["collection", "watchlist"].includes(current.page)) {
+    const links = [
+      ["#collection", "采集任务", "tasks"],
+      ["#watchlist", "详情监控任务", "watchlist"],
+      ["#collection?view=lineage", "采集血缘", "lineage"],
+      ["#collection?view=pipelines", "基础采集流程", "pipelines"],
+    ].filter(([, , key]) =>
+      can(key === "watchlist" ? "watchlist" : "collection"),
+    );
+    tabs.hidden = false;
+    const selected =
+      current.page === "watchlist" ? "watchlist" : collectionView;
+    tabs.innerHTML = links
+      .map(
+        ([href, label, key]) =>
+          `<a href="${href}" ${key === selected ? 'aria-current="page"' : ""}>${label}</a>`,
+      )
+      .join("");
+  }
   const globalMarket = ["market", "collection"].includes(current.scope);
   document.querySelector(".store-field").hidden =
     !globalMarket && !["store", "countries"].includes(current.scope);

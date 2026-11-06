@@ -61,6 +61,23 @@ test("workspace tabs respect individual permissions and hide filters that do not
     updateWorkspace(doc, "datasources", (page) => page === "datasources");
     assert.equal(doc.querySelector("#workspace-pages").hidden, true);
     assert.equal(doc.querySelector(".store-field").hidden, true);
+    window.location.hash = "#collection?view=pipelines";
+    updateWorkspace(doc, "collection", () => true);
+    assert.equal(doc.querySelector("#page-title").textContent, "基础采集流程");
+    assert.equal(doc.querySelectorAll("#workspace-pages a").length, 4);
+    assert.equal(
+      doc.querySelector("#workspace-pages [aria-current]").hash,
+      "#collection?view=pipelines",
+    );
+    assert.deepEqual(
+      [...doc.querySelectorAll("#page-breadcrumbs a")].map((a) => a.hash),
+      ["#overview", "#collection"],
+    );
+    updateWorkspace(doc, "app/google/com.example", () => true);
+    assert.equal(
+      doc.querySelector("#page-breadcrumbs a:last-of-type").hash,
+      "#apps",
+    );
   } finally {
     await window.happyDOM.close();
   }

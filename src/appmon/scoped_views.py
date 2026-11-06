@@ -152,18 +152,8 @@ def apps(db,*,store='',country='us',language='en',q='',category='',developer='',
 
 
 def events(db,filters):
-    reports=[insights.event_feed(db,filters|{'store':s}) for s in matching_stores(filters)]
-    if len(reports)==1:return reports[0]
-    summary={};daily={}
-    for report in reports:
-        for row in report['summary']:summary[row['kind']]=summary.get(row['kind'],0)+row['count']
-        for row in report['daily']:
-            key=(row['day'],row['kind']);daily[key]=daily.get(key,0)+row['count']
-    return {'items':sorted([r for p in reports for r in p['items']],key=lambda r:r['id'],reverse=True),
-            'annotations':sorted([r for p in reports for r in p['annotations']],key=lambda r:r['event_at'],reverse=True),
-            'summary':[{'kind':k,'count':v} for k,v in summary.items()],
-            'daily':[{'day':k[0],'kind':k[1],'count':v} for k,v in sorted(daily.items())],
-            'scope':'所选商店分别查询当前市场，再汇总事件数量；事件时间是观察时间，不是发布日期。','limit_per_store':300}
+    markets=[insights.market(filters|{'store':store},require_app=False) for store in matching_stores(filters)]
+    return insights.event_feed(db,filters,markets)
 
 
 def reviews(db,filters):

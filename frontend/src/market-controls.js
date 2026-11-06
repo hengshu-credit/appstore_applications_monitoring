@@ -1,5 +1,5 @@
 import { icon, storeLogo } from "./icons.js";
-import { autoCaption, languageChoices } from "./market-scope.js";
+import { autoCaption, languageChoices, toggleStore } from "./market-scope.js";
 export const languages = [
   ["en", "英语"],
   ["zh-cn", "简体中文"],
@@ -148,12 +148,7 @@ export function initMarketControls(win = window) {
       if (kind === "store") {
         // The canonical "all" value represents both checked stores.
         if (input.value === option.dataset.value) return;
-        input.value =
-          input.value === "all"
-            ? option.dataset.value === "google"
-              ? "apple"
-              : "google"
-            : "all";
+        input.value = toggleStore(input.value, option.dataset.value);
       } else input.value = option.dataset.value;
       sync();
       if (kind === "store") {
