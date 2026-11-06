@@ -101,6 +101,78 @@ class AccountTest(MySQLTestCase):
         self.assertEqual(client.get('/api/apps').status_code, 401)
         self.assertEqual(client.post('/api/auth/login', json={'username':'external-user','password':'external-password'}).status_code, 401)
 
+    def test_upgrade_preserves_existing_role_permissions_and_audit_timestamp(self):
+        admin = self.login_admin(self.client())
+        admin.put('/api/auth/admin/roles/user', json={'permissions': ['events:read']})
+        self.db.execute('ALTER TABLE auth_roles DROP COLUMN name')
+        self.db.execute('ALTER TABLE auth_audit DROP COLUMN ended_at')
+        self.db.execute('TRUNCATE TABLE auth_audit_heads')
+        auth.initialize(self.db)
+        auth.initialize(self.db)
+        result = admin.get('/api/auth/admin').json()
+        self.assertEqual(result['roles']['user'], ['events:read'])
+        self.assertEqual(result['group_names'], auth.GROUP_NAMES)
+        for row in admin.get('/api/auth/admin/audit').json():
+            self.assertEqual(row['created_at'], row['ended_at'])
+
+    def test_custom_groups_merge_only_selected_grants_and_refresh_live(self):
+        admin = self.login_admin(self.client())
+        roles, users = '/api/auth/admin/roles', '/api/auth/admin/users'
+        group = admin.post(roles, json={'name': '运营', 'permissions': ['keywords:write']}).json()['role']
+        second = admin.post(roles, json={'name': '审核', 'permissions': ['keywords:read', 'events:read']}).json()['role']
+        self.assertEqual(admin.post(roles, json={'name': '运营', 'permissions': []}).status_code, 409)
+        self.assertEqual(admin.post(roles, json={'name': '超级管理员', 'permissions': []}).status_code, 400)
+        credentials = {'username': 'group-user', 'password': 'external-password'}
+        for invalid in ([], ['admin'], ['unknown']):
+            self.assertEqual(admin.post(users, json=credentials | {'group_ids': invalid}).status_code, 400)
+        result = admin.post(users, json=credentials | {'group_ids': [group, second, second]})
+        self.assertEqual(result.status_code, 200, result.text)
+        self.assertIn('recovery_code', result.json())
+        path = users + '/' + str(result.json()['id'])
+        client = self.client()
+        principal = self.login(client, 'group-user')
+        self.assertCountEqual(principal['group_ids'], [group, second])
+        self.assertEqual(principal['permissions'], ['events:read', 'keywords:read', 'keywords:write'])
+        self.assertEqual(client.get('/api/apps').status_code, 403)
+        self.assertEqual(client.get('/api/keywords').status_code, 200)
+        self.assertEqual(admin.put(roles + '/' + group, json={'name': '编辑', 'permissions': []}).status_code, 200)
+        self.assertEqual(client.get('/api/auth/me').json()['user']['permissions'], ['events:read', 'keywords:read'])
+        self.assertEqual(admin.get('/api/auth/admin').json()['group_names'][group], '编辑')
+        self.assertEqual(client.put(path, json={'group_ids': ['member']}).status_code, 403)
+        self.assertEqual(client.post(users, json=credentials).status_code, 403)
+        self.assertEqual(client.post(roles, json={'name': 'test', 'permissions': []}).status_code, 403)
+        self.assertEqual(admin.put(path, json={'group_ids': ['member', second], 'member_until': 1}).status_code, 200)
+        expired = self.login(client, 'group-user')
+        self.assertCountEqual(expired['permissions'], set(auth.DEFAULTS['user']) | {'events:read', 'keywords:read'})
+        self.assertEqual(admin.put(path, json={'group_ids': [second]}).status_code, 200)
+        self.assertEqual(self.login(client, 'group-user')['permissions'], ['events:read', 'keywords:read'])
+
+    def test_consecutive_audit_intervals_are_per_actor_and_target(self):
+        admin = self.login_admin(self.client())
+        def record(actor, action, target):
+            db = connect(self.cfg, initialize=False)
+            try:
+                with db:
+                    auth.audit(db, actor, action, target)
+            finally:
+                db.close()
+        record(1, 'update_user', 2)
+        first = admin.get('/api/auth/admin/audit').json()[0]
+        record(2, 'login', 2)
+        with concurrent.futures.ThreadPoolExecutor(3) as pool:
+            list(pool.map(lambda _: record(1, 'update_user', 2), range(6)))
+        rows = admin.get('/api/auth/admin/audit').json()
+        merged = [r for r in rows if r['action'] == 'update_user']
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]['created_at'], first['created_at'])
+        self.assertGreater(merged[0]['ended_at'], first['ended_at'])
+        record(1, 'update_user', 3)
+        record(1, 'update_user', 2)
+        record(1, 'profile', 2)
+        record(1, 'update_user', 2)
+        rows = admin.get('/api/auth/admin/audit').json()
+        self.assertEqual([r['target_id'] for r in rows if r['action'] == 'update_user'], [2, 2, 3, 2])
+
     def test_recovery_finds_username_rotates_code_and_revokes_sessions(self):
         self.login_admin(self.client()); client = self.client()
         created = self.register(client); self.login(client)

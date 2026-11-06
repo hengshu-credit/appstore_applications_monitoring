@@ -175,11 +175,18 @@ body.account-locked > :not(#login) {
 .permission-table td {
   text-align: left;
 }
-.permission-table thead th {
-  position: sticky;
-  top: 0;
-  background: var(--soft);
-  z-index: 1;
+.account-admin .permission-table th,
+.account-dialog .permission-table th {
+  position: static;
+}
+.membership-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  border: 1px solid var(--line);
+}
+.membership-options .auth-check {
+  margin: 4px 0;
 }
 .permission-table input {
   width: 16px;

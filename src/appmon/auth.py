@@ -27,12 +27,23 @@ DEFAULTS = {
     'member': [f'{resource}:read' for resource in RESOURCES if resource not in ('collection', 'administration')],
 }
 COOKIE = 'appmon_account'
+GROUP_NAMES = {'user': '普通用户', 'member': '会员'}
 
 
 def initialize(db):
+    for table, column, definition in [('auth_roles', 'name', 'VARCHAR(64) UNIQUE'),
+                                      ('auth_audit', 'ended_at', 'DOUBLE NULL')]:
+        if not db.execute(f'SHOW COLUMNS FROM {table} LIKE %s', (column,)).fetchone():
+            try:
+                db.execute(f'ALTER TABLE {table} ADD COLUMN {column} {definition}')
+            except pymysql.OperationalError as error:
+                if error.args[0] != 1060:  # Another service added the column first.
+                    raise
     db.execute('INSERT IGNORE INTO auth_settings(id) VALUES(1)')
     for role, permissions in DEFAULTS.items():
-        db.execute('INSERT IGNORE INTO auth_roles VALUES(%s,%s)', (role, json.dumps(permissions)))
+        db.execute('INSERT IGNORE INTO auth_roles(role,permissions,name) VALUES(%s,%s,%s)',
+                   (role, json.dumps(permissions), GROUP_NAMES[role]))
+        db.execute('UPDATE auth_roles SET name=%s WHERE role=%s AND name IS NULL', (GROUP_NAMES[role], role))
 
 
 def digest(value):
@@ -75,22 +86,70 @@ def grants(value):
 
 def profile(db, row):
     role = row['role']
+    groups = []
     if role == 'member' and row['member_until'] is not None and row['member_until'] <= time.time():
         role = 'user'
     if role == 'admin':
         permissions = sorted(PERMISSIONS)
     else:
         override = db.execute('SELECT permissions FROM auth_overrides WHERE user_id=%s', (row['id'],)).fetchone()
-        base = override or db.execute('SELECT permissions FROM auth_roles WHERE role=%s', (role,)).fetchone()
-        permissions = json.loads(base['permissions']) if base else []
+        groups = [g['role'] for g in db.execute(
+            'SELECT role FROM auth_user_groups WHERE user_id=%s ORDER BY role', (row['id'],)).fetchall()] or [row['role']]
+        effective = {'user' if g == 'member' and role == 'user' else g for g in groups}
+        if override:
+            permissions = json.loads(override['permissions'])
+        else:
+            rows = db.execute('SELECT permissions FROM auth_roles WHERE role IN %s', (tuple(effective),)).fetchall()
+            permissions = sorted({p for group in rows for p in json.loads(group['permissions'])})
     return {k: row[k] for k in ('id', 'username', 'role', 'member_until', 'enabled', 'created_at')} | {
-        'effective_role': role, 'permissions': permissions,
+        'effective_role': role, 'permissions': permissions, 'group_ids': groups,
     }
 
 
 def audit(db, actor, action, target=None):
-    db.execute('INSERT INTO auth_audit(actor_id,target_id,action,created_at) VALUES(%s,%s,%s,%s)',
-               (actor, target, action, time.time()))
+    # Serialize each actor's stream in the same transaction as the successful action.
+    key = actor or 0
+    db.execute('INSERT INTO auth_audit_heads(actor_key) VALUES(%s) ON DUPLICATE KEY UPDATE actor_key=%s', (key, key))
+    last = db.execute('''SELECT a.* FROM auth_audit_heads h JOIN auth_audit a ON a.id=h.last_id
+                         WHERE h.actor_key=%s''', (key,)).fetchone()
+    now = time.time()
+    if last and last['action'] == action and last['target_id'] == target:
+        db.execute('UPDATE auth_audit SET ended_at=GREATEST(ended_at,%s) WHERE id=%s', (now, last['id']))
+        return
+    entry = db.execute('INSERT INTO auth_audit(actor_id,target_id,action,created_at,ended_at) VALUES(%s,%s,%s,%s,%s)',
+                       (actor, target, action, now, now)).lastrowid
+    db.execute('UPDATE auth_audit_heads SET last_id=%s WHERE actor_key=%s', (entry, key))
+
+
+def group_name(value):
+    if not isinstance(value, str) or not 1 <= len(value.strip()) <= 64:
+        raise ValueError('用户组名称须为 1–64 个字符')
+    name = value.strip()
+    if name.casefold() in ('admin', '超级管理员', '后台超级管理员'):
+        raise ValueError('超级管理员名称为系统保留')
+    return name
+
+
+def selected_groups(db, value):
+    if not isinstance(value, list) or not value or any(not isinstance(g, str) or len(g) > 16 for g in value):
+        raise ValueError('请选择至少一个有效用户组')
+    groups = sorted(set(value))
+    rows = db.execute('SELECT role FROM auth_roles WHERE role IN %s FOR SHARE', (tuple(groups),)).fetchall()
+    if groups != sorted(r['role'] for r in rows):
+        raise ValueError('所选用户组无效')
+    return groups
+
+
+def assign_groups(db, identifier, groups):
+    db.execute('DELETE FROM auth_user_groups WHERE user_id=%s', (identifier,))
+    db.executemany('INSERT INTO auth_user_groups(user_id,role) VALUES(%s,%s)', [(identifier, g) for g in groups])
+
+
+def account_settings(role, enabled, until):
+    if not isinstance(role, str) or role not in DEFAULTS or type(enabled) is not bool or until is not None and (
+            type(until) not in (int, float) or not math.isfinite(until) or until < 0):
+        raise ValueError('账户类型、状态或会员到期时间无效')
+    return role, enabled, until if role == 'member' else None
 
 
 def recover_administrator(db, new_username, new_password):
@@ -347,10 +406,12 @@ def router(database):
         for user in users:
             override = db.execute('SELECT permissions FROM auth_overrides WHERE user_id=%s', (user['id'],)).fetchone()
             items.append(profile(db, user) | {'override': json.loads(override['permissions']) if override else None})
+        groups = db.execute('SELECT role,name,permissions FROM auth_roles ORDER BY name').fetchall()
         return {'users': items, 'total': total, 'resources': RESOURCES,
                 'can_manage': is_admin or 'administration:write' in principal['permissions'],
                 'is_admin': is_admin, 'own': own,
-                'roles': {r['role']: json.loads(r['permissions']) for r in db.execute('SELECT * FROM auth_roles').fetchall()},
+                'roles': {g['role']: json.loads(g['permissions']) for g in groups},
+                'group_names': {g['role']: g['name'] for g in groups},
                 'registration_enabled': bool(db.execute('SELECT registration_enabled FROM auth_settings WHERE id=1').fetchone()['registration_enabled'])}
 
     @api.put('/admin/settings')
@@ -363,21 +424,59 @@ def router(database):
             audit(db, row['id'], 'registration_settings')
         return {'ok': True}
 
+    @api.post('/admin/roles')
+    def create_role(value: dict = Body(...), row=Depends(admin), db=DB):
+        role = secrets.token_hex(8)
+        name, permissions = group_name(value.get('name')), grants(value.get('permissions'))
+        with db:
+            try:
+                db.execute('INSERT INTO auth_roles(role,name,permissions) VALUES(%s,%s,%s)',
+                           (role, name, json.dumps(permissions)))
+            except pymysql.IntegrityError:
+                raise HTTPException(409, '用户组名称已存在') from None
+            audit(db, row['id'], 'create_role_' + role)
+        return {'role': role, 'name': name, 'permissions': permissions}
+
     @api.put('/admin/roles/{role}')
     def update_role(role: str, value: dict = Body(...), row=Depends(admin), db=DB):
-        if role not in DEFAULTS:
-            raise ValueError('只能配置普通用户和会员权限')
         permissions = grants(value.get('permissions'))
         with db:
-            db.execute('UPDATE auth_roles SET permissions=%s WHERE role=%s', (json.dumps(permissions), role))
+            group = db.execute('SELECT name FROM auth_roles WHERE role=%s FOR UPDATE', (role,)).fetchone()
+            if not group:
+                raise ValueError('无效用户组')
+            name = group_name(value.get('name', group['name']))
+            try:
+                db.execute('UPDATE auth_roles SET permissions=%s,name=%s WHERE role=%s', (json.dumps(permissions), name, role))
+            except pymysql.IntegrityError:
+                raise HTTPException(409, '用户组名称已存在') from None
             audit(db, row['id'], 'role_' + role)
-        return {'ok': True}
+        return {'ok': True, 'role': role, 'name': name, 'permissions': permissions}
+
+    @api.post('/admin/users')
+    def create_user(value: dict = Body(...), row=Depends(admin), db=DB):
+        name, encoded = username(value.get('username')), password_hash(value.get('password'))
+        recovery = secrets.token_urlsafe(32)
+        with db:
+            groups = selected_groups(db, value.get('group_ids'))
+            role, enabled, until = account_settings('member' if 'member' in groups else 'user',
+                                                     value.get('enabled', True), value.get('member_until'))
+            try:
+                identifier = db.execute('''INSERT INTO auth_users(username,password_hash,recovery_hash,role,
+                    enabled,member_until,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s)''',
+                    (name, encoded, digest(recovery), role, enabled, until, time.time())).lastrowid
+            except pymysql.IntegrityError:
+                raise HTTPException(409, '该账号不可用') from None
+            assign_groups(db, identifier, groups)
+            if value.get('permissions') is not None:
+                db.execute('INSERT INTO auth_overrides VALUES(%s,%s)', (identifier, json.dumps(grants(value['permissions']))))
+            audit(db, row['id'], 'create_user', identifier)
+        return {'id': identifier, 'username': name, 'recovery_code': recovery}
 
     @api.put('/admin/users/{identifier}')
     def update_user(identifier: int, request: Request, value: dict = Body(...), row=Depends(actor), db=DB):
         is_admin, own = row['role'] == 'admin', identifier == row['id']
         if own:
-            forbidden = set(value) & {'role', 'enabled', 'member_until', 'permissions'}
+            forbidden = set(value) & {'role', 'group_ids', 'enabled', 'member_until', 'permissions'}
             if forbidden:
                 raise HTTPException(403, '不能修改自己的身份、状态或权限')
             # All own credential edits use the same current-password validation.
@@ -396,13 +495,21 @@ def router(database):
                 raise HTTPException(403, '不能管理权限高于自己的账户')
             role, enabled = value.get('role', target['role']), value.get('enabled', bool(target['enabled']))
             until = value.get('member_until', target['member_until'])
-            if role not in DEFAULTS or type(enabled) is not bool or until is not None and (
-                    type(until) not in (int, float) or not math.isfinite(until) or until < 0):
-                raise ValueError('账户类型、状态或会员到期时间无效')
+            if 'group_ids' in value:
+                groups = selected_groups(db, value['group_ids'])
+                if not is_admin and set(groups) != set(previous['group_ids']):
+                    raise HTTPException(403, '只有超管可以分配用户组')
+                role = 'member' if 'member' in groups else 'user'
+                assign_groups(db, identifier, groups)
+            elif role != target['role']:
+                if not is_admin and previous['group_ids'] != [target['role']]:
+                    raise HTTPException(403, '只有超管可以分配用户组')
+                db.execute('DELETE FROM auth_user_groups WHERE user_id=%s', (identifier,))
+            role, enabled, until = account_settings(role, enabled, until)
             name = username(value.get('username', target['username']))
             try:
                 db.execute('UPDATE auth_users SET username=%s,role=%s,enabled=%s,member_until=%s WHERE id=%s',
-                           (name, role, enabled, until if role == 'member' else None, identifier))
+                           (name, role, enabled, until, identifier))
             except pymysql.IntegrityError:
                 raise HTTPException(409, '该账号不可用') from None
             if 'permissions' in value:
@@ -432,8 +539,9 @@ def router(database):
 
     @api.get('/admin/audit')
     def audit_log(row=Depends(admin), db=DB):
-        return db.execute('''SELECT a.*,u.username actor,t.username target FROM auth_audit a
+        return db.execute('''SELECT a.id,a.action,a.actor_id,a.target_id,a.created_at,
+            COALESCE(a.ended_at,a.created_at) ended_at,u.username actor,t.username target FROM auth_audit a
             LEFT JOIN auth_users u ON u.id=a.actor_id LEFT JOIN auth_users t ON t.id=a.target_id
-            ORDER BY a.id DESC LIMIT 200''').fetchall()
+            ORDER BY COALESCE(a.ended_at,a.created_at) DESC,a.id DESC LIMIT 200''').fetchall()
 
     return api

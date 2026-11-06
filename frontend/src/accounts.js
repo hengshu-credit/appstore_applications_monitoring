@@ -297,6 +297,20 @@ export function createAccounts({ esc, onReady, toast }) {
     );
     const isAdmin = user.role === "admin",
       canManage = isAdmin || user.permissions.includes("administration:write");
+    const names = { ...roleNames, ...data.group_names };
+    const groupIds = (account) => account.group_ids || [account.role];
+    const groupLabel = (account) =>
+      account.role === "admin"
+        ? names.admin
+        : groupIds(account)
+            .map(
+              (id) =>
+                names[id] +
+                (id === "member" && account.effective_role === "user"
+                  ? "（已到期）"
+                  : ""),
+            )
+            .join("、");
     root.innerHTML = `<section class="panel account-admin">${tabs(
       [
         ["users", "账户管理"],
@@ -312,10 +326,20 @@ export function createAccounts({ esc, onReady, toast }) {
     )}
       <div id="accounts-panel-users" role="tabpanel" aria-labelledby="accounts-tab-users">
       <form id="user-search" class="auth-actions"><input name="q" aria-label="搜索账号" placeholder="搜索账号" value="${esc(q)}"><button>搜索</button>${own && can("administration") ? '<a href="#administration">查看全部账户</a>' : ""}</form>
-      <div class="table-wrap"><table><thead><tr><th>账号</th><th>类型</th><th>状态</th><th>会员到期</th><th>权限来源</th><th>操作</th></tr></thead><tbody>${data.users.map((u) => `<tr><td>${esc(u.username)}${u.id === user.id ? ' <span class="sub">（当前账户）</span>' : ""}</td><td>${roleNames[u.effective_role]}</td><td>${u.enabled ? "启用" : "停用"}</td><td>${u.member_until ? new Date(u.member_until * 1000).toLocaleString() : "—"}</td><td>${u.role === "admin" ? "全部权限" : u.override === null ? "角色默认" : "单独配置"}</td><td>${u.id === user.id || canManage ? `<button data-user="${u.id}" class="secondary">编辑</button>` : "仅查看"}</td></tr>`).join("")}</tbody></table></div>
+      ${isAdmin ? '<div class="auth-actions"><button type="button" id="add-account">新增账户</button></div>' : ""}
+      <div class="table-wrap"><table><thead><tr><th>账号</th><th>用户组</th><th>状态</th><th>会员到期</th><th>权限来源</th><th>操作</th></tr></thead><tbody>${data.users.map((u) => `<tr><td>${esc(u.username)}${u.id === user.id ? ' <span class="sub">（当前账户）</span>' : ""}</td><td data-account-groups="${u.id}">${esc(groupLabel(u))}</td><td>${u.enabled ? "启用" : "停用"}</td><td>${u.member_until ? new Date(u.member_until * 1000).toLocaleString() : "—"}</td><td>${u.role === "admin" ? "全部权限" : u.override === null ? "用户组授权" : "单独配置"}</td><td>${u.id === user.id || canManage ? `<button data-user="${u.id}" class="secondary">编辑</button>` : "仅查看"}</td></tr>`).join("")}</tbody></table></div>
       <div class="auth-actions"><button id="users-prev" ${offset ? "" : "disabled"} class="secondary">上一页</button><span>共 ${data.total} 个账户</span><button id="users-next" ${offset + 100 < data.total ? "" : "disabled"} class="secondary">下一页</button></div></div>
       ${isAdmin ? '<div id="accounts-panel-roles" role="tabpanel" aria-labelledby="accounts-tab-roles" hidden></div><div id="accounts-panel-audit" role="tabpanel" aria-labelledby="accounts-tab-audit" hidden></div>' : ""}</section>`;
     const reload = () => management(root, q, offset);
+    root.querySelector("#add-account")?.addEventListener("click", () =>
+      edit({
+        username: "",
+        role: "user",
+        override: null,
+        enabled: true,
+        permissions: data.roles.user,
+      }),
+    );
     root.querySelector("#users-prev").onclick = () =>
       management(root, q, Math.max(0, offset - 100)).catch((e) =>
         toast(e.message),
@@ -348,20 +372,32 @@ export function createAccounts({ esc, onReady, toast }) {
         rotate_recovery_code: "更新恢复码",
         operator_recover_admin: "服务器应急重置",
         update_user: "编辑账户",
-        role_user: "普通用户权限",
-        role_member: "会员权限",
+        create_user: "新增账户",
         registration_settings: "注册设置",
       };
-      target.innerHTML = `<p class="sub">最近 200 条安全操作</p><div class="table-wrap"><table><thead><tr><th>时间</th><th>操作人</th><th>动作</th><th>目标</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${new Date(r.created_at * 1000).toLocaleString()}</td><td>${esc(r.actor || "服务器运维")}</td><td>${esc(labels[r.action] || r.action)}</td><td>${esc(r.target || "—")}</td></tr>`).join("")}</tbody></table></div>`;
+      for (const id of Object.keys(data.roles)) {
+        labels["create_role_" + id] = "新增用户组 · " + names[id];
+        labels["role_" + id] = "编辑用户组 · " + names[id];
+      }
+      target.innerHTML = `<p class="sub">最近 200 条安全操作</p><div class="table-wrap"><table><thead><tr><th>开始时间</th><th>结束时间</th><th>操作人</th><th>动作</th><th>目标</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${new Date(r.created_at * 1000).toLocaleString()}</td><td>${new Date((r.ended_at ?? r.created_at) * 1000).toLocaleString()}</td><td>${esc(r.actor || "服务器运维")}</td><td>${esc(labels[r.action] || r.action)}</td><td>${esc(r.target || "—")}</td></tr>`).join("")}</tbody></table></div>`;
     }
-    function renderRoles() {
+    function renderRoles(selected = "user") {
       const target = root.querySelector("#accounts-panel-roles");
-      target.innerHTML = `<div class="auth-actions"><label class="auth-check"><input id="registration-enabled" type="checkbox" ${data.registration_enabled ? "checked" : ""}>允许外部用户注册</label></div><form id="role-editor"><label>默认角色<select name="role"><option value="user">普通用户</option><option value="member">会员</option></select></label><p class="sub">操作权限包含访问权限。会员到期后按普通用户权限处理，单独配置的账户权限优先。</p><div id="role-permissions"></div><button>保存角色权限</button><p role="alert"></p></form>`;
+      target.innerHTML = `<div class="auth-actions"><label class="auth-check"><input id="registration-enabled" type="checkbox" ${data.registration_enabled ? "checked" : ""}>允许外部用户注册</label></div><form id="role-editor"><div class="auth-actions"><label>用户组<select name="role">${Object.keys(
+        data.roles,
+      )
+        .map((id) => `<option value="${id}">${esc(names[id])}</option>`)
+        .join(
+          "",
+        )}<option value="">＋ 新增用户组</option></select></label><label>组名称<input name="group_name" maxlength="64" required></label></div><p class="sub">操作权限包含访问权限。选择多个用户组时，合并各组权限。</p><div id="role-permissions"></div><button>保存用户组</button><p role="alert"></p></form>`;
       const form = target.querySelector("form");
+      form.elements.role.value = selected;
       const sync = () => {
+        form.elements.group_name.value = names[form.elements.role.value] || "";
+        form.querySelector("[role=alert]").textContent = "";
         target.querySelector("#role-permissions").innerHTML = permissionFields(
           data.resources,
-          data.roles[form.elements.role.value],
+          data.roles[form.elements.role.value] || [],
         );
         syncPermissionChecks(form);
       };
@@ -387,15 +423,23 @@ export function createAccounts({ esc, onReady, toast }) {
         button.disabled = true;
         try {
           const value = {
+            name: form.elements.group_name.value.trim(),
             permissions: new FormData(form).getAll("permissions"),
           };
-          await request(
-            "/admin/roles/" + form.elements.role.value,
+          const id = form.elements.role.value;
+          const saved = await request(
+            id ? "/admin/roles/" + id : "/admin/roles",
             value,
-            "PUT",
+            id ? "PUT" : "POST",
           );
-          data.roles[form.elements.role.value] = value.permissions;
-          toast("角色权限已保存");
+          data.roles[saved.role] = saved.permissions;
+          names[saved.role] = saved.name;
+          data.users.forEach((u) => {
+            root.querySelector(`[data-account-groups="${u.id}"]`).textContent =
+              groupLabel(u);
+          });
+          renderRoles(saved.role);
+          toast("用户组已保存");
         } catch (error) {
           form.querySelector("[role=alert]").textContent = error.message;
         } finally {
@@ -407,19 +451,36 @@ export function createAccounts({ esc, onReady, toast }) {
       document.querySelector("#account-editor-dialog")?.remove();
       const ownAccount = target.id === user.id,
         editablePermissions = !ownAccount && target.role !== "admin";
+      const creating = !target.id;
+      const delegatedRole =
+        !isAdmin &&
+        groupIds(target).length === 1 &&
+        ["user", "member"].includes(groupIds(target)[0]);
+      const memberships = isAdmin
+        ? `<fieldset class="membership-options"><legend>用户组（可多选）</legend>${Object.keys(
+            data.roles,
+          )
+            .map(
+              (id) =>
+                `<label class="auth-check"><input type="checkbox" name="group_ids" value="${id}" ${groupIds(target).includes(id) ? "checked" : ""}>${esc(names[id])}</label>`,
+            )
+            .join("")}</fieldset>`
+        : delegatedRole
+          ? `<label>用户组<select name="role">${["user", "member"].map((id) => `<option value="${id}">${esc(names[id])}</option>`).join("")}</select></label>`
+          : `<p>用户组：${esc(groupLabel(target))}</p>`;
       const modal = document.createElement("dialog");
       modal.id = "account-editor-dialog";
       modal.className = "account-dialog";
       modal.setAttribute("aria-labelledby", "account-editor-title");
-      modal.innerHTML = `<header class="account-dialog-heading"><h2 id="account-editor-title">编辑账户 · ${esc(target.username)}</h2><button type="button" id="close-account-editor" class="secondary" aria-label="关闭编辑账户">关闭</button></header>
+      modal.innerHTML = `<header class="account-dialog-heading"><h2 id="account-editor-title">${creating ? "新增账户" : "编辑账户 · " + esc(target.username)}</h2><button type="button" id="close-account-editor" class="secondary" aria-label="关闭账户窗口">关闭</button></header>
       ${tabs([["details", "基本信息"], ["permissions", "页面权限"], ...(ownAccount ? [["security", "安全设置"]] : [])], "details", "edit-account")}
       <form class="account-editor"><div id="edit-account-panel-details" role="tabpanel" aria-labelledby="edit-account-tab-details">
       ${field("账号", "username", "text", "username")}
-      ${ownAccount ? field("当前密码", "current_password", "password", "current-password", false) : `<label>账户类型<select name="role"><option value="user">普通用户</option><option value="member">会员</option></select></label><label>会员到期（留空为长期）<input type="datetime-local" name="member_until"></label><label class="auth-check"><input type="checkbox" name="enabled" ${target.enabled ? "checked" : ""}>启用账户</label>`}
-      ${field("新密码（留空则不修改）", "password", "password", "new-password", false)}${field("确认新密码", "confirm_password", "password", "new-password", false)}</div>
+      ${ownAccount ? field("当前密码", "current_password", "password", "current-password", false) : `${memberships}<label>会员到期（留空为长期）<input type="datetime-local" name="member_until"></label><label class="auth-check"><input type="checkbox" name="enabled" ${target.enabled ? "checked" : ""}>启用账户</label>`}
+      ${field(creating ? "密码（10–128 位）" : "新密码（留空则不修改）", "password", "password", "new-password", creating)}${field("确认新密码", "confirm_password", "password", "new-password", creating)}</div>
       <div id="edit-account-panel-permissions" role="tabpanel" aria-labelledby="edit-account-tab-permissions" hidden>
       <p class="sub">${ownAccount ? "自己的身份与权限由超管配置。" : isAdmin ? "单独配置优先于角色权限。" : "只能分配自己已有的权限，账户管理授权由超管配置。"}</p>
-      ${editablePermissions ? `<label class="auth-check"><input type="checkbox" name="inherit" ${target.override === null ? "checked" : ""}>继承角色默认权限</label>` : ""}
+      ${editablePermissions ? `<label class="auth-check"><input type="checkbox" name="inherit" ${target.override === null ? "checked" : ""}>继承所选用户组的合并权限</label>` : ""}
       ${permissionFields(data.resources, target.override || target.permissions)}</div>
       ${ownAccount ? `<div id="edit-account-panel-security" role="tabpanel" aria-labelledby="edit-account-tab-security" hidden><h3>账户恢复码</h3><p>旧恢复码无法再次读取。验证当前密码后可生成新码并下载保存，旧码立即失效。</p>${field("验证当前密码", "recovery_password", "password", "current-password", false)}<button type="button" id="rotate-recovery-code">重新生成恢复码</button>${isAdmin ? '<p class="sub">如果账号、密码及恢复码全部遗失，可由有服务器权限的运维人员执行应急重置，无需旧凭据。</p>' : ""}</div>` : ""}
       <p role="alert"></p><footer class="account-editor-actions"><button type="submit" id="save-account">保存设置</button><button type="button" id="cancel-account-editor" class="secondary">取消</button></footer></form>`;
@@ -427,7 +488,7 @@ export function createAccounts({ esc, onReady, toast }) {
       const form = modal.querySelector("form");
       form.elements.username.value = target.username;
       if (!ownAccount) {
-        form.elements.role.value = target.role;
+        if (form.elements.role) form.elements.role.value = target.role;
         if (target.member_until) {
           const d = new Date(target.member_until * 1000);
           d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
@@ -448,8 +509,27 @@ export function createAccounts({ esc, onReady, toast }) {
         modal.querySelector("#save-account").hidden =
           tab === "security" || (ownAccount && tab === "permissions");
       });
-      const sync = () =>
+      function selectedGroups() {
+        if (isAdmin && !ownAccount)
+          return new FormData(form).getAll("group_ids");
+        return form.elements.role
+          ? [form.elements.role.value]
+          : groupIds(target);
+      }
+      const sync = () => {
+        const selected = selectedGroups();
+        const expiry = form.elements.member_until;
+        if (expiry) expiry.disabled = !selected.includes("member");
+        const expired =
+          expiry?.value && new Date(expiry.value).getTime() <= Date.now();
+        const inherited = new Set(
+          selected.flatMap(
+            (id) => data.roles[id === "member" && expired ? "user" : id] || [],
+          ),
+        );
         form.querySelectorAll("[name=permissions]").forEach((el) => {
+          if (form.elements.inherit?.checked)
+            el.checked = inherited.has(el.value);
           el.disabled =
             !editablePermissions ||
             form.elements.inherit?.checked ||
@@ -457,6 +537,10 @@ export function createAccounts({ esc, onReady, toast }) {
               (!user.permissions.includes(el.value) ||
                 el.value.startsWith("administration:")));
         });
+      };
+      form
+        .querySelectorAll("[name=group_ids], [name=role], [name=member_until]")
+        .forEach((el) => el.addEventListener("change", sync));
       if (form.elements.inherit) form.elements.inherit.onchange = sync;
       sync();
       syncPermissionChecks(form);
@@ -493,7 +577,11 @@ export function createAccounts({ esc, onReady, toast }) {
             payload.current_password = values.get("current_password");
           else
             Object.assign(payload, {
-              role: values.get("role"),
+              ...(isAdmin
+                ? { group_ids: selectedGroups() }
+                : form.elements.role
+                  ? { role: values.get("role") }
+                  : {}),
               member_until: values.get("member_until")
                 ? new Date(values.get("member_until")).getTime() / 1000
                 : null,
@@ -504,10 +592,12 @@ export function createAccounts({ esc, onReady, toast }) {
                     (el) => el.value,
                   ),
             });
+          if (payload.group_ids && !payload.group_ids.length)
+            throw Error("请选择至少一个用户组");
           const result = await request(
-            "/admin/users/" + target.id,
+            creating ? "/admin/users" : "/admin/users/" + target.id,
             payload,
-            "PUT",
+            creating ? "POST" : "PUT",
           );
           form.reset();
           if (ownAccount) {

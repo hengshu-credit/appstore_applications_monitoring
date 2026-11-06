@@ -185,7 +185,8 @@ test("admin edits member expiry and explicit permission override without grantin
     await accounts.management(doc.querySelector("main"));
     doc.querySelector("[data-user]").click();
     const form = doc.querySelector(".account-editor");
-    form.elements.role.value = "member";
+    form.querySelector("[name=group_ids][value=user]").click();
+    form.querySelector("[name=group_ids][value=member]").click();
     form.elements.member_until.value = "2030-12-01T10:30";
     doc.querySelector("#edit-account-tab-permissions").click();
     form.elements.inherit.click();
@@ -193,10 +194,83 @@ test("admin edits member expiry and explicit permission override without grantin
     form.dispatchEvent(new window.Event("submit", { cancelable: true }));
     await tick();
     const sent = calls.find((c) => c.url.endsWith("/admin/users/2"));
-    assert.equal(sent.body.role, "member");
+    assert.deepEqual(sent.body.group_ids, ["member"]);
     assert.ok(sent.body.member_until > 0);
     assert.deepEqual(sent.body.permissions, ["apps:read", "apps:write"]);
     assert.equal(doc.querySelector("[name=role] option[value=admin]"), null);
+    assert.equal(form.querySelector("[name=group_ids][value=admin]"), null);
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("admin creates and renames a group, previews merged grants and creates an account", async () => {
+  const data = {
+    users: [],
+    total: 0,
+    resources: { apps: "应用库", events: "事件中心" },
+    roles: { user: ["apps:read"], member: [] },
+    group_names: { user: "普通用户", member: "会员" },
+  };
+  const { window, doc, calls, accounts } = setup((url, body) => {
+    if (url.endsWith("/config")) return { data: {} };
+    if (url.endsWith("/me"))
+      return {
+        data: { user: { ...user, role: "admin" }, csrf_token: "csrf-admin" },
+      };
+    if (url.includes("/admin?")) return { data };
+    if (url.endsWith("/roles") || url.endsWith("/roles/custom"))
+      return { data: { ...body, role: "custom" } };
+    if (url.endsWith("/admin/users"))
+      return {
+        data: { username: body.username, recovery_code: "one-time-code" },
+      };
+    throw Error(url);
+  });
+  const submit = (form) =>
+    form.dispatchEvent(new window.Event("submit", { cancelable: true }));
+  try {
+    await accounts.start();
+    await accounts.management(doc.querySelector("main"));
+    doc.querySelector("#accounts-tab-roles").click();
+    let editor = doc.querySelector("#role-editor");
+    editor.elements.role.value = "";
+    editor.elements.role.dispatchEvent(new window.Event("change"));
+    editor.elements.group_name.value = "运营";
+    editor.querySelector('[value="events:write"]').click();
+    submit(editor);
+    await tick();
+    assert.deepEqual(calls.find((c) => c.url.endsWith("/roles")).body, {
+      name: "运营",
+      permissions: ["events:read", "events:write"],
+    });
+    editor = doc.querySelector("#role-editor");
+    assert.equal(editor.elements.role.value, "custom");
+    editor.elements.group_name.value = "内容运营";
+    submit(editor);
+    await tick();
+    assert.equal(
+      calls.find((c) => c.url.endsWith("/roles/custom")).options.method,
+      "PUT",
+    );
+    doc.querySelector("#accounts-tab-users").click();
+    doc.querySelector("#add-account").click();
+    const form = doc.querySelector(".account-editor");
+    const group = form.querySelector("[name=group_ids][value=custom]");
+    assert.match(group.parentElement.textContent, /内容运营/);
+    group.click();
+    assert.equal(form.querySelector('[value="events:write"]').checked, true);
+    assert.equal(form.querySelector('[value="apps:read"]').checked, true);
+    form.elements.username.value = "new-account";
+    form.elements.password.value = "new-password-123";
+    form.elements.confirm_password.value = "new-password-123";
+    submit(form);
+    await tick();
+    const sent = calls.find((c) => c.url.endsWith("/admin/users"));
+    assert.deepEqual(sent.body.group_ids, ["user", "custom"]);
+    assert.equal(sent.body.permissions, null);
+    assert.equal(sent.options.method, "POST");
+    assert.equal(doc.querySelector("#login textarea").value, "one-time-code");
   } finally {
     await window.happyDOM.close();
   }
