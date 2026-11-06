@@ -62,6 +62,7 @@ def run_batch(db, cfg, lane):
     from .observation_stores import ObservationClient
     from .app_permissions import PermissionClient
     client = (PermissionClient if lane=='permissions' else KeywordClient if lane=='keywords' else ObservationClient if lane in ('chart','reviews','featured') else Client)(cfg,db)
+    client.lineage_lane = lane
     size = cfg.get('google_rpc_batch_size',20)
     try:
         if lane in ('details','pool'):

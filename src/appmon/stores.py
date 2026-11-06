@@ -127,8 +127,12 @@ class Client:
             else:
                 r = self.session.request(method, url, timeout=self.cfg["timeout_seconds"], **kwargs)
         except requests.RequestException as e:
+            from .collection_lineage import record_http
+            record_http(self.db,store,url,elapsed=time.monotonic()-started,lane=getattr(self,'lineage_lane',None))
             # Do not persist exception URLs, proxy credentials or bearer tokens.
             raise FetchError(type(e).__name__,details=details) from e
+        from .collection_lineage import record_http
+        record_http(self.db,store,url,r.status_code,time.monotonic()-started,lane=getattr(self,'lineage_lane',None))
         self.report('response', f'HTTP {r.status_code}；响应耗时 {time.monotonic()-started:.2f} 秒')
         if r.status_code in (403, 429) or r.status_code >= 500:
             delay = 300

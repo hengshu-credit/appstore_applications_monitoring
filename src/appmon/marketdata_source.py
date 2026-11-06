@@ -60,10 +60,14 @@ def get(db, client, path, params=None, daily_limit=1000):
         if budget['used'] >= min(daily_limit, budget['source_limit']):
             raise SourceError('rate_limited', '市场数据 今日请求额度已用完', tomorrow() - now)
         db.execute('UPDATE marketdata_budget SET used=used+1,next_at=%s WHERE day=%s', (now + 2, day))
+    started=time.monotonic()
+    from .collection_lineage import record_http
     try:
         response = client.get(client.source_profile['origin'] + path, params=params or {}, timeout=(10, 90), allow_redirects=False)
     except requests.RequestException:
+        record_http(db,'all','',elapsed=time.monotonic()-started,source='marketdata')
         raise SourceError('network_error', '市场数据 网络请求失败', 300) from None
+    record_http(db,'all','',response.status_code,time.monotonic()-started,source='marketdata')
     try:
         # Official account-wide usage includes requests made outside this collector.
         usage = response.headers.get('X-Request-Usage')

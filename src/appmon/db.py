@@ -137,6 +137,11 @@ def connect(cfg, *, initialize=True, allow_migration=False):
                         db.execute('ALTER TABLE collection_logs ADD COLUMN details LONGTEXT NULL')
                 finally:db.execute('SELECT RELEASE_LOCK(%s)',(name,))
             for table,name,columns in [('apps','apps_store_category','store,category(64)'),
+                                       ('collection_logs','log_source_time','resource,created_at'),
+                                       ('requests','request_observed','observed_at'),
+                                       ('keyword_runs','keyword_observed','observed_at'),
+                                       ('observation_runs','observation_observed','observed_at'),
+                                       ('app_permission_runs','permission_observed','observed_at'),
                                        ('jobs','jobs_market_due','store,country,language,due,lease_until'),
                                        ('requests','requests_app','store,app_id,country,language,id')]:
                 if not db.execute(f"SHOW INDEX FROM {table} WHERE Key_name=%s",(name,)).fetchone():
@@ -259,6 +264,8 @@ def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=Fa
                    (token,now+lease_seconds,first['store'],first['country'],first['language'],*[job['app_id'] for job in jobs]))
         for job in jobs:
             job['token'] = token
+    from .collection_lineage import record_dispatch
+    record_dispatch(db,'details' if watchlist else 'pool',first['store'],len(jobs))
     return jobs
 
 

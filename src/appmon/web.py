@@ -33,6 +33,8 @@ from . import keywords, intelligence as intel, analytics, alerts, exports
 
 
 def create_app(cfg):
+    lineage_cache = {}
+    lineage_lock = threading.Lock()
     pool_cache = {}
     pool_lock = threading.Lock()
     category_cache = {}
@@ -644,6 +646,20 @@ def create_app(cfg):
         source_scope=' OR '.join("JSON_CONTAINS(JSON_EXTRACT(actions,'$[*].value.store'),JSON_QUOTE(%s))" for _ in selected)
         return {'plans':db.execute("SELECT id,name,status,completed,total,error,created_at FROM collection_plans WHERE (JSON_EXTRACT(specification,'$.input_source') IS NOT NULL AND ("+source_scope+")) OR COALESCE(JSON_UNQUOTE(JSON_EXTRACT(specification,'$.store')),JSON_UNQUOTE(JSON_EXTRACT(specification,'$.app_request.store'))) IN ("+marks+') ORDER BY id DESC LIMIT 100',(*selected,*selected)).fetchall(),
                 'heartbeat':db.execute("SELECT next_at FROM schedules WHERE name='console-heartbeat'").fetchone(), 'dispatcher':status(db)}
+
+    @api.get('/research/collection/lineage')
+    def collection_lineage_report(store:str='all',hours:int=24,refresh:bool=False,db=DB):
+        from .collection_lineage import report
+        if store not in ('all','google','apple') or hours not in (1,24,168):
+            raise ValueError('请选择有效商店和统计窗口')
+        key=(store,hours)
+        with lineage_lock:
+            cached=lineage_cache.get(key)
+            if cached and not refresh and time.monotonic()-cached[0]<60:
+                return cached[1]
+            result=report(db,cfg,store,hours)
+            lineage_cache[key]=(time.monotonic(),result)
+        return result
 
     @api.get('/research/plans/{identifier}/collection')
     def plan_collection_results(identifier:int,db=DB):

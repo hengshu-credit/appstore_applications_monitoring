@@ -1,0 +1,315 @@
+.lineage-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+.lineage-toolbar label {
+  font-size: 12px;
+  display: grid;
+  gap: 4px;
+}
+.lineage-zoom {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.lineage-zoom output {
+  min-width: 42px;
+  text-align: center;
+}
+.lineage-summary {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 12px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.lineage-summary b {
+  color: var(--ink);
+  font-size: 16px;
+}
+.lineage-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 16px;
+  align-items: start;
+}
+.lineage-viewport {
+  height: 640px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(var(--line) 1px, transparent 1px) 0 0 / 18px 18px,
+    var(--soft);
+  cursor: grab;
+  min-width: 0;
+}
+.lineage-space,
+.lineage-world {
+  position: relative;
+}
+.lineage-world {
+  transform-origin: top left;
+}
+.lineage-edges {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+.lineage-edges path[data-lineage-edge] {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1.5;
+}
+.lineage-edges marker path {
+  fill: var(--muted);
+}
+.lineage-edges path.is-active {
+  stroke: var(--accent-text);
+  stroke-width: 2.5;
+}
+.lineage-edges path.is-dim {
+  opacity: 0.13;
+}
+.lineage-stage {
+  position: absolute;
+  top: 14px;
+  color: var(--muted);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+.lineage-node {
+  position: absolute;
+  width: 240px;
+  height: 86px;
+  display: grid;
+  grid-template-rows: 22px 26px 18px;
+  padding: 9px 12px;
+  text-align: left;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 2px 4px var(--shadow);
+  overflow: visible;
+  cursor: pointer;
+}
+.lineage-node[data-stage="1"] {
+  border-left: 3px solid var(--accent-text);
+}
+.lineage-node[data-stage="2"] {
+  border-left: 3px solid var(--warning-text);
+}
+.lineage-node[data-stage="3"] {
+  border-left: 3px solid var(--green);
+}
+.lineage-node[data-stage="4"] {
+  border-left: 3px solid var(--muted);
+}
+.lineage-node-title {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lineage-node-value {
+  font-size: 20px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.lineage-node-value small {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.lineage-node-sub {
+  font-size: 10px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lineage-node[aria-pressed="true"],
+.lineage-node.is-match {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  background: var(--accent-soft);
+}
+.lineage-node.is-dim {
+  opacity: 0.32;
+}
+.lineage-inspector {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 16px;
+  max-height: 640px;
+  overflow: auto;
+  font-size: 12px;
+}
+.lineage-inspector h3 {
+  margin-top: 0;
+  font-size: 16px;
+}
+.lineage-inspector h4 {
+  font-size: 12px;
+  margin: 18px 0 8px;
+}
+.lineage-inspector p {
+  color: var(--muted);
+  line-height: 1.7;
+}
+.lineage-inspector dl {
+  margin: 0;
+}
+.lineage-inspector dl > div {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.lineage-inspector dt {
+  color: var(--muted);
+  flex: 0 0 75px;
+}
+.lineage-inspector dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.lineage-related {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  width: 100%;
+  gap: 2px;
+  background: var(--soft);
+  color: var(--ink);
+  border: 0;
+  margin: 5px 0;
+  padding: 8px;
+  font-size: 12px;
+}
+.lineage-related small,
+.lineage-result span,
+.lineage-result small {
+  color: var(--muted);
+}
+.lineage-result {
+  display: grid;
+  gap: 3px;
+  padding: 7px 0;
+}
+.lineage-inspector .button {
+  margin-top: 14px;
+}
+.lineage-notes {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  margin-top: 12px;
+}
+.lineage-notes p {
+  margin: 2px 0;
+}
+@media (max-width: 1000px) {
+  .lineage-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lineage-inspector {
+    max-height: 340px;
+  }
+  .lineage-viewport {
+    height: 560px;
+  }
+}
+
+.lineage-canvas {
+  position: relative;
+  min-width: 0;
+  padding-top: 48px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.lineage-canvas .lineage-viewport {
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.lineage-canvas-tools {
+  position: absolute;
+  inset: 6px 8px auto;
+  z-index: 5;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.lineage-canvas-tools button {
+  min-height: 32px !important;
+  height: 32px !important;
+  padding: 0 9px;
+  font-size: 12px;
+}
+.lineage-node[data-incoming="true"]::before,
+.lineage-node[data-outgoing="true"]::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 8px;
+  height: 8px;
+  background: var(--surface);
+  border: 1.5px solid var(--accent-text);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.lineage-node[data-incoming="true"]::before {
+  left: -4px;
+}
+.lineage-node[data-outgoing="true"]::after {
+  right: -4px;
+}
+.lineage-world.is-flowing .lineage-edges path[data-lineage-edge] {
+  stroke-dasharray: 5 8;
+  animation: lineage-flow 1.4s linear infinite;
+}
+.lineage-world.is-flowing .lineage-edges path.is-dim {
+  animation-play-state: paused;
+}
+@keyframes lineage-flow {
+  to {
+    stroke-dashoffset: -26;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lineage-world.is-flowing .lineage-edges path[data-lineage-edge] {
+    animation: none;
+  }
+}
+@media (max-width: 700px) {
+  .lineage-canvas {
+    padding-top: 88px;
+  }
+  .lineage-canvas-tools {
+    justify-content: flex-start;
+  }
+}
+
+.lineage-edge-label {
+  fill: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+  stroke: var(--soft);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  paint-order: stroke;
+}
+.lineage-edge-label.is-dim {
+  opacity: 0.15;
+}

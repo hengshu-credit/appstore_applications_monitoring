@@ -70,9 +70,14 @@ def fetch(cfg,db,value):
     token=os.environ.get('APPLE_ADS_ACCESS_TOKEN','');account=os.environ.get('APPLE_ADS_AD_ACCOUNT_ID','')
     if not token or not account:raise ValueError('尚未配置Apple Ads授权；请在服务端环境设置访问令牌和广告账户ID，不要填写到聊天或浏览器表单')
     if not re.fullmatch(r'[0-9]+',account) or '\n' in token or '\r' in token:raise ValueError('Apple Ads服务端授权配置格式无效')
+    from .collection_lineage import record_http
+    started=time.monotonic()
     try:
         response=requests.post(ENDPOINT,headers={'Authorization':'Bearer '+token,'X-AP-Context':'adAccountId='+account},json=payload,timeout=30,allow_redirects=False)
-    except requests.RequestException as exc:raise ValueError('Apple搜索热度请求失败：'+type(exc).__name__) from None
+    except requests.RequestException as exc:
+        record_http(db,'apple','',elapsed=time.monotonic()-started,source='ads')
+        raise ValueError('Apple搜索热度请求失败：'+type(exc).__name__) from None
+    record_http(db,'apple','',response.status_code,time.monotonic()-started,source='ads')
     if response.status_code in (401,403):raise ValueError('Apple Ads授权已过期或当前账户无权访问该数据')
     if response.status_code==429:raise ValueError('Apple Ads请求受限，请遵守服务端配额后重试')
     if response.status_code!=200:raise ValueError('Apple搜索热度接口返回HTTP '+str(response.status_code))

@@ -36,6 +36,9 @@ def claim_targets(db, table, lease_seconds, size, kind=None):
                    (token,now+lease_seconds,*[r['id'] for r in rows]))
         for row in rows:
             row['token']=token
+    from .collection_lineage import record_dispatch
+    lane = 'keywords' if table=='keyword_targets' else 'permissions' if table=='app_permission_targets' else first['kind']
+    record_dispatch(db,lane,first['store'],len(rows))
     return rows
 
 

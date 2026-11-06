@@ -111,6 +111,7 @@ const newModules = (
     wrappedModule("app-icons.js", "createAppIconManager"),
     wrappedModule("market-controls.js", "initMarketControls"),
     wrappedModule("task-logs.js", "createTaskLogViewer"),
+    wrappedModule("collection-lineage.js", "createCollectionLineage"),
     wrappedModule("collection-center.js", "createCollectionCenter"),
   ])
 ).join("\n");

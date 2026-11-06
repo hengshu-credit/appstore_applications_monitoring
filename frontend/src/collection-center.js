@@ -3,6 +3,7 @@ import { filterBar } from "./filter-bar.js";
 import "./collection-center.css";
 import { icon, storeLogo } from "./icons.js";
 import { createTaskLogViewer } from "./task-logs.js";
+import { createCollectionLineage } from "./collection-lineage.js";
 export const taskKinds = {
   details: "应用详情",
   keywords: "关键词排名",
@@ -22,6 +23,7 @@ const states = {
 
 export function createCollectionCenter(ctx) {
   const logs = createTaskLogViewer(ctx);
+  const lineage = createCollectionLineage(ctx);
   const {
     $,
     api,
@@ -295,6 +297,43 @@ export function createCollectionCenter(ctx) {
       );
     }
     filters.store = market().store;
+    if (params.has("kind") && taskKinds[params.get("kind")]) {
+      filters.kind = params.get("kind");
+      filters.state = "";
+      page = 1;
+      section = "tasks";
+      history.replaceState(
+        null,
+        "",
+        location.pathname + location.search + "#collection",
+      );
+    }
+    if (["tasks", "pipelines", "lineage"].includes(params.get("view"))) {
+      section = params.get("view");
+      history.replaceState(
+        null,
+        "",
+        location.pathname + location.search + "#collection",
+      );
+    }
+    if (section === "lineage") {
+      if (
+        !mount(
+          `<div class="collection-tabs" role="tablist" aria-label="采集管理视图"><button class="secondary" data-lineage-tab="tasks" role="tab" aria-selected="false">采集任务</button><button class="secondary selected" role="tab" aria-selected="true">采集血缘</button><button class="secondary" data-lineage-tab="pipelines" role="tab" aria-selected="false">基础采集流程</button></div><section id="collection-lineage"></section>`,
+          rev,
+        )
+      )
+        return;
+      document.querySelectorAll("[data-lineage-tab]").forEach(
+        (b) =>
+          (b.onclick = () => {
+            section = b.dataset.lineageTab;
+            refresh().catch((e) => toast(e.message));
+          }),
+      );
+      await lineage.render($("#collection-lineage"), rev);
+      return;
+    }
     const registryPath =
       "/research/collection/tasks?" +
       new URLSearchParams({ ...filters, page, limit: pageSize });
@@ -450,7 +489,7 @@ export function createCollectionCenter(ctx) {
       )}</details>`;
     if (
       !mount(
-        `<button id="new-collection" data-workspace-action>${icon("plus")}新建采集计划</button>${categoryCards}<div class="collection-result-count">筛选结果 <strong>${num(tasks.total)}</strong></div><div class="collection-tabs" role="tablist" aria-label="采集管理视图">${tab("tasks", "采集任务")}${tab("pipelines", "基础采集流程")}${section === "create" ? tab("create", "新建计划") : ""}</div><details class="panel collection-limits-panel"><summary>整体采集控频 · ${limits.paused ? "已暂停请求" : (limits.daily_request_limit ?? 0) ? "每日预算 " + num(limits.daily_request_limit ?? 0) + " 次" : "每日预算不限"}</summary><div class="spacer"><form id="collection-limits" class="form-grid">${field("整体最小请求间隔（秒）", "global_interval_seconds", limits.global_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Google 最小间隔（秒）", "google_interval_seconds", limits.google_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Apple 最小间隔（秒）", "apple_interval_seconds", limits.apple_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("每日请求预算（UTC，0 为不限）", "daily_request_limit", limits.daily_request_limit ?? 0, "number", 'min="0" max="10000000" step="1" required')}${field("受限后整体冷却（秒）", "cooldown_seconds", limits.cooldown_seconds, "number", 'min="60" max="86400" required')}<label class="check-label"><input type="checkbox" name="paused" ${limits.paused ? "checked" : ""}>暂停所有商店采集请求</label><p class="sub full">同市场 App Store 详情每批最多 50 个，Google 详情、关键词、榜单、评论和权限每批最多 20 个；保留原采集周期与深度。每日预算耗尽后等待下一 UTC 日，所有采集 worker 共用额度，详情、关键词、榜单、评论、推荐和图标请求均计入。403 / 429 / 5xx 会触发共享冷却，并遵守更长的 Retry-After。保存后新请求生效，已发出的请求会完成。此开关不停止种子包同步和第三方数据源手动操作。</p><button type="submit">保存控频设置</button></form></div></details>${body}`,
+        `<button id="new-collection" data-workspace-action>${icon("plus")}新建采集计划</button>${categoryCards}<div class="collection-result-count">筛选结果 <strong>${num(tasks.total)}</strong></div><div class="collection-tabs" role="tablist" aria-label="采集管理视图">${tab("tasks", "采集任务")}${tab("lineage", "采集血缘")}${tab("pipelines", "基础采集流程")}${section === "create" ? tab("create", "新建计划") : ""}</div><details class="panel collection-limits-panel"><summary>整体采集控频 · ${limits.paused ? "已暂停请求" : (limits.daily_request_limit ?? 0) ? "每日预算 " + num(limits.daily_request_limit ?? 0) + " 次" : "每日预算不限"}</summary><div class="spacer"><form id="collection-limits" class="form-grid">${field("整体最小请求间隔（秒）", "global_interval_seconds", limits.global_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Google 最小间隔（秒）", "google_interval_seconds", limits.google_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Apple 最小间隔（秒）", "apple_interval_seconds", limits.apple_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("每日请求预算（UTC，0 为不限）", "daily_request_limit", limits.daily_request_limit ?? 0, "number", 'min="0" max="10000000" step="1" required')}${field("受限后整体冷却（秒）", "cooldown_seconds", limits.cooldown_seconds, "number", 'min="60" max="86400" required')}<label class="check-label"><input type="checkbox" name="paused" ${limits.paused ? "checked" : ""}>暂停所有商店采集请求</label><p class="sub full">同市场 App Store 详情每批最多 50 个，Google 详情、关键词、榜单、评论和权限每批最多 20 个；保留原采集周期与深度。每日预算耗尽后等待下一 UTC 日，所有采集 worker 共用额度，详情、关键词、榜单、评论、推荐和图标请求均计入。403 / 429 / 5xx 会触发共享冷却，并遵守更长的 Retry-After。保存后新请求生效，已发出的请求会完成。此开关不停止种子包同步和第三方数据源手动操作。</p><button type="submit">保存控频设置</button></form></div></details>${body}`,
         rev,
         quality.heartbeat?.next_at
           ? `后台心跳 ${stamp(quality.heartbeat.next_at)}`
