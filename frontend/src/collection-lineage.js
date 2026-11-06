@@ -5,7 +5,7 @@ export function createCollectionLineage(ctx) {
   let hours = 24,
     selected = null,
     direction = "both",
-    zoom = 1,
+    camera = null,
     generation = 0;
   const stages = ["提交来源", "任务队列", "批次分配", "外部数据源", "结果入库"];
   const stateNames = {
@@ -81,7 +81,7 @@ export function createCollectionLineage(ctx) {
     const metric = (label, value) =>
       `<span>${label} <b>${num(value)}</b></span>`;
     const queues = data.nodes.filter((n) => n.stage === 1 && n.kind);
-    host.innerHTML = `<div class="lineage-toolbar"><label>观察窗口<select data-lineage-hours>${[
+    host.innerHTML = `<div class="lineage-canvas"><details class="lineage-filters"><summary>筛选与定位</summary><div class="lineage-toolbar"><label>观察窗口<select data-lineage-hours>${[
       [1, "近 1 小时"],
       [24, "近 24 小时"],
       [168, "近 7 天"],
@@ -101,15 +101,16 @@ export function createCollectionLineage(ctx) {
         ([v, n]) =>
           `<option value="${v}" ${direction === v ? "selected" : ""}>${n}</option>`,
       )
-      .join("")}</select></label></div>
-      <div class="lineage-summary"><span>${data.store === "all" ? "全部商店" : data.store === "apple" ? "App Store" : "Google Play"} · 全部国家 / 语言</span>${metric(
+      .join("")}</select></label></div></details>
+      <div class="lineage-caption"><div class="lineage-summary"><span>${data.store === "all" ? "全部商店" : data.store === "apple" ? "App Store" : "Google Play"} · 全部国家 / 语言</span>${metric(
         "共享任务",
         queues.reduce((n, q) => n + q.value, 0),
       )}${metric(
         "可领取",
         queues.reduce((n, q) => n + q.eligible, 0),
-      )}${metric("近期活跃消费者", data.workers.length)}<span>${data.paused ? "请求已全局暂停" : "共享限速已启用"}</span><span>快照 ${esc(stamp(data.at))}</span></div>
-      <div class="lineage-layout"><div class="lineage-canvas"><div class="lineage-canvas-tools" role="toolbar" aria-label="画布操作"><button class="secondary" data-lineage-refresh>刷新</button><div class="lineage-zoom"><button class="secondary" data-zoom="out" aria-label="缩小血缘图">−</button><output data-zoom-label>100%</output><button class="secondary" data-zoom="in" aria-label="放大血缘图">＋</button><button class="secondary" data-zoom="fit">适配</button><button class="secondary" data-zoom="reset">100%</button></div><button class="secondary" data-lineage-clear>全部关系</button><button class="secondary" data-lineage-flow aria-pressed="true">暂停流动</button></div><div class="lineage-viewport" tabindex="0" aria-label="采集血缘画布，可滚动和拖动画布"><div class="lineage-space"><div class="lineage-world is-flowing"><svg class="lineage-edges" width="${width}" height="${height}" aria-hidden="true"><defs><marker id="lineage-arrow" viewBox="0 0 6 6" refX="5" refY="3" markerUnits="userSpaceOnUse" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 6 3 L 0 6 z"/></marker></defs>${data.edges
+      )}${metric("活跃消费者", data.workers.length)}<span>${data.paused ? "请求已全局暂停" : "共享限速已启用"}</span><span>快照 ${esc(stamp(data.at))}</span></div>
+      <details class="lineage-notes"><summary>统计说明 · 拖动画布平移，Ctrl / ⌘ + 滚轮缩放</summary>${data.notes.map((note) => `<p>${esc(note)}</p>`).join("")}<p>请求统计起点 ${data.http_since ? esc(stamp(data.http_since)) : "首次采集请求后建立"} · 队列快照缓存最多 60 秒</p></details></div>
+      <div class="lineage-canvas-tools" role="toolbar" aria-label="画布操作"><button class="secondary" data-lineage-refresh>刷新</button><div class="lineage-zoom"><button class="secondary" data-zoom="out" aria-label="缩小血缘图">−</button><output data-zoom-label>100%</output><button class="secondary" data-zoom="in" aria-label="放大血缘图">＋</button><button class="secondary" data-zoom="fit">适配全图</button><button class="secondary" data-zoom="reset" title="恢复初始缩放和位置">恢复初始</button></div><button class="secondary" data-lineage-clear>全部关系</button><button class="secondary" data-lineage-flow aria-pressed="true">暂停流动</button></div><div class="lineage-viewport" tabindex="0" aria-label="采集血缘画布，可拖动、滚轮或方向键平移"><div class="lineage-world is-flowing"><svg class="lineage-edges" width="${width}" height="${height}" aria-hidden="true"><defs><marker id="lineage-arrow" viewBox="0 0 6 6" refX="5" refY="3" markerUnits="userSpaceOnUse" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 6 3 L 0 6 z"/></marker></defs>${data.edges
         .map((edge, index) => {
           const a = positions.get(edge.source),
             b = positions.get(edge.target);
@@ -140,11 +141,9 @@ export function createCollectionLineage(ctx) {
         )
         .join(
           "",
-        )}</div></div></div></div><aside class="lineage-inspector" aria-label="节点详情"><p>点击节点查看任务状态、请求协议、返回量和上下游关系。</p></aside></div>
-      <div class="lineage-notes">${data.notes.map((note) => `<p>${esc(note)}</p>`).join("")}<p>请求统计起点 ${data.http_since ? esc(stamp(data.http_since)) : "首次采集请求后建立"} · 队列快照缓存最多 60 秒</p></div>`;
+        )}</div></div><aside class="lineage-inspector" aria-label="节点详情" hidden></aside></div>`;
     const viewport = host.querySelector(".lineage-viewport"),
-      world = host.querySelector(".lineage-world"),
-      space = host.querySelector(".lineage-space");
+      world = host.querySelector(".lineage-world");
     world.style.width = width + "px";
     world.style.height = height + "px";
     host.querySelectorAll("[data-lineage-node]").forEach((button) => {
@@ -160,15 +159,47 @@ export function createCollectionLineage(ctx) {
     host.querySelectorAll(".lineage-stage").forEach((label) => {
       label.style.left = Number(label.dataset.stage) * 330 + 14 + "px";
     });
-    const setZoom = (value) => {
-      zoom = Math.max(0.4, Math.min(1.7, value));
-      world.style.transform = `scale(${zoom})`;
-      space.style.width = width * zoom + "px";
-      space.style.height = height * zoom + "px";
+    let zoom = camera?.zoom ?? 1,
+      x = camera?.x ?? 0,
+      y = camera?.y ?? 0;
+    const dimensions = () => ({
+      width: viewport.clientWidth || width + 48,
+      height: viewport.clientHeight || height + 208,
+    });
+    const draw = () => {
+      camera = { zoom, x, y };
+      world.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`;
       host.querySelector("[data-zoom-label]").textContent =
         Math.round(zoom * 100) + "%";
     };
-    setZoom(zoom);
+    const frame = (fit = false) => {
+      const size = dimensions();
+      zoom = Math.max(
+        fit ? 0.1 : 0.75,
+        Math.min(
+          1,
+          (size.width - 48) / width,
+          fit ? (size.height - 208) / height : 1,
+        ),
+      );
+      x = fit
+        ? (size.width - width * zoom) / 2
+        : Math.max(24, (size.width - width * zoom) / 2);
+      y =
+        112 + (fit ? Math.max(0, (size.height - 208 - height * zoom) / 2) : 0);
+      draw();
+    };
+    const setZoom = (value, anchor = null) => {
+      const size = dimensions(),
+        center = anchor || { x: size.width / 2, y: size.height / 2 },
+        next = Math.max(0.1, Math.min(2, value));
+      x = center.x - ((center.x - x) * next) / zoom;
+      y = center.y - ((center.y - y) * next) / zoom;
+      zoom = next;
+      draw();
+    };
+    if (camera) draw();
+    else frame();
     function highlight() {
       const active = related(data, map.get(selected));
       const search = host
@@ -204,9 +235,9 @@ export function createCollectionLineage(ctx) {
     function inspect() {
       const node = map.get(selected),
         panel = host.querySelector(".lineage-inspector");
+      panel.hidden = !node;
       if (!node) {
-        panel.innerHTML =
-          "<p>点击节点查看任务状态、请求协议、返回量和上下游关系。</p>";
+        panel.replaceChildren();
         return;
       }
       const details = [
@@ -243,7 +274,7 @@ export function createCollectionLineage(ctx) {
       const neighbors = data.edges.filter(
         (e) => e.source === node.id || e.target === node.id,
       );
-      panel.innerHTML = `<h3>${esc(node.label)}</h3><p>${esc(node.note || "")}</p><dl>${details
+      panel.innerHTML = `<div class="lineage-inspector-heading"><h3>${esc(node.label)}</h3><button class="secondary" data-lineage-close aria-label="关闭节点详情">×</button></div><p>${esc(node.note || "")}</p><dl>${details
         .filter(([, v]) => v != null)
         .map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`)
         .join("")}</dl>${
@@ -264,6 +295,11 @@ export function createCollectionLineage(ctx) {
         .join(
           "",
         )}${node.link ? `<a class="button secondary" href="${esc(node.link)}">查看对应数据 / 任务</a>` : ""}`;
+      panel.querySelector("[data-lineage-close]").onclick = () => {
+        selected = null;
+        highlight();
+        inspect();
+      };
       panel.querySelectorAll("[data-related]").forEach(
         (b) =>
           (b.onclick = () => {
@@ -289,49 +325,111 @@ export function createCollectionLineage(ctx) {
       highlight();
       inspect();
     };
-    host
-      .querySelectorAll("[data-zoom]")
-      .forEach(
-        (b) =>
-          (b.onclick = () =>
-            setZoom(
-              b.dataset.zoom === "fit"
-                ? Math.min(
-                    viewport.clientWidth / width,
-                    viewport.clientHeight / height,
-                  )
-                : b.dataset.zoom === "reset"
-                  ? 1
-                  : zoom + (b.dataset.zoom === "in" ? 0.1 : -0.1),
-            )),
-      );
+    host.querySelectorAll("[data-zoom]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          if (b.dataset.zoom === "fit") frame(true);
+          else if (b.dataset.zoom === "reset") frame();
+          else setZoom(zoom + (b.dataset.zoom === "in" ? 0.1 : -0.1));
+        }),
+    );
     host.querySelector("[data-lineage-flow]").onclick = (event) => {
       const moving = world.classList.toggle("is-flowing");
       event.currentTarget.textContent = moving ? "暂停流动" : "显示流向";
       event.currentTarget.setAttribute("aria-pressed", String(moving));
     };
-    let drag;
+    let drag,
+      suppressClick = false;
     viewport.onpointerdown = (e) => {
-      if (e.target.closest("button") || e.button !== 0) return;
+      if (e.button !== 0 || drag) return;
+      suppressClick = false;
       drag = {
-        x: e.clientX,
-        y: e.clientY,
-        left: viewport.scrollLeft,
-        top: viewport.scrollTop,
+        id: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        x,
+        y,
+        moved: false,
       };
-      viewport.setPointerCapture(e.pointerId);
     };
     viewport.onpointermove = (e) => {
-      if (drag) {
-        viewport.scrollLeft = drag.left + drag.x - e.clientX;
-        viewport.scrollTop = drag.top + drag.y - e.clientY;
+      if (!drag || drag.id !== e.pointerId) return;
+      const dx = e.clientX - drag.startX,
+        dy = e.clientY - drag.startY;
+      if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+      if (!drag.moved) viewport.setPointerCapture(e.pointerId);
+      drag.moved = true;
+      viewport.classList.add("is-dragging");
+      x = drag.x + dx;
+      y = drag.y + dy;
+      draw();
+    };
+    const endDrag = (e) => {
+      if (!drag || drag.id !== e.pointerId) return;
+      suppressClick = drag.moved;
+      if (viewport.hasPointerCapture(e.pointerId))
+        viewport.releasePointerCapture(e.pointerId);
+      drag = null;
+      viewport.classList.remove("is-dragging");
+    };
+    viewport.onpointerup = endDrag;
+    viewport.onpointercancel = endDrag;
+    viewport.onlostpointercapture = endDrag;
+    viewport.onpointerleave = (e) => {
+      if (!drag?.moved) endDrag(e);
+    };
+    viewport.addEventListener(
+      "click",
+      (e) => {
+        if (suppressClick) {
+          e.stopPropagation();
+          e.preventDefault();
+          suppressClick = false;
+        }
+      },
+      true,
+    );
+    viewport.addEventListener(
+      "wheel",
+      (e) => {
+        e.preventDefault();
+        if (e.ctrlKey || e.metaKey) {
+          const rect = viewport.getBoundingClientRect();
+          setZoom(zoom * Math.exp(-e.deltaY * 0.002), {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+          });
+        } else {
+          const unit =
+            e.deltaMode === 1
+              ? 16
+              : e.deltaMode === 2
+                ? viewport.clientHeight
+                : 1;
+          x -= (e.shiftKey ? e.deltaY : e.deltaX) * unit;
+          y -= (e.shiftKey ? 0 : e.deltaY) * unit;
+          draw();
+        }
+      },
+      { passive: false },
+    );
+    viewport.onkeydown = (e) => {
+      if (e.target !== viewport) return;
+      const offset = {
+        ArrowLeft: [48, 0],
+        ArrowRight: [-48, 0],
+        ArrowUp: [0, 48],
+        ArrowDown: [0, -48],
+      }[e.key];
+      if (offset) {
+        e.preventDefault();
+        x += offset[0];
+        y += offset[1];
+        draw();
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        frame();
       }
-    };
-    viewport.onpointerup = () => {
-      drag = null;
-    };
-    viewport.onpointercancel = () => {
-      drag = null;
     };
     highlight();
     inspect();

@@ -102,10 +102,13 @@ test("lineage nodes trace upstream/downstream, escape labels, search and zoom", 
   const host = win.document.querySelector("main");
   try {
     await view.render(host, 1);
+    assert.equal(host.querySelector(".lineage-inspector").hidden, true);
+    assert.ok(host.querySelector(".lineage-canvas .lineage-notes"));
+    assert.ok(host.querySelector(".lineage-canvas .lineage-inspector"));
     assert.equal(host.querySelectorAll("[data-lineage-node]").length, 4);
     assert.equal(host.querySelector("img"), null);
-    assert.equal(host.querySelector('[data-edge-label="a"]'),null);
-    assert.equal(host.querySelectorAll("[data-edge-label]").length,2);
+    assert.equal(host.querySelector('[data-edge-label="a"]'), null);
+    assert.equal(host.querySelectorAll("[data-edge-label]").length, 2);
     assert.equal(host.querySelector(".lineage-toolbar [data-zoom]"), null);
     assert.ok(host.querySelector('.lineage-canvas-tools [data-zoom="fit"]'));
     assert.equal(
@@ -126,6 +129,7 @@ test("lineage nodes trace upstream/downstream, escape labels, search and zoom", 
       host.querySelector(".lineage-inspector").textContent,
       /play.google.com/,
     );
+    assert.equal(host.querySelector(".lineage-inspector").hidden, false);
     assert.equal(host.querySelectorAll("path.is-active").length, 3);
     const direction = host.querySelector("[data-lineage-direction]");
     direction.value = "up";
@@ -154,6 +158,96 @@ test("lineage nodes trace upstream/downstream, escape labels, search and zoom", 
     assert.equal(host.querySelector("[data-zoom-label]").textContent, "110%");
     host.querySelector("[data-lineage-clear]").click();
     assert.equal(host.querySelectorAll('[aria-pressed="true"]').length, 0);
+    assert.equal(host.querySelector(".lineage-inspector").hidden, true);
+    host.querySelector('[data-lineage-node="source"]').click();
+    host.querySelector("[data-lineage-close]").click();
+    assert.equal(host.querySelector(".lineage-inspector").hidden, true);
+  } finally {
+    await win.happyDOM.close();
+  }
+});
+
+test("canvas pans beyond scroll bounds and reset restores position and zoom", async () => {
+  const win = new Window();
+  win.document.body.innerHTML = "<main></main>";
+  win.eval(source + ";window.factory=createCollectionLineage");
+  const host = win.document.querySelector("main");
+  const view = win.factory({
+    api: async () => graph,
+    esc: (s) => String(s ?? "").replaceAll("<", "&lt;"),
+    num: String,
+    stamp: String,
+    market: () => ({ store: "all" }),
+    currentRevision: () => 1,
+    toast: () => {},
+  });
+  try {
+    await view.render(host, 1);
+    const viewport = host.querySelector(".lineage-viewport"),
+      world = host.querySelector(".lineage-world");
+    Object.defineProperties(viewport, {
+      clientWidth: { value: 1200 },
+      clientHeight: { value: 800 },
+    });
+    let captured = false;
+    viewport.setPointerCapture = () => {
+      captured = true;
+    };
+    viewport.hasPointerCapture = () => captured;
+    viewport.releasePointerCapture = () => {
+      captured = false;
+    };
+    host.querySelector('[data-zoom="reset"]').click();
+    const initial = world.style.transform,
+      initialZoom = host.querySelector("[data-zoom-label]").textContent;
+    host.querySelector('[data-zoom="in"]').click();
+    const zoomed = world.style.transform;
+    const pointer = (type, x, y) =>
+      viewport.dispatchEvent(
+        new win.PointerEvent(type, {
+          bubbles: true,
+          pointerId: 1,
+          button: 0,
+          clientX: x,
+          clientY: y,
+        }),
+      );
+    pointer("pointerdown", 400, 300);
+    pointer("pointermove", 500, 360);
+    assert.equal(captured, true);
+    assert.notEqual(world.style.transform, zoomed);
+    assert.equal(viewport.scrollLeft, 0);
+    assert.equal(viewport.scrollTop, 0);
+    pointer("pointerup", 500, 360);
+    assert.equal(captured, false);
+    // A drag beginning on a node must not turn into a selection click.
+    host.querySelector('[data-lineage-node="source"]').click();
+    assert.equal(host.querySelector(".lineage-inspector").hidden, true);
+    host.querySelector('[data-zoom="reset"]').click();
+    assert.equal(world.style.transform, initial);
+    assert.equal(
+      host.querySelector("[data-zoom-label]").textContent,
+      initialZoom,
+    );
+    viewport.dispatchEvent(
+      new win.WheelEvent("wheel", { deltaY: 80, cancelable: true }),
+    );
+    assert.notEqual(world.style.transform, initial);
+    viewport.dispatchEvent(new win.KeyboardEvent("keydown", { key: "Home" }));
+    assert.equal(world.style.transform, initial);
+    host.querySelector('[data-zoom="fit"]').click();
+    pointer("pointerdown", 400, 300);
+    pointer("pointermove", 900, 600);
+    pointer("pointercancel", 900, 600);
+    assert.equal(viewport.classList.contains("is-dragging"), false);
+    const panned = world.style.transform;
+    await view.render(host, 1, true);
+    assert.equal(host.querySelector(".lineage-world").style.transform, panned);
+    host.querySelector('[data-zoom="reset"]').click();
+    assert.notEqual(
+      host.querySelector(".lineage-world").style.transform,
+      panned,
+    );
   } finally {
     await win.happyDOM.close();
   }

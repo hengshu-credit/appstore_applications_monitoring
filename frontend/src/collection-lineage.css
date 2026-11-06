@@ -1,9 +1,78 @@
+/* The lineage is a viewport workspace; overlays never reserve canvas space. */
+body:has(#collection-lineage) {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+body:has(#collection-lineage) .shell {
+  min-height: 0;
+  overflow: hidden;
+}
+body:has(#collection-lineage) .workspace-intro {
+  display: none;
+}
+#content:has(#collection-lineage) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0 12px 12px;
+  overflow: hidden;
+}
+#content:has(#collection-lineage) > .collection-tabs {
+  flex: none;
+  margin: 0 0 8px;
+}
+#collection-lineage {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.lineage-canvas {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  isolation: isolate;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.lineage-filters,
+.lineage-caption,
+.lineage-canvas-tools,
+.lineage-inspector {
+  position: absolute;
+  z-index: 2;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: 0 3px 16px var(--shadow);
+  backdrop-filter: blur(8px);
+}
+.lineage-filters {
+  top: 64px;
+  left: 12px;
+  max-width: calc(100% - 24px);
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.lineage-filters summary,
+.lineage-notes summary {
+  cursor: pointer;
+  color: var(--ink);
+}
 .lineage-toolbar {
   display: flex;
   gap: 12px;
   align-items: end;
   flex-wrap: wrap;
-  margin: 16px 0;
+  margin: 12px 0 0;
+}
+.lineage-toolbar input {
+  width: 190px;
+  max-width: 100%;
 }
 .lineage-toolbar label {
   font-size: 12px;
@@ -21,38 +90,47 @@
 }
 .lineage-summary {
   display: flex;
-  gap: 20px;
+  gap: 4px 16px;
   flex-wrap: wrap;
-  padding: 12px 0;
   color: var(--muted);
   font-size: 12px;
 }
 .lineage-summary b {
   color: var(--ink);
-  font-size: 16px;
+  font-size: 13px;
 }
-.lineage-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  gap: 16px;
-  align-items: start;
+.lineage-caption {
+  left: 12px;
+  bottom: 12px;
+  max-width: min(820px, calc(100% - 24px));
+  max-height: 35%;
+  overflow: auto;
+  padding: 10px 12px;
 }
 .lineage-viewport {
-  height: 640px;
-  overflow: auto;
-  border: 1px solid var(--line);
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
   background:
     radial-gradient(var(--line) 1px, transparent 1px) 0 0 / 18px 18px,
     var(--soft);
   cursor: grab;
   min-width: 0;
+  touch-action: none;
+  user-select: none;
+  overscroll-behavior: contain;
 }
-.lineage-space,
 .lineage-world {
-  position: relative;
+  position: absolute;
+  top: 0;
+  left: 0;
 }
 .lineage-world {
   transform-origin: top left;
+}
+.lineage-viewport.is-dragging,
+.lineage-viewport.is-dragging .lineage-node {
+  cursor: grabbing;
 }
 .lineage-edges {
   position: absolute;
@@ -144,12 +222,32 @@
   opacity: 0.32;
 }
 .lineage-inspector {
-  background: var(--surface);
-  border: 1px solid var(--line);
+  top: 64px;
+  right: 12px;
+  width: 300px;
+  max-width: calc(100% - 24px);
   padding: 16px;
-  max-height: 640px;
+  max-height: calc(100% - 160px);
   overflow: auto;
   font-size: 12px;
+  z-index: 3;
+}
+.lineage-inspector[hidden] {
+  display: none;
+}
+.lineage-inspector-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 12px;
+}
+.lineage-inspector-heading button {
+  flex: none;
+  min-height: 28px !important;
+  height: 28px !important;
+  width: 28px;
+  padding: 0;
+  font-size: 18px;
 }
 .lineage-inspector h3 {
   margin-top: 0;
@@ -212,43 +310,28 @@
   color: var(--muted);
   font-size: 11px;
   line-height: 1.6;
-  margin-top: 12px;
+  margin-top: 6px;
 }
 .lineage-notes p {
   margin: 2px 0;
 }
-@media (max-width: 1000px) {
-  .lineage-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .lineage-inspector {
-    max-height: 340px;
-  }
-  .lineage-viewport {
-    height: 560px;
-  }
-}
-
-.lineage-canvas {
-  position: relative;
-  min-width: 0;
-  padding-top: 48px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-}
-.lineage-canvas .lineage-viewport {
-  border: 0;
-  border-top: 1px solid var(--line);
-}
 .lineage-canvas-tools {
-  position: absolute;
-  inset: 6px 8px auto;
-  z-index: 5;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 24px);
+  padding: 4px;
   display: flex;
-  justify-content: flex-end;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
+  white-space: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  z-index: 4;
+}
+.lineage-canvas-tools > *,
+.lineage-canvas-tools button {
+  flex-shrink: 0;
 }
 .lineage-canvas-tools button {
   min-height: 32px !important;
@@ -293,11 +376,21 @@
   }
 }
 @media (max-width: 700px) {
-  .lineage-canvas {
-    padding-top: 88px;
+  body:has(#collection-lineage) .app-footer {
+    display: none;
   }
-  .lineage-canvas-tools {
-    justify-content: flex-start;
+  #content:has(#collection-lineage) {
+    padding: 0 4px 4px;
+  }
+  .lineage-caption {
+    max-height: 28%;
+    padding: 7px 9px;
+  }
+  .lineage-summary {
+    font-size: 10px;
+  }
+  .lineage-inspector {
+    max-height: calc(100% - 184px);
   }
 }
 
