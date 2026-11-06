@@ -263,9 +263,10 @@ def member_rows(db, identifier, store='all'):
     return rows
 
 
-def rankings(db, identifier, store='all', country=''):
-    where,args=_scope(identifier,store,country);now=time.time()
-    keyword=db.execute('''SELECT m.id,COUNT(DISTINCT t.id) keyword_count,MIN(k.position) keyword_best
+def rankings(db, identifier, store='all', country='', now=None):
+    where,args=_scope(identifier,store,country);now=time.time() if now is None else now
+    keyword=db.execute('''SELECT m.id,COUNT(DISTINCT t.id) keyword_count,MIN(k.position) keyword_best,
+        COUNT(DISTINCT CASE WHEN k.position<=3 THEN t.id END) keyword_top3_count
         FROM app_group_members m JOIN keyword_ranks k ON k.app_id=m.app_id
         JOIN keyword_targets t ON t.latest_success_id=k.run_id AND t.store=m.store AND t.country=m.country AND t.language=m.language
         JOIN keyword_runs r ON r.id=k.run_id WHERE '''+where+'''
@@ -288,6 +289,64 @@ def rankings(db, identifier, store='all', country=''):
     return {r['id']:r for r in keyword},{r['id']:r for r in chart},*sampled
 
 
+def member_rank_details(db, identifier, page, now):
+    if not page:
+        return
+    members = {row['id']: row for row in page}
+    for row in page:
+        row['top_keywords'] = []
+        row['chart_positions'] = []
+    where = 'm.group_id=%s AND m.id IN (' + ','.join('%s' for _ in page) + ')'
+    args = (identifier, *members)
+    identity = db.execute(f'''SELECT m.id,JSON_OBJECT('developer',l.payload->'$.developer','icon',l.payload->'$.icon',
+        'price',l.payload->'$.price','currency',l.payload->'$.currency','has_iap',l.payload->'$.has_iap',
+        'languages',l.payload->'$.languages','updated',l.payload->'$.updated','version',l.payload->'$.version') metadata,
+        r.observed_at review_sample_at FROM app_group_members m LEFT JOIN listings l USING(store,app_id,country,language)
+        LEFT JOIN observation_targets t ON t.kind='reviews' AND t.store=m.store AND t.app_id=m.app_id AND t.country=m.country
+        AND t.language=m.language AND t.category='' AND t.collection=''
+        LEFT JOIN observation_runs r ON r.id=t.latest_success_id AND r.outcome='ok' WHERE {where}''',args).fetchall()
+    midnight = datetime.fromtimestamp(now, timezone.utc).replace(hour=0,minute=0,second=0,microsecond=0)
+    yesterday = midnight - timedelta(days=1)
+    for item in identity:
+        member = members[item['id']]
+        member.update(json.loads(item['metadata']))
+        member['yesterday_reviews'] = 0 if (item['review_sample_at'] or 0)>=midnight.timestamp() else None
+    # Published dates may carry a storefront offset. Narrow the SQL range, then compare in UTC.
+    dates = db.execute(f'''SELECT m.id,v.published_at FROM app_group_members m JOIN reviews v USING(store,app_id,country,language)
+        WHERE {where} AND v.published_at >= %s AND v.published_at < %s''',
+        (*args,(yesterday-timedelta(days=1)).date().isoformat(),(midnight+timedelta(days=1)).date().isoformat())).fetchall()
+    for item in dates:
+        try:
+            published = datetime.fromisoformat(item['published_at'].replace('Z','+00:00'))
+        except ValueError:
+            continue
+        if published.tzinfo and yesterday <= published < midnight:
+            row = members[item['id']]
+            row['yesterday_reviews'] = (row['yesterday_reviews'] or 0) + 1
+    keywords = db.execute(f'''SELECT member_id,keyword,position FROM (
+        SELECT m.id member_id,t.keyword,k.position,ROW_NUMBER() OVER (
+            PARTITION BY m.id ORDER BY k.position,t.keyword,t.id) seq
+        FROM app_group_members m JOIN keyword_targets t USING(store,country,language)
+        JOIN keyword_runs r ON r.id=t.latest_success_id
+        JOIN keyword_ranks k ON k.run_id=r.id AND k.app_id=m.app_id
+        WHERE {where} AND t.enabled=1 AND t.failures=0 AND r.outcome='ok'
+        AND r.requested_depth=t.depth AND r.observed_at+t.refresh_hours*3600>%s
+        ) ranked WHERE seq<=3 ORDER BY member_id,seq''', (*args, now)).fetchall()
+    for item in keywords:
+        members[item['member_id']]['top_keywords'].append({'keyword':item['keyword'], 'position':item['position']})
+    charts = db.execute(f'''SELECT m.id member_id,t.collection,t.category,k.position,
+        (t.enabled=1 AND t.failures=0 AND r.outcome='ok' AND r.observed_at+t.refresh_hours*3600>%s) fresh
+        FROM app_group_members m JOIN observation_targets t USING(store,country,language)
+        LEFT JOIN observation_runs r ON r.id=t.latest_success_id
+        LEFT JOIN observation_items k ON k.run_id=r.id AND k.item_id=m.app_id
+        WHERE {where} AND t.kind='chart' ORDER BY t.collection,t.category''', (now, *args)).fetchall()
+    for item in charts:
+        members[item['member_id']]['chart_positions'].append({
+            'collection':item['collection'], 'category':item['category'], 'sampled':bool(item['fresh']),
+            'position':item['position'] if item['fresh'] else None,
+        })
+
+
 def facts(db, identifier, days, store='all', country='', app_id=''):
     where,args=_scope(identifier,store,country)
     since=(datetime.now(timezone.utc).date()-timedelta(days=days-1)).isoformat()
@@ -297,6 +356,40 @@ def facts(db, identifier, days, store='all', country='', app_id=''):
     rows=db.execute('SELECT f.* FROM app_metric_facts f WHERE '+' AND '.join(clauses)+' ORDER BY day',args).fetchall()
     for row in rows:row['value']=str(row['value'])
     return rows
+
+
+def page_metric_facts(db, identifier, page, days, now):
+    if not page:
+        return
+    end = datetime.fromtimestamp(now, timezone.utc).date()
+    start = end - timedelta(days=days-1)
+    previous = start - timedelta(days=days)
+    marks = ','.join('%s' for _ in page)
+    rows = db.execute(f'''SELECT f.store,f.app_id,f.country,f.metric,f.currency,f.is_estimate,
+        SUM(IF(f.day>=%s,f.value,0)) value,COUNT(IF(f.day>=%s,1,NULL)) days,
+        SUM(IF(f.day<%s,f.value,0)) prior,COUNT(IF(f.day<%s,1,NULL)) prior_days
+        FROM app_metric_facts f JOIN (SELECT DISTINCT store,app_id FROM app_group_members WHERE group_id=%s AND id IN ({marks})) apps
+        USING(store,app_id) WHERE f.day BETWEEN %s AND %s AND EXISTS (SELECT 1 FROM app_group_members g
+            WHERE g.group_id=%s AND g.store=f.store AND g.app_id=f.app_id AND g.country=f.country)
+        GROUP BY f.store,f.app_id,f.country,f.metric,f.currency,f.is_estimate''',
+        (start,start,start,start,identifier,*(r['id'] for r in page),previous,end,identifier)).fetchall()
+    by_market = defaultdict(list)
+    distributions = defaultdict(dict)
+    for fact in rows:
+        if not fact['days']:
+            continue
+        series = (fact['store'],fact['app_id'],fact['metric'],fact['currency'],fact['is_estimate'])
+        distributions[series][fact['country']] = fact['value']
+        by_market[(fact['store'],fact['app_id'],fact['country'])].append((series,fact))
+    for row in page:
+        row['metrics'] = []
+        for series,fact in by_market[row['store'],row['app_id'],row['country']]:
+            shares = distributions[series]
+            total = sum(shares.values())
+            comparable = fact['days']==days and fact['prior_days']==days and fact['prior']>0
+            row['metrics'].append(dict(metric=fact['metric'],currency=fact['currency'],is_estimate=bool(fact['is_estimate']),
+                value=str(fact['value']),days=fact['days'],change_pct=float(100*(fact['value']/fact['prior']-1)) if comparable else None,
+                market_mix=[dict(country=c,pct=float(100*v/total)) for c,v in sorted(shares.items())] if total>0 and min(shares.values())>=0 else []))
 
 
 def fact_summaries(db, identifier, days, store='all', country='', member_ids=None):
@@ -335,10 +428,11 @@ def dashboard(db, cfg, identifier, store='all', country='', state='', q='', days
           (not classification or r['classification']==classification) and
           (not state or (bool(r['failures']) if state=='error' else r['state']==state)) and
           (not q or q.casefold() in (r['app_id']+' '+(r['name'] or '')).casefold())]
-    keywords,charts,keyword_samples,chart_samples=rankings(db,identifier,store,country)
+    now = time.time()
+    keywords,charts,keyword_samples,chart_samples=rankings(db,identifier,store,country,now)
     for r in rows:
         key=(r['store'],r['country'],r['language'])
-        r.update(keywords.get(r['id'],{'keyword_count':0 if key in keyword_samples else None,'keyword_best':None}),
+        r.update(keywords.get(r['id'],{'keyword_count':0 if key in keyword_samples else None,'keyword_best':None,'keyword_top3_count':0 if key in keyword_samples else None}),
                  **charts.get(r['id'],{'chart_count':0 if key in chart_samples else None,'chart_best':None}))
         r['keyword_samples']=keyword_samples.get(key,0);r['chart_samples']=chart_samples.get(key,0)
     since=time.time()-days*86400
@@ -347,10 +441,8 @@ def dashboard(db, cfg, identifier, store='all', country='', state='', q='', days
         AND EXISTS (SELECT 1 FROM app_group_members m WHERE '''+where+''' AND m.store=e.store AND m.app_id=e.app_id
             AND m.country=e.country AND m.language=e.language) GROUP BY e.kind,day ORDER BY day''',(since,*args)).fetchall()
     page=rows[offset:offset+limit]
-    selected_facts=fact_summaries(db,identifier,days,store,country,[r['id'] for r in page])
-    by_app=defaultdict(list)
-    for f in selected_facts:by_app[(f['store'],f['app_id'],f['country'])].append(f)
-    for r in page:r['metrics']=by_app[(r['store'],r['app_id'],r['country'])]
+    member_rank_details(db,identifier,page,now)
+    page_metric_facts(db,identifier,page,days,now)
     from .collection_limits import settings
     rate=db.execute("SELECT MAX(next_at) at FROM schedules WHERE name IN ('rate:global','rate:google','rate:apple')").fetchone()['at']
     statistics=dict(apps=len({(r['store'],r['app_id']) for r in rows}),targets=len(rows),countries=len({r['country'] for r in rows}),

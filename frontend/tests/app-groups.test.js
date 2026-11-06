@@ -368,6 +368,27 @@ test("unified rows show permissions rankings money and ratings without mixing mi
         permission_count: 0,
         permission_groups: ["Camera", "SMS", "<img src=x>"],
         permission_error: "<script>problem</script>",
+        developer: "Developer <test>",
+        top_keywords: [
+          { keyword: "loan <test>", position: 3 },
+          { keyword: "finance", position: 8 },
+        ],
+        yesterday_reviews: 0,
+        price: 0,
+        currency: "USD",
+        languages: ["en", "th"],
+        version: "2.0",
+        has_iap: false,
+        keyword_top3_count: 1,
+        chart_positions: [
+          { collection: "top-free", category: "", sampled: true, position: 12 },
+          {
+            collection: "top-paid",
+            category: "",
+            sampled: true,
+            position: null,
+          },
+        ],
         keyword_count: 5,
         keyword_best: 3,
         chart_count: 0,
@@ -405,10 +426,29 @@ test("unified rows show permissions rankings money and ratings without mixing mi
     const grid = c.doc.querySelector(".group-member-table");
     assert.equal(
       row.querySelectorAll("td").length,
-      grid.querySelectorAll("th").length,
+      grid.querySelectorAll('th[scope="col"]').length,
     );
-    assert.equal(cell("observed").textContent, "无商店记录");
-    assert.equal(cell("reference").textContent, "参考不在架");
+    assert.equal(c.doc.querySelector("[data-column-view]"), null);
+    assert.equal(
+      cell("app").querySelector(".member-developer").textContent,
+      "Developer <test>",
+    );
+    assert.match(cell("country").textContent, /泰国.*en/);
+    assert.deepEqual(
+      [...grid.querySelectorAll('th[scope="colgroup"]')].map(
+        (el) => el.textContent,
+      ),
+      [
+        "状态监控",
+        "权限采集",
+        "下载量",
+        "收入",
+        "评分",
+        "关键词",
+        "榜单",
+        "商店资料",
+      ],
+    );
     assert.equal(cell("permission_state").textContent, "已采集");
     assert.equal(cell("permission_count").textContent, "0");
     assert.equal(
@@ -420,24 +460,43 @@ test("unified rows show permissions rankings money and ratings without mixing mi
       "×",
     );
     assert.equal(cell("keywords").textContent, "5");
-    assert.equal(cell("keyword_best").textContent, "#3");
-    assert.equal(cell("charts").textContent, "0");
-    assert.equal(cell("chart_best").textContent, "—");
-    assert.equal(cell("rating").textContent, "0");
+    assert.equal(cell("top3_count").textContent, "1");
+    assert.match(
+      cell("keywords").querySelector("span").title,
+      /loan <test> #3.*finance #8/,
+    );
+    assert.equal(
+      cell("top3_count").querySelector("span").title,
+      "loan <test> #3",
+    );
+    assert.equal(cell("price").textContent, "免费");
+    assert.equal(cell("iap").textContent, "无");
+    assert.equal(cell("yesterday_reviews").textContent, "0");
+    assert.equal(cell("languages").textContent, "2");
+    assert.equal(cell("chart0").textContent, "#12");
+    assert.equal(cell("chart1").textContent, "未入榜");
+    assert.equal(cell("chart2").textContent, "—");
+    assert.equal(cell("rating").textContent, "0.00");
     assert.equal(cell("ratings").textContent, "123");
     assert.equal(cell("installs").textContent, "1,000+");
     const valueFor = (label) => {
       const head = [...grid.querySelectorAll("th")].find(
         (th) => th.textContent === label,
       );
-      return cell(head.dataset.col).textContent;
+      return cell(head.dataset.col);
     };
-    assert.equal(valueFor("下载量 · 实际"), "0");
-    assert.equal(valueFor("下载量 · 实际天数"), "3");
-    assert.equal(valueFor("收入 · 实际 USD"), "123.45");
-    assert.equal(valueFor("收入 · 实际 USD天数"), "3");
-    assert.equal(valueFor("收入 · 估算 EUR"), "9");
-    assert.equal(valueFor("收入 · 估算 EUR天数"), "1");
+    assert.equal(valueFor("下载量 · 实际").textContent, "0");
+    assert.match(valueFor("下载量 · 实际").querySelector("span").title, /3 天/);
+    assert.equal(valueFor("收入 · 实际 USD").textContent, "123.45");
+    assert.match(
+      valueFor("收入 · 实际 USD").querySelector("span").title,
+      /3 天/,
+    );
+    assert.equal(valueFor("收入 · 估算 EUR").textContent, "9");
+    assert.match(
+      valueFor("收入 · 估算 EUR").querySelector("span").title,
+      /1 天/,
+    );
     assert.equal(row.querySelector("br,details"), null);
     assert.equal(row.querySelector('img[src="x"]'), null);
     assert.equal(row.querySelector("script"), null);
@@ -495,9 +554,8 @@ test("inline corrections keep the market row and permission unknowns distinct an
       row().querySelector('[data-permission="Camera"]').textContent,
       "—",
     );
-    c.doc.querySelector('[data-column-view="permissions"]').click();
-    assert.equal(row().querySelector('[data-col="ratings"]').hidden, true);
-    assert.equal(row().querySelector('[data-col="perm0"]').hidden, false);
+    assert.equal(c.doc.querySelector("[data-column-view]"), null);
+    assert.equal(row().querySelectorAll("td[hidden]").length, 0);
     row().querySelector("[data-adjust-row]").click();
     row().querySelector("[data-edit-status]").value = "available";
     row().querySelector('[data-edit-permission="Camera"]').value = "true";

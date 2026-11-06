@@ -13,6 +13,14 @@ export function createGroupWorkspace(ctx) {
     toast,
     can = () => true,
     countryName = (code) => code.toUpperCase(),
+    categoryName = (_store, id) => id,
+    chartName = (_store, id) =>
+      ({
+        "top-free": "免费榜",
+        "top-paid": "付费榜",
+        "top-grossing": "畅销榜",
+      })[id] || id,
+    appIconMarkup = () => "",
   } = ctx;
   const stateNames = {
     available: "已验证在架",
@@ -33,7 +41,6 @@ export function createGroupWorkspace(ctx) {
     adjustment: "明细修正",
     unknown: "—",
   };
-  let columnView = "all";
   const permissionNames = {
     ok: "已采集",
     pending: "待采集",
@@ -523,46 +530,72 @@ export function createGroupWorkspace(ctx) {
         ]),
       ]),
     ];
-    add("select", "选择", "base", (r) =>
-      writable
-        ? `<input type="checkbox" data-group-check="${r.id}" aria-label="选择 ${esc(r.name || r.app_id)}">`
-        : "",
-    );
+    if (writable)
+      add(
+        "select",
+        "选择",
+        "",
+        (r) =>
+          `<input type="checkbox" data-group-check="${r.id}" aria-label="选择 ${esc(r.name || r.app_id)}">`,
+      );
     add(
       "app",
-      "应用名称",
-      "base",
+      "应用",
+      "",
       (r) =>
-        `<button class="link member-app-name" data-group-member="${r.id}" title="${esc(r.name || r.app_id)}">${esc(r.name || r.app_id)}</button>`,
+        `<div class="member-identity">${appIconMarkup(r.store, r.app_id, r.name, r.icon, r.country, r.language)}<div><button class="link member-app-name" data-group-member="${r.id}" title="${esc(r.app_id)}">${esc(r.name || r.app_id)}</button><small class="member-developer" title="${esc(r.developer || "开发者暂无数据")}">${esc(r.developer || "—")}</small></div></div>`,
     );
     add(
       "country",
-      "国家",
-      "base",
+      "市场",
+      "",
       (r) =>
-        `<span class="member-country"><img class="country-flag" src="/flags/${esc(r.country)}.svg" alt="">${esc(countryName(r.country))}</span>`,
+        `<span class="member-country" title="${esc(storeName(r.store))} · ${esc(r.country.toUpperCase())}"><img class="country-flag" alt="" src="/flags/${esc(r.country)}.svg">${esc(countryName(r.country))}<small>${esc(r.language)}</small></span>`,
     );
-    add("state", "分组状态", "base", (r) => {
+    add("state", "状态", "状态监控", (r) => {
       const state = r.classification || r.state || "unverified";
-      return `<span class="member-state" data-status="${esc(state)}">${esc(classifications[state])}</span>`;
+      return `<span class="member-state" data-status="${esc(state)}" title="${esc(stateNames[r.state] || "")}">${esc(classifications[state])}</span>`;
     });
     add(
       "source",
-      "判定依据",
-      "base",
+      "依据",
+      "状态监控",
       (r) =>
-        `<span title="${esc(r.classification_source === "adjustment" ? `${r.updated_by} · ${stamp(r.adjustment_time)}` : r.classification_source === "reference" ? r.reference_time : stamp(r.checked_at))}">${esc(sources[r.classification_source || "unknown"])}</span>`,
+        `<span title="${esc(r.classification_source === "reference" ? r.reference_time : stamp(r.checked_at))}">${esc(sources[r.classification_source || "unknown"])}</span>`,
     );
-    if (writable)
-      add(
-        "action",
-        "操作",
-        "base",
-        () =>
-          '<button type="button" class="link" data-adjust-row>调整</button>',
-      );
+    add(
+      "observed",
+      "商店实测",
+      "状态监控",
+      (r) =>
+        `<span title="${esc(stamp(r.checked_at))}">${esc(stateNames[r.state] || "无商店记录")}</span>`,
+    );
+    add(
+      "reference",
+      "导入参考",
+      "状态监控",
+      (r) =>
+        `<span title="${esc(r.reference_time || "")}">${esc({ on: "参考在架", off: "参考不在架", error: "参考异常" }[r.reference_state] || "—")}</span>`,
+    );
+    add(
+      "task",
+      "详情采集",
+      "状态监控",
+      (r) =>
+        `<span title="${esc(r.last_error || stamp(r.last_success))}">${esc(detailTaskNames[r.details_state] || "—")}</span>`,
+    );
+    add(
+      "permission_state",
+      "采集状态",
+      "权限采集",
+      (r) =>
+        `<span title="${esc(r.permission_error || stamp(r.permission_success))}">${esc(permissionNames[r.permission_state] || "待采集")}</span>`,
+    );
+    add("permission_count", "项数", "权限采集", (r) =>
+      number(r.permission_count),
+    );
     permissionKeys.forEach((name, index) =>
-      add("perm" + index, permissionGroupName(name), "permissions", (r) => {
+      add("perm" + index, permissionGroupName(name), "权限采集", (r) => {
         const value = permissionValue(r, name),
           manual = Object.hasOwn(r.permission_overrides || {}, name);
         const label =
@@ -576,59 +609,6 @@ export function createGroupWorkspace(ctx) {
         return `<span class="permission-mark" data-permission="${esc(name)}" data-value="${value}" title="${esc(permissionGroupName(name))} · ${label}${manual ? " · 明细修正" : ""}" aria-label="${label}">${value == null ? "—" : value ? "✓" : "×"}</span>`;
       }),
     );
-    add("permission_state", "权限采集", "permissions", (r) =>
-      esc(permissionNames[r.permission_state] || "待采集"),
-    );
-    add("permission_count", "采集权限数", "permissions", (r) =>
-      number(r.permission_count),
-    );
-    add("permission_updated", "权限更新时间", "permissions", (r) =>
-      esc(stamp(r.permission_success)),
-    );
-    add("permission_error", "权限采集问题", "permissions", (r) =>
-      esc(r.permission_error || "—"),
-    );
-    add("id", "应用 ID", "status", (r) => esc(r.app_id));
-    add(
-      "store",
-      "商店",
-      "status",
-      (r) =>
-        `<span class="member-market"><img src="/stores/${r.store === "apple" ? "apple" : "google"}.svg" alt="">${storeName(r.store)}</span>`,
-    );
-    add("language", "语言", "status", (r) => esc(r.language));
-    add("observed", "商店实测", "status", (r) =>
-      esc(stateNames[r.state] || "尚未验证"),
-    );
-    add("reference", "导入状态", "status", (r) =>
-      esc(
-        { on: "参考在架", off: "参考不在架", error: "参考异常" }[
-          r.reference_state
-        ] || "—",
-      ),
-    );
-    add("reference_time", "参考时间", "status", (r) =>
-      esc(r.reference_time || "—"),
-    );
-    add("task", "详情采集", "status", (r) =>
-      esc(detailTaskNames[r.details_state] || "—"),
-    );
-    add("checked", "最近实测", "status", (r) => esc(stamp(r.checked_at)));
-    add("successful", "最近成功", "status", (r) => esc(stamp(r.last_success)));
-    add("error", "详情采集问题", "status", (r) => esc(r.last_error || "—"));
-    add("keywords", "关键词命中", "metrics", (r) => number(r.keyword_count));
-    add("keyword_best", "关键词最佳排名", "metrics", (r) =>
-      r.keyword_best == null ? "—" : "#" + num(r.keyword_best),
-    );
-    add("charts", "榜单命中", "metrics", (r) => number(r.chart_count));
-    add("chart_best", "榜单最佳排名", "metrics", (r) =>
-      r.chart_best == null ? "—" : "#" + num(r.chart_best),
-    );
-    add("rating", "评分", "metrics", (r) => number(r.rating));
-    add("ratings", "评分数", "metrics", (r) => number(r.ratings));
-    add("installs", "全球累计安装下限", "metrics", (r) =>
-      r.installs == null ? "—" : num(r.installs) + "+",
-    );
     const metricKey = (f) =>
       JSON.stringify([f.metric, Boolean(f.is_estimate), f.currency || ""]);
     const series = new Map(
@@ -641,7 +621,10 @@ export function createGroupWorkspace(ctx) {
     if (![...series.values()].some((f) => f.metric === "revenue"))
       series.set("no-revenue", { metric: "revenue" });
     [...series.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
+      .sort(
+        ([a, f], [b, g]) =>
+          f.metric.localeCompare(g.metric) || a.localeCompare(b),
+      )
       .forEach(([key, f], index) => {
         const name = f.metric === "downloads" ? "下载量" : "收入";
         const label = key.startsWith("no-")
@@ -649,21 +632,163 @@ export function createGroupWorkspace(ctx) {
           : `${name} · ${f.is_estimate ? "估算" : "实际"}${f.currency ? " " + f.currency : ""}`;
         const fact = (r) =>
           (r.metrics || []).find((item) => metricKey(item) === key);
-        add("fact" + index, label, "metrics", (r) =>
-          fact(r) ? esc(decimalText(fact(r).value)) : "—",
-        );
-        if (!key.startsWith("no-"))
-          add("days" + index, label + "天数", "metrics", (r) =>
-            number(fact(r)?.days),
+        add("fact" + index, label, name, (r) => {
+          const item = fact(r);
+          if (!item) return "—";
+          const change = item.change_pct;
+          const growth =
+            change == null
+              ? ""
+              : `<small class="member-growth" data-up="${change >= 0}" title="较上一等长期间">${change >= 0 ? "+" : ""}${change.toFixed(1)}%</small>`;
+          const mix = item.market_mix || [];
+          const regionLabel = mix
+            .map(
+              (part) => `${countryName(part.country)} ${part.pct.toFixed(1)}%`,
+            )
+            .join(" · ");
+          const bar = mix.length
+            ? `<span class="member-market-mix" role="img" aria-label="${esc("已收录市场占比 " + regionLabel)}" title="${esc("已收录市场占比 " + regionLabel)}">${mix.map((part) => `<i style="flex-grow:${Number(part.pct)};--mix-index:${part.country.charCodeAt(0) * 26 + part.country.charCodeAt(1)}"></i>`).join("")}</span>`
+            : "";
+          const value =
+            Math.abs(Number(item.value)) >= 10000
+              ? compactCount(item.value)
+              : decimalText(item.value);
+          const local = mix.find((part) => part.country === r.country);
+          const share =
+            local && mix.length > 1
+              ? `<small class="member-share">${esc(countryName(r.country))} ${local.pct.toFixed(1)}%</small>`
+              : "";
+          return `<span title="${esc(label)} · ${esc(decimalText(item.value))} · ${num(item.days)} 天">${esc(value)}</span>${growth}${bar}${share}`;
+        });
+        if (name === "下载量" && index === 0)
+          add("installs", "累计安装下限", name, (r) =>
+            r.installs == null
+              ? "—"
+              : `<span title="全球累计安装下限">${num(r.installs)}+</span>`,
           );
       });
-    const attrs = (c) =>
-      `data-col="${c.key}" data-section="${c.section}"${columnView === "all" || c.section === "base" || c.section === columnView ? "" : " hidden"}`;
-    const headings = columns
-      .map(
-        (c) =>
-          `<th scope="col" ${attrs(c)}>${c.key === "select" ? (writable && data.items.length ? '<input type="checkbox" id="group-select-page" aria-label="选择本页全部应用">' : "") : esc(c.label)}</th>`,
-      )
+    add("rating", "评分", "评分", (r) =>
+      r.rating == null
+        ? "—"
+        : `<span class="member-score">${Number(r.rating).toFixed(2)}</span>`,
+    );
+    add("ratings", "评分数", "评分", (r) => number(r.ratings));
+    add(
+      "yesterday_reviews",
+      "昨日新增评论",
+      "评分",
+      (r) =>
+        `<span title="已采集且发表于昨日 UTC 的评论">${number(r.yesterday_reviews)}</span>`,
+    );
+    const wordLabel = (items) =>
+      (items || [])
+        .map((item) => `${item.keyword} #${item.position}`)
+        .join(" · ");
+    add(
+      "keywords",
+      "关键词覆盖",
+      "关键词",
+      (r) =>
+        `<span title="${esc(wordLabel(r.top_keywords))}">${number(r.keyword_count)}</span>`,
+    );
+    add(
+      "top3_count",
+      "TOP3 关键词",
+      "关键词",
+      (r) =>
+        `<span title="${esc(wordLabel(r.top_keywords?.filter((item) => item.position <= 3)) || "有效样本中排名前三的关键词数")}">${number(r.keyword_top3_count)}</span>`,
+    );
+    const boardKey = (store, collection, category) =>
+      JSON.stringify([category ? store : "", collection, category || ""]);
+    const boards = new Map(
+      ["top-free", "top-paid", "top-grossing"].map((id) => [
+        boardKey("", id, ""),
+        chartName("google", id),
+      ]),
+    );
+    const positions = new Map();
+    for (const row of data.items) {
+      const ranks = new Map();
+      positions.set(row.id, ranks);
+      for (const chart of row.chart_positions || []) {
+        const key = boardKey(row.store, chart.collection, chart.category);
+        const label = chartName(row.store, chart.collection);
+        boards.set(
+          key,
+          chart.category
+            ? `${categoryName(row.store, chart.category)} · ${label}`
+            : label,
+        );
+        ranks.set(key, chart);
+      }
+    }
+    [...boards].forEach(([key, label], index) =>
+      add("chart" + index, label, "榜单", (r) => {
+        const item = positions.get(r.id).get(key);
+        if (!item?.sampled) return '<span title="暂无有效榜单采样">—</span>';
+        return item.position == null
+          ? "<small>未入榜</small>"
+          : `<b class="member-rank">#${num(item.position)}</b>`;
+      }),
+    );
+    add("app_id", "App ID", "商店资料", (r) => esc(r.app_id));
+    add("price", "价格", "商店资料", (r) =>
+      r.price == null
+        ? "—"
+        : Number(r.price) === 0
+          ? "免费"
+          : esc(decimalText(r.price) + " " + (r.currency || "")),
+    );
+    add("languages", "支持语言", "商店资料", (r) =>
+      Array.isArray(r.languages)
+        ? `<span title="${esc(r.languages.join(" / "))}">${num(r.languages.length)}</span>`
+        : "—",
+    );
+    add("iap", "内购", "商店资料", (r) =>
+      r.has_iap == null ? "—" : r.has_iap ? "有" : "无",
+    );
+    add("version", "版本", "商店资料", (r) => esc(r.version || "—"));
+    add("updated", "商店更新", "商店资料", (r) =>
+      r.updated
+        ? esc(
+            typeof r.updated === "number"
+              ? stamp(r.updated)
+              : String(r.updated).slice(0, 10),
+          )
+        : "—",
+    );
+    if (writable)
+      add(
+        "action",
+        "操作",
+        "",
+        () =>
+          '<button type="button" class="link" data-adjust-row>调整</button>',
+      );
+    const attrs = (c) => `data-col="${c.key}"`;
+    const families = [];
+    for (const col of columns) {
+      const last = families.at(-1);
+      if (col.section && last?.name === col.section) last.cols.push(col);
+      else families.push({ name: col.section, cols: [col] });
+    }
+    const headings = families
+      .map(({ name, cols }) => {
+        if (name)
+          return `<th scope="colgroup" colspan="${cols.length}">${esc(name)}</th>`;
+        const c = cols[0];
+        const title =
+          c.key === "select"
+            ? data.items.length
+              ? '<input type="checkbox" id="group-select-page" aria-label="选择本页全部应用">'
+              : ""
+            : esc(c.label);
+        return `<th scope="col" rowspan="2" ${attrs(c)}>${title}</th>`;
+      })
+      .join("");
+    const subheads = columns
+      .filter((c) => c.section)
+      .map((c) => `<th scope="col" ${attrs(c)}>${esc(c.label)}</th>`)
       .join("");
     const rows = data.items
       .map(
@@ -671,43 +796,11 @@ export function createGroupWorkspace(ctx) {
           `<tr data-member-row="${r.id}">${columns.map((c) => `<td ${attrs(c)}>${c.cell(r)}</td>`).join("")}</tr>`,
       )
       .join("");
-    return `<div class="group-table-tools"><div class="member-column-views" aria-label="显示字段">${Object.entries(
-      {
-        all: "全部字段",
-        status: "状态",
-        permissions: "权限",
-        metrics: "排名与经营",
-      },
-    )
-      .map(
-        ([key, label]) =>
-          `<button type="button" class="secondary small" data-column-view="${key}" aria-pressed="${columnView === key}">${label}</button>`,
-      )
-      .join(
-        "",
-      )}</div><div class="actions"><span id="group-selection-count" aria-live="polite"></span>${writable ? '<button id="group-import-metrics" class="secondary small">导入指标</button><button id="group-remove" class="secondary small" disabled>移出本组</button>' : ""}</div></div><div class="member-permission-key">商店声明权限　<span>✓ 已声明</span>　× 未声明　— 暂无数据 / 不适用</div><div class="group-member-scroll" role="region" aria-label="应用全指标明细" tabindex="0"><table class="group-member-table"><thead><tr>${headings}</tr></thead><tbody>${rows || `<tr><td colspan="${columns.length}" class="empty">没有匹配的应用</td></tr>`}</tbody></table></div><div class="group-table-footer"><span>共 ${num(data.total)} 条 · ${data.total ? data.offset + 1 : 0}–${data.offset + data.items.length}</span><div class="actions"><button id="group-prev" class="secondary small" ${offset === 0 ? "disabled" : ""}>上一页</button><button id="group-next" class="secondary small" ${data.has_more ? "" : "disabled"}>下一页</button></div></div>`;
+    return `<div class="group-table-tools"><span class="member-permission-key">✓ 已声明　× 未声明　— 暂无数据或不适用</span><div class="actions"><span id="group-selection-count" aria-live="polite"></span>${writable ? '<button id="group-import-metrics" class="secondary small">导入指标</button><button id="group-remove" class="secondary small" disabled>移出本组</button>' : ""}</div></div><div class="group-member-scroll" role="region" aria-label="应用全指标明细" tabindex="0"><table class="group-member-table"><thead><tr>${headings}</tr><tr>${subheads}</tr></thead><tbody>${rows || `<tr><td colspan="${columns.length}" class="empty">没有匹配的应用</td></tr>`}</tbody></table></div><div class="group-table-footer"><span>共 ${num(data.total)} 条 · ${data.total ? data.offset + 1 : 0}–${data.offset + data.items.length}</span><div class="actions"><button id="group-prev" class="secondary small" ${offset === 0 ? "disabled" : ""}>上一页</button><button id="group-next" class="secondary small" ${data.has_more ? "" : "disabled"}>下一页</button></div></div>`;
   }
   function bindMemberGrid(host, data) {
     const grid = host.querySelector(".group-member-table");
     if (!grid) return;
-    host.querySelectorAll("[data-column-view]").forEach(
-      (button) =>
-        (button.onclick = () => {
-          columnView = button.dataset.columnView;
-          host
-            .querySelectorAll("[data-column-view]")
-            .forEach((b) =>
-              b.setAttribute("aria-pressed", String(b === button)),
-            );
-          grid.querySelectorAll("[data-section]").forEach((cell) => {
-            cell.hidden =
-              columnView !== "all" &&
-              cell.dataset.section !== "base" &&
-              cell.dataset.section !== columnView;
-          });
-          host.querySelector(".group-member-scroll").scrollLeft = 0;
-        }),
-    );
     grid.querySelectorAll("[data-adjust-row]").forEach(
       (button) =>
         (button.onclick = () => {

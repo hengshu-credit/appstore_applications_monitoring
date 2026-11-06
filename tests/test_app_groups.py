@@ -35,6 +35,70 @@ class GroupRulesTest(unittest.TestCase):
 
 
 class GroupDashboardTest(MySQLTestCase):
+    def test_yesterday_reviews_count_publication_date_in_the_member_market(self):
+        from datetime import timedelta
+        from appmon.intelligence import add_observation_target
+        owner = self.seed()
+        midnight = datetime.now(timezone.utc).replace(hour=0,minute=0,second=0,microsecond=0)
+        target = dict(store='google',app_id='com.loan.example',country='th',language='en',kind='reviews')
+        identifier = add_observation_target(self.db,target)['id']
+        run = self.db.execute('''INSERT INTO observation_runs(target_id,observed_at,outcome,source,parser_version,coverage,returned_count)
+            VALUES(%s,%s,'ok','test','v1','recent_reviews_bounded',3)''',(identifier,midnight.timestamp()+1)).lastrowid
+        self.db.execute('UPDATE observation_targets SET latest_success_id=%s WHERE id=%s',(run,identifier))
+        for i,hours in enumerate((-25,-1,1)):
+            local = (midnight+timedelta(hours=hours)).astimezone(timezone(timedelta(hours=8)))
+            self.db.execute('''INSERT INTO reviews(store,app_id,country,language,review_id,rating,content,published_at,first_seen,last_seen,payload)
+                VALUES('google','com.loan.example','th','en',%s,5,'review',%s,0,0,'{}')''',(str(i),local.isoformat()))
+        data=groups.dashboard(self.db,self.cfg,owner['id'],store='google')['items']
+        self.assertEqual({r['country']:r['yesterday_reviews'] for r in data},{'th':1,'vn':None})
+        self.db.execute('DELETE FROM reviews')
+        self.assertEqual(groups.dashboard(self.db,self.cfg,owner['id'],store='google',country='th')['items'][0]['yesterday_reviews'],0)
+
+    def test_row_period_changes_use_complete_comparable_days_and_group_market_shares(self):
+        from datetime import timedelta
+        owner = self.seed()
+        day = datetime.now(timezone.utc).date()
+        for country, values in [('th',(50,100)),('vn',(0,300))]:
+            for date, value in zip((day-timedelta(days=1),day),values):
+                self.db.execute("INSERT INTO app_metric_facts VALUES('google','com.loan.example',%s,%s,'downloads',0,%s,'',0)",(country,date,value))
+        rows=groups.dashboard(self.db,self.cfg,owner['id'],store='google',country='th',days=1)['items']
+        fact=rows[0]['metrics'][0]
+        self.assertEqual(fact['change_pct'],100)
+        self.assertEqual(fact['market_mix'],[{'country':'th','pct':25},{'country':'vn','pct':75}])
+        seven=groups.dashboard(self.db,self.cfg,owner['id'],store='google',days=7)['items']
+        self.assertTrue(all(r['metrics'][0]['change_pct'] is None for r in seven))
+
+    def test_one_page_returns_identity_top_words_and_individual_chart_positions(self):
+        from appmon.keywords import add_targets
+        from appmon.intelligence import add_observation_target
+        owner = self.seed()
+        market = dict(store='google', country='th', language='en')
+        now = time.time()
+        self.db.execute('''INSERT INTO listings(store,app_id,country,language,state,checked_at,payload)
+            VALUES('google','com.loan.example','th','en','available',%s,%s)''',
+            (now, dump({'developer':'Loan Studio','icon':'https://example.org/icon.png'})))
+        for word, pos, age in [('loan',2,0),('budget',2,0),('cash',5,0),('pay',9,0),('old',1,90000)]:
+            target = add_targets(self.db,[market|{'keyword':word}])['ids'][0]
+            run = self.db.execute('''INSERT INTO keyword_runs(target_id,observed_at,outcome,source,parser_version,requested_depth,returned_count,coverage)
+                VALUES(%s,%s,'ok','google','v1',50,20,'first_response')''',(target,now-age)).lastrowid
+            self.db.execute("INSERT INTO keyword_ranks VALUES(%s,'com.loan.example',%s,'Loan')",(run,pos))
+            self.db.execute('UPDATE keyword_targets SET latest_success_id=%s WHERE id=%s',(run,target))
+        for board,category,pos,age in [('top-free','',12,0),('top-free','FINANCE',4,0),('top-paid','',None,0),('top-grossing','',1,90000)]:
+            target = add_observation_target(self.db,market|dict(kind='chart',collection=board,category=category))['id']
+            run = self.db.execute('''INSERT INTO observation_runs(target_id,observed_at,outcome,source,parser_version,coverage,returned_count)
+                VALUES(%s,%s,'ok','google','v1','returned_chart_range',20)''',(target,now-age)).lastrowid
+            if pos:
+                self.db.execute("INSERT INTO observation_items VALUES(%s,'com.loan.example',%s,'{}')",(run,pos))
+            self.db.execute('UPDATE observation_targets SET latest_success_id=%s WHERE id=%s',(run,target))
+        rows=groups.dashboard(self.db,self.cfg,owner['id'],store='google')['items']
+        th=next(r for r in rows if r['country']=='th');vn=next(r for r in rows if r['country']=='vn')
+        self.assertEqual((th['developer'],th['icon']),('Loan Studio','https://example.org/icon.png'))
+        self.assertEqual((th['keyword_count'],th['keyword_top3_count']),(4,2))
+        self.assertEqual([(r['keyword'],r['position']) for r in th['top_keywords']],[('budget',2),('loan',2),('cash',5)])
+        boards={(r['collection'],r['category']):(r['sampled'],r['position']) for r in th['chart_positions']}
+        self.assertEqual(boards,{('top-free',''):(True,12),('top-free','FINANCE'):(True,4),('top-paid',''):(True,None),('top-grossing',''):(False,None)})
+        self.assertEqual((vn['keyword_count'],vn['top_keywords'],vn['chart_positions']),(None,[],[]))
+
     def test_auto_repair_only_enqueues_missing_jobs_for_enabled_members(self):
         self.seed()
         self.db.execute("UPDATE watchlist SET enabled=0 WHERE country='vn'")

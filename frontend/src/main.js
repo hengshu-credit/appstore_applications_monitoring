@@ -225,10 +225,15 @@ function move(value) {
     ? "—"
     : `<span class="${value > 0 ? "up" : value < 0 ? "down" : ""}">${value > 0 ? "↑ " + value : value < 0 ? "↓ " + Math.abs(value) : "持平"}</span>`;
 }
+function appIconMarkup(store, id, name, imageURL, country, language) {
+  const m = market(store),
+    lang = language || m.language;
+  return `<span class="appicon-wrap" data-icon-store="${esc(store)}" data-icon-app="${esc(id)}" data-icon-country="${esc(country || m.country)}" data-icon-language="${esc(lang)}" data-icon-source="${esc(imageURL || "")}" data-icon-name="${esc(name || id)}"><img class="appicon" alt="" hidden><span class="appicon appicon-placeholder">${storeLogo(store)}</span><button type="button" class="appicon-refresh link" data-icon-refresh aria-label="补采图标">${icon("refresh")}</button></span>`;
+}
 function appLink(store, id, name, imageURL, country, language) {
   const m = market(store),
     lang = language || m.language;
-  return `<div class="appcell"><span class="appicon-wrap" data-icon-store="${esc(store)}" data-icon-app="${esc(id)}" data-icon-country="${esc(country || m.country)}" data-icon-language="${esc(lang)}" data-icon-source="${esc(imageURL || "")}" data-icon-name="${esc(name || id)}"><img class="appicon" alt="" hidden><span class="appicon appicon-placeholder">${storeLogo(store)}</span><button type="button" class="appicon-refresh link" data-icon-refresh aria-label="补采图标">${icon("refresh")}</button></span><div><button class="link appname" title="${esc(name || id)}" data-app="${esc(id)}" data-store="${esc(store)}" data-country="${esc(country || m.country)}" data-language="${esc(lang)}">${esc(name || id)}</button><div class="appid">${market().store === "all" ? `<span class="store-scope-badge">${storeLogo(store)} ${store === "apple" ? "App Store" : "Google Play"}</span> · ` : ""}${esc(id)}</div></div></div>`;
+  return `<div class="appcell">${appIconMarkup(store, id, name, imageURL, country, language)}<div><button class="link appname" title="${esc(name || id)}" data-app="${esc(id)}" data-store="${esc(store)}" data-country="${esc(country || m.country)}" data-language="${esc(lang)}">${esc(name || id)}</button><div class="appid">${market().store === "all" ? `<span class="store-scope-badge">${storeLogo(store)} ${store === "apple" ? "App Store" : "Google Play"}</span> · ` : ""}${esc(id)}</div></div></div>`;
 }
 function field(label, name, value = "", type = "text", extra = "") {
   return `<label>${label}<input name="${name}" value="${esc(value)}" type="${type}" ${extra}></label>`;
@@ -371,6 +376,11 @@ const appInsights = createAppInsights({
 });
 bindMonitoringCharts();
 const groupWorkspace = createGroupWorkspace({
+  appIconMarkup,
+  categoryName: (store, category) => selectors.categoryName(store, category),
+  chartName: (store, collection) =>
+    selectors.chartDefinitions(store).find((chart) => chart.id === collection)
+      ?.name || collection,
   api,
   esc,
   qs,
