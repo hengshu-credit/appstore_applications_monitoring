@@ -117,7 +117,12 @@ def add_members(db, identifier, value):
 def remove_members(db, identifier, value):
     group(db,identifier);ids=value.get('ids')
     if not isinstance(ids,list) or not 1<=len(ids)<=10000 or any(type(v) is not int or v<=0 for v in ids):raise ValueError('请选择要移出的分组成员')
-    count=db.execute('DELETE FROM app_group_members WHERE group_id=%s AND id IN ('+','.join('%s' for _ in ids)+')',(identifier,*ids)).rowcount
+    placeholders=','.join('%s' for _ in ids)
+    with db:
+        owned=db.execute(f'SELECT id FROM app_group_members WHERE group_id=%s AND id IN ({placeholders}) FOR UPDATE',(identifier,*ids)).fetchall()
+        if owned:
+            db.execute('DELETE FROM app_group_adjustments WHERE member_id IN ('+','.join('%s' for _ in owned)+')',tuple(r['id'] for r in owned))
+        count=db.execute(f'DELETE FROM app_group_members WHERE group_id=%s AND id IN ({placeholders})',(identifier,*ids)).rowcount
     return dict(removed=count,note='仅移出本组，其他分组、采集任务及历史记录保留')
 
 
@@ -162,6 +167,70 @@ def _number(value):
     except (ValueError,TypeError):return None
 
 
+def resolve_state(observed, reference, override=None):
+    """Derive a group display decision while keeping its evidence and origin separate."""
+    if override:
+        return override, 'adjustment'
+    if observed in ('available', 'region_unavailable'):
+        return observed, 'store'
+    if observed == 'suspected_missing':
+        if reference == 'off':
+            return 'region_unavailable', 'corroborated'
+        return 'suspected_missing', 'store'
+    if reference in ('on', 'off'):
+        return ('available' if reference == 'on' else 'region_unavailable'), 'reference'
+    return 'unverified', 'unknown'
+
+
+def ensure_verification_jobs(db):
+    """Repair missing jobs for active group watches without resetting due dates or leases."""
+    now = time.time()
+    with db:
+        db.execute("INSERT INTO schedules VALUES('group-job-repair',0) ON DUPLICATE KEY UPDATE name=schedules.name")
+        scheduled = db.execute("SELECT next_at FROM schedules WHERE name='group-job-repair' FOR UPDATE").fetchone()
+        if scheduled['next_at'] > now:
+            return 0
+        added = db.execute('''INSERT INTO jobs(store,app_id,country,language)
+            SELECT w.store,w.app_id,w.country,w.language FROM watchlist w LEFT JOIN jobs j USING(store,app_id,country,language)
+            WHERE w.enabled=1 AND j.app_id IS NULL AND EXISTS (SELECT 1 FROM app_group_members m WHERE
+                m.store=w.store AND m.app_id=w.app_id AND m.country=w.country AND m.language=w.language)
+            ON DUPLICATE KEY UPDATE app_id=jobs.app_id''').rowcount
+        db.execute("UPDATE schedules SET next_at=%s WHERE name='group-job-repair'", (now + 3600,))
+    return added
+
+
+def adjust_member(db, identifier, member_id, value, actor):
+    status = value.get('status_override')
+    permissions = value.get('permission_overrides')
+    revision = value.get('revision')
+    if 'status_override' not in value or status not in (None, 'available', 'region_unavailable'):
+        raise ValueError('分组状态无效')
+    if type(revision) is not int or revision < 0:
+        raise ValueError('版本无效')
+    if not isinstance(permissions, dict) or len(permissions) > 64:
+        raise ValueError('权限修正无效')
+    for category, declared in permissions.items():
+        if not isinstance(category, str) or not category.strip() or len(category) > 128 or not category.isprintable():
+            raise ValueError('权限类别无效')
+        if type(declared) is not bool:
+            raise ValueError('权限修正须为布尔值')
+    with db:
+        member = db.execute('SELECT store FROM app_group_members WHERE group_id=%s AND id=%s FOR UPDATE',
+                            (identifier, member_id)).fetchone()
+        if not member:
+            raise ValueError('该应用不在当前分组')
+        if member['store'] != 'google' and permissions:
+            raise ValueError('只支持调整 Google Play 声明权限')
+        old = db.execute('SELECT revision FROM app_group_adjustments WHERE member_id=%s', (member_id,)).fetchone()
+        if revision != (old['revision'] if old else 0):
+            raise ValueError('此行已更新，请刷新后再调整')
+        db.execute('''INSERT INTO app_group_adjustments(member_id,status_override,permission_overrides,revision,updated_by,updated_at)
+            VALUES(%s,%s,%s,%s,%s,%s) AS incoming ON DUPLICATE KEY UPDATE status_override=incoming.status_override,
+            permission_overrides=incoming.permission_overrides,revision=incoming.revision,updated_by=incoming.updated_by,updated_at=incoming.updated_at''',
+            (member_id, status, dump(permissions), revision + 1, actor, time.time()))
+    return {'revision': revision + 1}
+
+
 def member_rows(db, identifier, store='all'):
     where,args=_scope(identifier,store)
     rows=db.execute('''SELECT m.*,a.name,w.enabled,w.refresh_hours,l.state,l.checked_at,l.last_success,
@@ -172,18 +241,22 @@ def member_rows(db, identifier, store='all'):
         JSON_UNQUOTE(JSON_EXTRACT(l.payload,'$.version')) version,
         p.id permission_id,p.enabled permission_enabled,p.refresh_hours permission_refresh_hours,
         p.success_at permission_success,p.checked_at permission_checked,p.permission_count,p.failures permission_failures,p.lease_until permission_lease,
-        p.last_error permission_error,JSON_KEYS(p.payload) permission_groups,ref.state reference_state,ref.observed_text reference_time
+        p.last_error permission_error,JSON_KEYS(p.payload) permission_groups,ref.state reference_state,ref.observed_text reference_time,
+        adj.status_override,adj.permission_overrides,COALESCE(adj.revision,0) adjustment_revision,adj.updated_by,adj.updated_at adjustment_time
         FROM app_group_members m LEFT JOIN apps a USING(store,app_id)
         LEFT JOIN watchlist w USING(store,app_id,country,language)
         LEFT JOIN listings l USING(store,app_id,country,language)
         LEFT JOIN jobs j USING(store,app_id,country,language)
         LEFT JOIN app_permission_targets p ON p.store=m.store AND p.app_id=m.app_id AND p.country=m.country
         LEFT JOIN app_reference_states ref ON ref.store=m.store AND ref.app_id=m.app_id AND ref.country=m.country AND ref.language=m.language
+        LEFT JOIN app_group_adjustments adj ON adj.member_id=m.id
         WHERE '''+where+' ORDER BY m.country,m.store,m.app_id,m.language',args).fetchall()
     for r in rows:
         for key in ('rating','ratings','installs'):r[key]=_number(r[key])
         r['permission_groups']=json.loads(r['permission_groups']) if r['permission_groups'] else []
         r['state']=r['state'] or 'unverified'
+        r['classification'],r['classification_source']=resolve_state(r['state'],r['reference_state'],r['status_override'])
+        r['permission_overrides']=json.loads(r['permission_overrides'] or '{}')
         r['permission_state']=app_permissions.state(r)
         r['details_state']=('not_scheduled' if r['enabled'] is None or r['due'] is None else 'paused' if not r['enabled']
             else 'running' if r['lease_until']>time.time() else 'retry' if r['failures'] else 'scheduled' if r['due']>time.time() else 'pending')
@@ -244,19 +317,22 @@ def fact_summaries(db, identifier, days, store='all', country='', member_ids=Non
     return rows
 
 
-def dashboard(db, cfg, identifier, store='all', country='', state='', q='', days=30, offset=0, limit=50):
+def dashboard(db, cfg, identifier, store='all', country='', state='', q='', days=30, offset=0, limit=50, classification=''):
     owner=group(db,identifier)
     if type(days) is not int or not 1<=days<=365 or type(offset) is not int or not 0<=offset<=1000000 or not 1<=limit<=200:raise ValueError('观察期间或分页参数无效')
     if len(q)>255 or state not in ('','available','suspected_missing','region_unavailable','unverified','error'):raise ValueError('筛选参数无效')
+    if classification not in ('','available','suspected_missing','region_unavailable','unverified'):raise ValueError('分组状态无效')
     country=country.lower();where,args=_scope(identifier,store,country)
     all_rows=member_rows(db,identifier,store)
     countries={}
     for row in all_rows:
-        c=countries.setdefault(row['country'],dict(country=row['country'],apps=set(),targets=0,states=Counter(),reference=Counter()))
+        c=countries.setdefault(row['country'],dict(country=row['country'],apps=set(),targets=0,states=Counter(),classifications=Counter(),reference=Counter()))
+        c['classifications'][row['classification']]+=1
         c['apps'].add((row['store'],row['app_id']));c['targets']+=1;c['states'][row['state']]+=1
         if row['reference_state']:c['reference'][row['reference_state']]+=1
     countries=[c|{'apps':len(c['apps']),'states':dict(c['states']),'reference':dict(c['reference'])} for c in countries.values()]
     rows=[r for r in all_rows if (not country or r['country']==country) and
+          (not classification or r['classification']==classification) and
           (not state or (bool(r['failures']) if state=='error' else r['state']==state)) and
           (not q or q.casefold() in (r['app_id']+' '+(r['name'] or '')).casefold())]
     keywords,charts,keyword_samples,chart_samples=rankings(db,identifier,store,country)
@@ -278,7 +354,7 @@ def dashboard(db, cfg, identifier, store='all', country='', state='', q='', days
     from .collection_limits import settings
     rate=db.execute("SELECT MAX(next_at) at FROM schedules WHERE name IN ('rate:global','rate:google','rate:apple')").fetchone()['at']
     statistics=dict(apps=len({(r['store'],r['app_id']) for r in rows}),targets=len(rows),countries=len({r['country'] for r in rows}),
-        states=dict(Counter(r['state'] for r in rows)),new_members=sum(r['added_at']>=since for r in rows),
+        states=dict(Counter(r['state'] for r in rows)),classifications=dict(Counter(r['classification'] for r in rows)),new_members=sum(r['added_at']>=since for r in rows),
         fresh=sum(bool(r['last_success'] and r['last_success']>=time.time()-48*3600) for r in rows),errors=sum(bool(r['failures']) for r in rows),
         permission_states=dict(Counter(r['permission_state'] for r in rows)),permissions_known=sum(r['permission_success'] is not None for r in rows),ratings_known=sum(r['rating'] is not None for r in rows),
         keyword_apps=sum(bool(r['keyword_count']) for r in rows),chart_apps=sum(bool(r['chart_count']) for r in rows))
@@ -287,7 +363,8 @@ def dashboard(db, cfg, identifier, store='all', country='', state='', q='', days
         WHERE e.observed_at>=%s AND e.kind IN ('first_verified','reappeared','region_unavailable')
         AND EXISTS (SELECT 1 FROM app_group_members m WHERE '''+where+''' AND m.store=e.store AND m.app_id=e.app_id AND m.country=e.country AND m.language=e.language)
         GROUP BY e.kind''',(since,*args)).fetchall()
-    return dict(group=owner,stats=statistics,countries=countries,events=events,event_counts={r['kind']:r['count'] for r in event_counts},
+    permission_categories = sorted({name for row in all_rows for name in (*row['permission_groups'], *row['permission_overrides'])})
+    return dict(group=owner,permission_categories=permission_categories,stats=statistics,countries=countries,events=events,event_counts={r['kind']:r['count'] for r in event_counts},
         scope_targets=sum(not country or r['country']==country for r in all_rows),
         money=fact_summaries(db,identifier,days,store,country),items=page,total=len(rows),offset=offset,limit=limit,has_more=offset+limit<len(rows),
         collection=dict(paused=settings(db,cfg)['paused'],cooldown_seconds=max(0,int((rate or 0)-time.time()))),
@@ -320,6 +397,9 @@ def member_detail(db, identifier, member_id, days=30):
     for row in snapshots:row['payload']=json.loads(row['payload'])
     events=db.execute('SELECT id,kind,observed_at,changes FROM events WHERE store=%s AND app_id=%s AND country=%s AND language=%s AND observed_at>=%s ORDER BY id DESC LIMIT 100',(*key,since)).fetchall()
     references=db.execute('SELECT state,observed_text FROM app_reference_states WHERE store=%s AND app_id=%s AND country=%s AND language=%s',key).fetchone()
+    adjustment=db.execute('SELECT status_override,permission_overrides,updated_by,updated_at FROM app_group_adjustments WHERE member_id=%s',(member_id,)).fetchone() or {}
+    adjustment['permission_overrides'] = json.loads(adjustment.get('permission_overrides') or '{}')
+    classification,source=resolve_state((listing or {}).get('state'),(references or {}).get('state'),adjustment.get('status_override'))
     permissions_history=[] if not permission else db.execute('SELECT observed_at,outcome,error FROM app_permission_runs WHERE target_id=%s ORDER BY id DESC LIMIT 30',(permission['id'],)).fetchall()
     reports=db.execute('SELECT id,observed_at,imported_at,summary FROM keyword_reports WHERE store=%s AND app_id=%s AND country=%s AND language=%s ORDER BY observed_at DESC LIMIT 100',key).fetchall()
     for report in reports:
@@ -327,7 +407,7 @@ def member_detail(db, identifier, member_id, days=30):
     markets=db.execute('''SELECT m.id,m.country,m.language,l.state,l.last_success FROM app_group_members m
         LEFT JOIN listings l USING(store,app_id,country,language)
         WHERE m.group_id=%s AND m.store=%s AND m.app_id=%s ORDER BY m.country,m.language''',(identifier,member['store'],member['app_id'])).fetchall()
-    return dict(member=member,listing=listing,job=job,watch=watch,permission=permission,permission_state=app_permissions.state(permission or {'store':member['store']}),permission_history=permissions_history,
+    return dict(member=member,classification=classification,classification_source=source,adjustment=adjustment,listing=listing,job=job,watch=watch,permission=permission,permission_state=app_permissions.state(permission or {'store':member['store']}),permission_history=permissions_history,
                 keywords=keyword,charts=chart,snapshots=snapshots,events=events,reference=references,reports=reports,markets=markets,
                 metrics=facts(db,identifier,days,member['store'],member['country'],member['app_id']),
                 reviews=db.execute('SELECT rating,title,content,published_at FROM reviews WHERE store=%s AND app_id=%s AND country=%s AND language=%s ORDER BY last_seen DESC LIMIT 50',key).fetchall())

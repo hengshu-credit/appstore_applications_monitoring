@@ -192,8 +192,12 @@ def create_app(cfg):
     def remove_group_members(identifier:int,value:dict=Body(...),db=DB):return app_groups.remove_members(db,identifier,value)
 
     @api.get('/groups/{identifier}/dashboard')
-    def group_dashboard(identifier:int,store:str='all',country:str='',state:str='',q:str='',days:int=30,offset:int=0,limit:int=50,db=DB):
-        return app_groups.dashboard(db,cfg,identifier,store,country,state,q,days,offset,limit)
+    def group_dashboard(identifier:int,store:str='all',country:str='',state:str='',q:str='',days:int=30,offset:int=0,limit:int=50,classification:str='',db=DB):
+        return app_groups.dashboard(db,cfg,identifier,store,country,state,q,days,offset,limit,classification)
+
+    @api.put('/groups/{identifier}/members/{member_id}/adjustment')
+    def adjust_group_member(identifier:int,member_id:int,request:Request,value:dict=Body(...),db=DB):
+        return app_groups.adjust_member(db,identifier,member_id,value,request.state.user['username'])
 
     @api.get('/groups/{identifier}/members/{member_id}')
     def group_member(identifier:int,member_id:int,days:int=30,db=DB):return app_groups.member_detail(db,identifier,member_id,days)

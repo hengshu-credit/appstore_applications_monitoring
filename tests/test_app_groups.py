@@ -35,6 +35,59 @@ class GroupRulesTest(unittest.TestCase):
 
 
 class GroupDashboardTest(MySQLTestCase):
+    def test_auto_repair_only_enqueues_missing_jobs_for_enabled_members(self):
+        self.seed()
+        self.db.execute("UPDATE watchlist SET enabled=0 WHERE country='vn'")
+        self.db.execute("DELETE FROM jobs WHERE store='google'")
+        self.db.execute("UPDATE jobs SET due=123456,token='owned',lease_until=777")
+        self.assertEqual(groups.ensure_verification_jobs(self.db),1)
+        self.assertEqual(groups.ensure_verification_jobs(self.db),0)
+        self.assertEqual(self.db.execute("SELECT count(*) n FROM jobs WHERE country='vn'").fetchone()['n'],0)
+        self.assertEqual(self.db.execute("SELECT due,token,lease_until FROM jobs WHERE store='apple'").fetchone(),{'due':123456,'token':'owned','lease_until':777})
+
+    def test_classification_uses_store_reference_and_scoped_reversible_adjustments(self):
+        owner=self.seed();gid=owner['id'];now=time.time()
+        common=dict(store='google',app_id='com.loan.example',language='en')
+        groups.import_references(self.db,[common|dict(country='th',source_status='off'),common|dict(country='vn',source_status='on')])
+        self.db.execute("INSERT INTO listings(store,app_id,country,language,state,checked_at,misses) VALUES('google','com.loan.example','th','en','suspected_missing',%s,1)",(now,))
+        self.db.execute('UPDATE watchlist SET enabled=0')
+        before=groups.dashboard(self.db,self.cfg,gid)
+        th=next(r for r in before['items'] if r['country']=='th' and r['store']=='google')
+        vn=next(r for r in before['items'] if r['country']=='vn')
+        self.assertEqual((th['classification'],th['classification_source'],th['state']),('region_unavailable','corroborated','suspected_missing'))
+        self.assertEqual((vn['classification'],vn['classification_source']),('available','reference'))
+        self.assertEqual(before['stats']['classifications'],{'region_unavailable':1,'unverified':1,'available':1})
+        second=groups.create(self.db,{'name':'另一组'});groups.add_members(self.db,second['id'],{'members':[common|{'country':'th'}]})
+        change=dict(revision=0,status_override='available',permission_overrides={'Camera':True,'SMS':False})
+        self.assertEqual(groups.adjust_member(self.db,gid,th['id'],change,'tester')['revision'],1)
+        with self.assertRaises(ValueError):groups.adjust_member(self.db,gid,th['id'],change,'tester')
+        with self.assertRaises(ValueError):groups.adjust_member(self.db,second['id'],th['id'],change,'tester')
+        filtered=groups.dashboard(self.db,self.cfg,gid,classification='available')
+        self.assertEqual(filtered['total'],2)
+        adjusted=next(r for r in filtered['items'] if r['id']==th['id'])
+        self.assertEqual((adjusted['classification_source'],adjusted['updated_by'],adjusted['permission_overrides']),('adjustment','tester',change['permission_overrides']))
+        self.assertEqual(groups.member_detail(self.db,gid,th['id'])['classification'],'available')
+        self.assertEqual(groups.dashboard(self.db,self.cfg,second['id'])['items'][0]['classification'],'region_unavailable')
+        self.assertEqual(self.db.execute('SELECT SUM(enabled) n FROM watchlist').fetchone()['n'],0)
+        groups.adjust_member(self.db,gid,th['id'],dict(revision=1,status_override=None,permission_overrides={}),'tester')
+        self.assertEqual(groups.member_detail(self.db,gid,th['id'])['classification_source'],'corroborated')
+        self.db.execute("UPDATE listings SET state='available'")
+        self.assertEqual(groups.member_detail(self.db,gid,th['id'])['classification_source'],'store')
+        groups.remove_members(self.db,gid,{'ids':[th['id']]})
+        self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM app_group_adjustments').fetchone()['n'],0)
+
+    def test_inline_adjustment_api_enforces_write_permission_and_store_support(self):
+        owner=self.seed();gid=owner['id'];apple=self.db.execute("SELECT id FROM app_group_members WHERE store='apple'").fetchone()['id']
+        url=f'/api/groups/{gid}/members/{apple}/adjustment'
+        change=dict(revision=0,status_override='available',permission_overrides={})
+        api=TestClient(create_app(self.cfg));self.login_admin(api)
+        self.assertEqual(api.put(url,json=change|{'permission_overrides':{'SMS':True}}).status_code,400)
+        self.assertEqual(api.put(url,json=change).status_code,200)
+        self.assertEqual(api.get(f'/api/groups/{gid}/dashboard?classification=available').json()['total'],1)
+        reader=TestClient(create_app(self.cfg));reader.post('/api/auth/register',json={'username':'status-reader','password':'password-123'})
+        login=reader.post('/api/auth/login',json={'username':'status-reader','password':'password-123'});reader.headers['X-CSRF-Token']=login.json()['csrf_token']
+        self.assertEqual(reader.put(url,json=change|{'revision':1}).status_code,403)
+
     def seed(self):
         group=groups.create(self.db,dict(name='现金贷观察',description='跨国'))
         groups.add_members(self.db,group['id'],{'members':[

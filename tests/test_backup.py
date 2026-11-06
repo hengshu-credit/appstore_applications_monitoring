@@ -10,6 +10,27 @@ from test_monitor import MySQLTestCase
 
 
 class BackupTest(MySQLTestCase):
+    def test_restore_previous_format_initializes_empty_adjustment_table(self):
+        add_apps(self.db,[('google','com.legacy.app','Legacy',None)],'fixture')
+        current=self.folder/'current.zip';legacy=self.folder/'legacy.zip'
+        backup(self.cfg,current,Path(__file__).parents[1]/'config.toml')
+        filename='tables/app_group_adjustments.jsonl'
+        with zipfile.ZipFile(current) as original,zipfile.ZipFile(legacy,'w') as out:
+            manifest=verify(original);self.assertEqual(manifest['format'],2)
+            manifest['format']=1;del manifest['tables']['app_group_adjustments'];del manifest['files'][filename]
+            out.writestr('manifest.json',json.dumps(manifest))
+            for name in manifest['files']:out.writestr(name,original.read(name))
+        name='appmon_test_legacy_'+uuid.uuid4().hex
+        self.admin.execute(f'CREATE DATABASE `{name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin')
+        target=self.cfg|{'mysql':self.options|{'database':name},'data_dir':self.folder/'legacy-data'}
+        try:
+            self.assertTrue(restore(target,legacy)['restored']);db=Database(target['mysql'])
+            try:
+                self.assertEqual(db.execute('SELECT name FROM apps').fetchone()['name'],'Legacy')
+                self.assertEqual(db.execute('SELECT COUNT(*) n FROM app_group_adjustments').fetchone()['n'],0)
+            finally:db.close()
+        finally:self.admin.execute(f'DROP DATABASE `{name}`')
+
     def test_streamed_roundtrip_all_tables_assets_and_empty_destination_guard(self):
         add_apps(self.db,[('google','com.example.app','多语言 ไทย',None)],'fixture')
         secret=cipher(self.cfg,create=True).encrypt(b'{"email":"test@example.com","password":"fixture"}').decode()

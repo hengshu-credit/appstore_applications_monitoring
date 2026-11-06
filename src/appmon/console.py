@@ -13,6 +13,8 @@ log = logging.getLogger(__name__)
 
 def run_once(cfg, db, limit=5, include_icons=True):
     from .collection import work_plans
+    from .app_groups import ensure_verification_jobs
+    ensure_verification_jobs(db)
     plans = work_plans(db)
     result = {"plans": plans, "watchlist": work_watchlist(cfg, db, max(limit,cfg.get('apple_lookup_batch_size',50)),max_requests=limit),
               "observations": work_observations(cfg, db, limit),

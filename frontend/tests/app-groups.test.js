@@ -145,7 +145,7 @@ test("group dashboard drills through countries and keeps unknown observations se
     assert.ok(c.calls.some((r) => r.path.includes("country=th")));
     assert.match(
       c.doc.querySelector("#group-tab-content").textContent,
-      /未验证/,
+      /无商店记录/,
     );
     assert.match(
       c.doc.querySelector("#group-tab-content").textContent,
@@ -171,7 +171,10 @@ test("group dashboard drills through countries and keeps unknown observations se
     );
     c.doc.querySelector('[data-group-member="11"]').click();
     await tick();
-    assert.match(c.doc.querySelector("#group-dialog").textContent, /未验证/);
+    assert.match(
+      c.doc.querySelector("#group-dialog").textContent,
+      /无商店记录/,
+    );
     assert.ok(
       !c.doc.querySelector("#group-dialog").textContent.includes("NaN"),
     );
@@ -193,13 +196,13 @@ test("group overview separates unchecked targets and clears hidden list filters"
     const cards = [...c.doc.querySelectorAll(".group-kpis article")];
     assert.equal(
       cards
-        .find((e) => e.textContent.startsWith("尚未验证"))
+        .find((e) => e.textContent.startsWith("暂无依据"))
         .querySelector("strong").textContent,
       "3",
     );
     assert.equal(
       cards
-        .find((e) => e.textContent.startsWith("缺失待确认"))
+        .find((e) => e.textContent.startsWith("商店未检出"))
         .querySelector("strong").textContent,
       "0",
     );
@@ -290,7 +293,7 @@ test("country charts show observed status proportions and keep imported referenc
       bars.map((e) => Number(e.getAttribute("x"))),
       [0, 400, 700, 900],
     );
-    assert.match(card.getAttribute("aria-label"), /已验证在架 4/);
+    assert.match(card.getAttribute("aria-label"), /在架 4/);
     assert.ok(!card.textContent.includes("99"));
     assert.deepEqual(
       [...hint.querySelectorAll(".country-hint-row small")].map(
@@ -398,31 +401,44 @@ test("unified rows show permissions rankings money and ratings without mixing mi
     c.doc.querySelector('[data-group-tab="matrix"]').click();
     await tick();
     const row = c.doc.querySelector('[data-member-row="11"]');
-    assert.equal(row.querySelectorAll("td").length, 8);
-    assert.match(row.querySelector(".member-col-2").textContent, /尚未验证/);
-    assert.match(row.querySelector(".member-col-2").textContent, /参考不在架/);
-    assert.match(row.querySelector(".member-col-3").textContent, /已采集0 项/);
-    assert.match(row.querySelector(".member-col-3").textContent, /相机/);
-    assert.match(
-      row.querySelector(".member-col-4").textContent,
-      /关键词5命中最佳 #3/,
+    const cell = (key) => row.querySelector(`[data-col="${key}"]`);
+    const grid = c.doc.querySelector(".group-member-table");
+    assert.equal(
+      row.querySelectorAll("td").length,
+      grid.querySelectorAll("th").length,
     );
-    assert.match(
-      row.querySelector(".member-col-4").textContent,
-      /排行榜0命中最佳 —/,
+    assert.equal(cell("observed").textContent, "无商店记录");
+    assert.equal(cell("reference").textContent, "参考不在架");
+    assert.equal(cell("permission_state").textContent, "已采集");
+    assert.equal(cell("permission_count").textContent, "0");
+    assert.equal(
+      row.querySelector('[data-permission="Camera"]').textContent,
+      "✓",
     );
     assert.equal(
-      row.querySelector(".member-col-5 .member-fact strong").textContent,
-      "0",
+      row.querySelector('[data-permission="Location"]').textContent,
+      "×",
     );
-    assert.match(row.querySelector(".member-col-5").textContent, /全球/);
-    assert.deepEqual(
-      [...row.querySelectorAll(".member-col-6 .member-fact")].map(
-        (e) => e.textContent,
-      ),
-      ["123.45USD实际 · 已有 3 天数据", "9EUR估算 · 已有 1 天数据"],
-    );
-    assert.equal(row.querySelector(".member-rating b").textContent, "0");
+    assert.equal(cell("keywords").textContent, "5");
+    assert.equal(cell("keyword_best").textContent, "#3");
+    assert.equal(cell("charts").textContent, "0");
+    assert.equal(cell("chart_best").textContent, "—");
+    assert.equal(cell("rating").textContent, "0");
+    assert.equal(cell("ratings").textContent, "123");
+    assert.equal(cell("installs").textContent, "1,000+");
+    const valueFor = (label) => {
+      const head = [...grid.querySelectorAll("th")].find(
+        (th) => th.textContent === label,
+      );
+      return cell(head.dataset.col).textContent;
+    };
+    assert.equal(valueFor("下载量 · 实际"), "0");
+    assert.equal(valueFor("下载量 · 实际天数"), "3");
+    assert.equal(valueFor("收入 · 实际 USD"), "123.45");
+    assert.equal(valueFor("收入 · 实际 USD天数"), "3");
+    assert.equal(valueFor("收入 · 估算 EUR"), "9");
+    assert.equal(valueFor("收入 · 估算 EUR天数"), "1");
+    assert.equal(row.querySelector("br,details"), null);
     assert.equal(row.querySelector('img[src="x"]'), null);
     assert.equal(row.querySelector("script"), null);
     c.doc.querySelector("#group-select-page").click();
@@ -435,6 +451,98 @@ test("unified rows show permissions rankings money and ratings without mixing mi
     c.doc.querySelector("#group-import-metrics").click();
     assert.ok(c.doc.querySelector("#group-metrics"));
     assert.deepEqual(c.errors, []);
+  } finally {
+    await c.window.happyDOM.close();
+  }
+});
+
+test("inline corrections keep the market row and permission unknowns distinct and can return to automatic", async () => {
+  let override = null,
+    permissions = {},
+    revision = 0;
+  const c = setup((path, body) => {
+    if (path.endsWith("/adjustment")) {
+      override = body.status_override;
+      permissions = body.permission_overrides;
+      revision++;
+      return { revision };
+    }
+    if (path.includes("/dashboard?")) {
+      const data = dashboard();
+      data.items = [
+        {
+          ...member,
+          classification: override || "region_unavailable",
+          classification_source: override ? "adjustment" : "reference",
+          status_override: override,
+          permission_overrides: permissions,
+          adjustment_revision: revision,
+        },
+      ];
+      return data;
+    }
+  });
+  try {
+    await c.workspace.render(1);
+    c.doc.querySelector('[data-group-tab="matrix"]').click();
+    await tick();
+    const row = () => c.doc.querySelector('[data-member-row="11"]');
+    assert.equal(
+      row().querySelector('[data-col="source"]').textContent,
+      "导入记录",
+    );
+    assert.equal(
+      row().querySelector('[data-permission="Camera"]').textContent,
+      "—",
+    );
+    c.doc.querySelector('[data-column-view="permissions"]').click();
+    assert.equal(row().querySelector('[data-col="ratings"]').hidden, true);
+    assert.equal(row().querySelector('[data-col="perm0"]').hidden, false);
+    row().querySelector("[data-adjust-row]").click();
+    row().querySelector("[data-edit-status]").value = "available";
+    row().querySelector('[data-edit-permission="Camera"]').value = "true";
+    row().querySelector('[data-edit-permission="SMS"]').value = "false";
+    row().querySelector("[data-save-row]").click();
+    await tick();
+    assert.deepEqual(
+      c.calls.find((r) => r.path.endsWith("/adjustment")),
+      {
+        path: "/groups/1/members/11/adjustment",
+        method: "PUT",
+        body: {
+          revision: 0,
+          status_override: "available",
+          permission_overrides: { Camera: true, SMS: false },
+        },
+      },
+    );
+    assert.equal(
+      row().querySelector('[data-permission="Camera"]').textContent,
+      "✓",
+    );
+    assert.equal(
+      row().querySelector('[data-permission="SMS"]').textContent,
+      "×",
+    );
+    assert.equal(
+      row().querySelector('[data-permission="Location"]').textContent,
+      "—",
+    );
+    row().querySelector("[data-adjust-row]").click();
+    row().querySelector("[data-edit-status]").value = "";
+    row().querySelector('[data-edit-permission="Camera"]').value = "";
+    row().querySelector('[data-edit-permission="SMS"]').value = "";
+    row().querySelector("[data-save-row]").click();
+    await tick();
+    assert.equal(
+      row().querySelector('[data-col="source"]').textContent,
+      "导入记录",
+    );
+    assert.equal(
+      row().querySelector('[data-permission="Camera"]').textContent,
+      "—",
+    );
+    assert.deepEqual(c.errors, ["本行调整已保存", "本行调整已保存"]);
   } finally {
     await c.window.happyDOM.close();
   }

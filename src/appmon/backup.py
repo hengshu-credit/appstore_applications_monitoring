@@ -33,7 +33,7 @@ def backup(cfg, destination, config_path):
     temp = destination.with_suffix(destination.suffix+'.part')
     if temp.exists():
         raise ValueError('存在未完成备份，请使用新的输出路径')
-    manifest = dict(format=1, created_at=time.time(), tables={}, files={})
+    manifest = dict(format=2, created_at=time.time(), tables={}, files={})
     db = Database(cfg['mysql'])
     try:
         db.execute('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ')
@@ -87,8 +87,13 @@ def verify(archive):
     if len(names) != len(set(names)):
         raise ValueError('备份存在重复路径')
     manifest = json.loads(archive.read('manifest.json'))
-    if manifest.get('format') != 1 or set(manifest['tables']) != set(TABLES):
+    # Version 1 predates per-member corrections. Restore creates the new empty table.
+    version = manifest.get('format')
+    expected_tables = set(TABLES) - {'app_group_adjustments'} if version == 1 else set(TABLES)
+    if version not in (1, 2) or set(manifest['tables']) != expected_tables:
         raise ValueError('备份版本或表清单不匹配，请使用备份时的程序版本')
+    if {name for name in names if name.startswith('tables/')} != {f'tables/{table}.jsonl' for table in expected_tables}:
+        raise ValueError('备份表文件不完整')
     if set(names) != set(manifest['files']) | {'manifest.json'}:
         raise ValueError('备份文件清单不匹配')
     for name, expected in manifest['files'].items():
