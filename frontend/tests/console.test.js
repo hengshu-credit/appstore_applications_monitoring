@@ -699,8 +699,10 @@ test("category cards drill into state and batch interval preserves scope", async
     await tick();
     assert.equal(
       window.document.querySelectorAll(".collection-category").length,
-      7,
+      10,
     );
+    for (const kind of ["aso_popularity", "aso_import", "aso_report"])
+      assert.ok(window.document.querySelector(`[data-category="${kind}"]`));
     assert.equal(
       window.document.querySelectorAll(".collection-legend").length,
       1,
@@ -1656,6 +1658,64 @@ test("coverage pagination reaches later terms and resets after a market change",
       .at(-1).path;
     assert.ok(last.includes("country=jp"));
     assert.ok(last.includes("keyword_offset=0"));
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("ASO popularity submission follows its queue receipt before displaying saved data", async () => {
+  let finished = false;
+  let polls = 0;
+  const { window, calls } = await setup((path, options) => {
+    if (path.startsWith("/api/discovery/keywords/coverage?"))
+      return emptyCoverage;
+    if (path.startsWith("/api/discovery/keywords/signals?"))
+      return { runs: [], items: [], selected: null, note: "来源快照" };
+    if (path === "/api/discovery/keywords/apple-popularity")
+      return options.method === "POST"
+        ? { id: 81, resource: "sources", status: "pending" }
+        : {
+            configured: true,
+            genres: ["FINANCE"],
+            default_start: "2025-01-05",
+            note: "已授权",
+          };
+    if (path === "/api/discovery/keywords/tasks/81") {
+      if (++polls === 1) return { id: 81, status: "error", failures: 1 };
+      finished = true;
+      return { id: 81, status: "done", result: { id: 37, returned: 40 } };
+    }
+  });
+  try {
+    window.document.querySelector("#global-store").value = "apple";
+    window.location.hash = "keywords";
+    await tick();
+    window.document.querySelector('[data-keyword-tab="hot"]').click();
+    await tick();
+    window.document.querySelector("#apple-popularity-form").requestSubmit();
+    await tick();
+    assert.equal(finished, false);
+    assert.ok(
+      calls.some(
+        (c) =>
+          c.path === "/api/discovery/keywords/apple-popularity" &&
+          c.options.method === "POST",
+      ),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await tick();
+    assert.equal(finished, false);
+    assert.equal(polls, 1);
+    await new Promise((resolve) => setTimeout(resolve, 3100));
+    await tick();
+    assert.equal(finished, true);
+    assert.ok(
+      calls.some(
+        (c) =>
+          c.path.startsWith("/api/discovery/keywords/signals?") &&
+          c.path.includes("run_id=37"),
+      ),
+    );
   } finally {
     await window.happyDOM.close();
   }

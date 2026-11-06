@@ -61,11 +61,11 @@ def ingest(cfg,db,value,data,origin='用户导入Apple格式响应'):
         'score_unit':f'Apple searchPopularity1to100; {period} {start}/{end}; rankInGenre','items':items})
     raw=raw_save(cfg['data_dir'],dump({'request':payload,'response':{'result':{'rows':safe_rows}}}).encode())
     db.execute('''INSERT INTO keyword_source_fetches(run_id,provider,observed_at,raw_path,metadata)
-        VALUES(%s,%s,%s,%s,%s)''',(result['id'],'apple_ads_platform',time.time(),raw,dump({'period':period,'start':str(start),'end':str(end),'genre':genre,'returned':len(rows),'requested':payload['pagination']['pageSize']})))
+        VALUES(%s,%s,%s,%s,%s)''',(result['id'],'apple_ads_platform' if origin=='Apple Ads官方接口' else 'aso_file',time.time(),raw,dump({'period':period,'start':str(start),'end':str(end),'genre':genre,'returned':len(rows),'requested':payload['pagination']['pageSize']})))
     return result|{'returned':len(rows),'possibly_truncated':len(rows)>=payload['pagination']['pageSize'],'period_start':str(start),'period_end':str(end)}
 
 
-def fetch(cfg,db,value):
+def request_data(cfg,db,value):
     *_,payload=specification(value)
     token=os.environ.get('APPLE_ADS_ACCESS_TOKEN','');account=os.environ.get('APPLE_ADS_AD_ACCOUNT_ID','')
     if not token or not account:raise ValueError('尚未配置Apple Ads授权；请在服务端环境设置访问令牌和广告账户ID，不要填写到聊天或浏览器表单')
@@ -75,12 +75,21 @@ def fetch(cfg,db,value):
     try:
         response=requests.post(ENDPOINT,headers={'Authorization':'Bearer '+token,'X-AP-Context':'adAccountId='+account},json=payload,timeout=30,allow_redirects=False)
     except requests.RequestException as exc:
-        record_http(db,'apple','',elapsed=time.monotonic()-started,source='ads')
+        record_http(db,'apple',ENDPOINT,elapsed=time.monotonic()-started,source='ads',lane='aso_popularity')
         raise ValueError('Apple搜索热度请求失败：'+type(exc).__name__) from None
-    record_http(db,'apple','',response.status_code,time.monotonic()-started,source='ads')
+    record_http(db,'apple',ENDPOINT,response.status_code,time.monotonic()-started,source='ads',lane='aso_popularity')
+    if response.status_code in (403,429) or response.status_code>=500:
+        from .collection_limits import cooldown
+        try:delay=float(response.headers.get('Retry-After','0'))
+        except (ValueError,TypeError):delay=0
+        cooldown(db,cfg,'apple',delay)
     if response.status_code in (401,403):raise ValueError('Apple Ads授权已过期或当前账户无权访问该数据')
     if response.status_code==429:raise ValueError('Apple Ads请求受限，请遵守服务端配额后重试')
     if response.status_code!=200:raise ValueError('Apple搜索热度接口返回HTTP '+str(response.status_code))
     try:data=response.json()
     except ValueError:raise ValueError('Apple搜索热度响应不是有效JSON') from None
-    return ingest(cfg,db,value,data,origin='Apple Ads官方接口')
+    return data
+
+
+def fetch(cfg,db,value):
+    return ingest(cfg,db,value,request_data(cfg,db,value),origin='Apple Ads官方接口')

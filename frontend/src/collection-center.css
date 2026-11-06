@@ -142,7 +142,9 @@
   --state-color: var(--accent);
 }
 .collection-categories [data-state="running"],
-.collection-legend [data-state="running"] {
+.collection-legend [data-state="running"],
+.collection-categories [data-state="done"],
+.collection-legend [data-state="done"] {
   --state-color: var(--green);
 }
 .collection-categories [data-state="paused"],

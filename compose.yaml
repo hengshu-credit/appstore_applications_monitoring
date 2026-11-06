@@ -43,6 +43,8 @@ services:
       HTTP_PROXY: ${APPMON_HTTP_PROXY:-}
       HTTPS_PROXY: ${APPMON_HTTPS_PROXY:-}
       NO_PROXY: localhost,127.0.0.1,mysql,web,frontend
+      APPLE_ADS_ACCESS_TOKEN: ${APPLE_ADS_ACCESS_TOKEN:-}
+      APPLE_ADS_AD_ACCOUNT_ID: ${APPLE_ADS_AD_ACCOUNT_ID:-}
     depends_on:
       mysql:
         condition: service_healthy
@@ -66,8 +68,6 @@ services:
     environment:
       APPMON_COOKIE_SECURE: ${APPMON_COOKIE_SECURE:-false}
       APPMON_ALLOWED_HOSTS: ${APPMON_ALLOWED_HOSTS:-localhost,127.0.0.1}
-      APPLE_ADS_ACCESS_TOKEN: ${APPLE_ADS_ACCESS_TOKEN:-}
-      APPLE_ADS_AD_ACCOUNT_ID: ${APPLE_ADS_AD_ACCOUNT_ID:-}
   console:
     extends:
       service: monitor

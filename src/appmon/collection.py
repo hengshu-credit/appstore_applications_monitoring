@@ -94,7 +94,10 @@ def enqueue(db, value):
     for task in tasks:
         if not isinstance(task,dict):raise ValueError('采集任务须为对象')
         kind = task.get('kind')
-        if kind in ('icons','permissions'):
+        if kind in ('aso_popularity','aso_import','aso_report'):
+            from .source_tasks import normalize
+            actions.append({'kind':kind,'value':normalize(kind,task)})
+        elif kind in ('icons','permissions'):
             target = market(task)
             if kind=='permissions' and target['store']!='google':raise ValueError('权限采集仅支持 Google Play')
             if kind=='permissions':target['language']='en'
@@ -174,14 +177,17 @@ def work_plans(db, limit=20):
             emit(db,'plans',row['id'],'started',f'开始配置目标，从 {completed}/{len(actions)} 继续')
             try:
                 for action in actions[completed:completed+limit]:
-                    if action.get('immediate'):
+                    if action['kind'] in ('aso_popularity','aso_import','aso_report'):
+                        from .source_tasks import enqueue as enqueue_source
+                        enqueue_source(db,action['kind'],action['value'],source='collection-plan',request_id=f'{row["id"]}:{completed}')
+                    elif action.get('immediate'):
                         from .app_collection import schedule_action
                         schedule_action(db,action)
                     elif action['kind']=='details':watch(db,action['value'],merge_existing=True)
                     elif action['kind']=='keywords':add_targets(db,[action['value']],merge_existing=True)
                     elif action['kind'] in ('icons','permissions'):configure_asset(db,action)
                     else:add_observation_target(db,action['value'],preserve_existing=action.get('preserve_existing',False),merge_existing=not action.get('preserve_existing',False))
-                    if 'input_source' in json.loads(row['specification']):
+                    if 'input_source' in json.loads(row['specification']) and action['kind'] not in ('aso_popularity','aso_import','aso_report'):
                         schedule_submission(db,action,row['created_at'])
                     completed+=1;processed+=1
                     db.execute("UPDATE collection_plans SET completed=%s,updated_at=%s WHERE id=%s",(completed,time.time(),row['id']))

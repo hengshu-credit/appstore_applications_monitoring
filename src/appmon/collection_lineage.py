@@ -9,7 +9,10 @@ from .task_logs import emit
 log = logging.getLogger(__name__)
 KINDS = dict(details='应用详情',keywords='关键词排名',chart='分类榜单',reviews='用户评论',
              featured='编辑推荐',permissions='声明权限',icons='应用图标',pool='全池详情')
+from .source_tasks import KINDS as SOURCE_KINDS
+KINDS.update(SOURCE_KINDS)
 SOURCES = {
+    'aso_file':('ASO 上传文件','本地持久化上传','消费者解析热度响应或关键词报告，不产生外部 HTTP 请求'),
     'google':('Google Play','play.google.com','详情、关键词、榜单、评论和权限；同市场合并 RPC'),
     'lookup':('Apple Lookup','itunes.apple.com/lookup','应用详情、开发者、版本、素材；同市场合并 ID'),
     'search':('Apple Search','search.itunes.apple.com / apps.apple.com','关键词搜索与排名；依地区采用原生或网页搜索'),
@@ -24,6 +27,7 @@ SOURCES = {
     'ads':('Apple Ads','api.ads.apple.com/v1/insights','授权关键词热度'),
 }
 SINKS = dict(details=('应用资料','listings / snapshots / app_metrics_daily','应用观察'),
+             aso_reports=('ASO 报告词库','keyword_reports / keyword_report_rows','关键词记录'),
              keywords=('关键词排名','keyword_runs / keyword_ranks','排名记录'),
              chart=('榜单记录','observation_runs / observation_items','榜单条目'),
              reviews=('评论归档','observation_runs / reviews','评论条目'),
@@ -37,6 +41,8 @@ SINKS = dict(details=('应用资料','listings / snapshots / app_metrics_daily',
 
 
 def source_for(kind, store):
+    if kind in ('aso_popularity','aso_import') and store!='apple':return None
+    if kind in SOURCE_KINDS:return 'ads' if kind=='aso_popularity' else 'aso_file'
     if kind=='icons':return 'cdn'
     if store=='google':return 'google'
     return {'details':'lookup','pool':'lookup','keywords':'search','chart':'rss','reviews':'rss','featured':'today'}.get(kind)
@@ -77,7 +83,7 @@ def record_dispatch(db, lane, store, count):
 def queue_counts(db,cfg,store,now):
     query,args=collection_tasks.task_query(store=store)
     rows=list(db.execute(f'''SELECT kind,store,task_state,count(*) n,
-        SUM(enabled=1 AND due<=%s AND lease_until<=%s) eligible
+        SUM(enabled=1 AND due<=%s AND lease_until<=%s AND (resource!='sources' OR failures<3)) eligible
         FROM ({query}) q GROUP BY kind,store,task_state''',(now,now,*args)).fetchall())
     pool=pipelines.settings(db,cfg,'pool');marks=','.join('%s' for _ in pool['countries'])
     clauses='' if store=='all' else ' AND j.store=%s'
@@ -136,11 +142,16 @@ def results(db,store,since,now):
         for source,sink,table,count,field in [('seed','seed','imports','processed','finished'),('marketdata','marketdata','marketdata_artifacts','records','created_at')]:
             row=db.execute(f'SELECT COALESCE(SUM({count}),0) records,COUNT(*) attempts,MAX({field}) last_at FROM {table} WHERE {field} BETWEEN %s AND %s',(since,now)).fetchone()
             output.append(dict(source=source,sink=sink,kind=sink,unit=SINKS[sink][2],errors=None,store='all',**row))
-        rows=db.execute("""SELECT provider,COUNT(*) attempts,SUM(COALESCE(JSON_EXTRACT(metadata,'$.returned'),0)) records,
-            MAX(observed_at) last_at FROM keyword_source_fetches WHERE observed_at BETWEEN %s AND %s GROUP BY provider""",(since,now)).fetchall()
-        for row in rows:
-            provider={'google_trends':'web_feed','apple_ads':'ads','apple_ads_platform':'ads'}.get(row['provider'],row['provider'])
-            if provider in SOURCES:output.append(dict(source=provider,sink='signals',kind='signals',unit='热度记录',records=row['records'],last_at=row['last_at'],attempts=row['attempts'],errors=None,store='all'))
+    scope='' if store=='all' else ' AND r.store=%s';args=(since,now) if store=='all' else (since,now,store)
+    rows=db.execute("""SELECT f.provider,r.store,COUNT(*) attempts,SUM(COALESCE(JSON_EXTRACT(f.metadata,'$.returned'),0)) records,
+        MAX(f.observed_at) last_at FROM keyword_source_fetches f JOIN keyword_signal_runs r ON r.id=f.run_id
+        WHERE f.observed_at BETWEEN %s AND %s"""+scope+' GROUP BY f.provider,r.store',args).fetchall()
+    for row in rows:
+        provider={'google_trends':'web_feed','apple_ads':'ads','apple_ads_platform':'ads'}.get(row['provider'],row['provider'])
+        if provider in SOURCES:output.append(dict(source=provider,sink='signals',kind='signals',unit='热度记录',records=row['records'],last_at=row['last_at'],attempts=row['attempts'],errors=None,store=row['store']))
+    reports=db.execute('''SELECT r.store,COUNT(*) attempts,SUM((SELECT COUNT(*) FROM keyword_report_rows k WHERE k.report_id=r.id)) records,
+        MAX(r.imported_at) last_at FROM keyword_reports r WHERE r.imported_at BETWEEN %s AND %s'''+scope+' GROUP BY r.store',args).fetchall()
+    for row in reports:output.append(dict(source='aso_file',sink='aso_reports',kind='aso_report',unit='关键词记录',errors=None,**row))
     return output
 
 
@@ -172,11 +183,14 @@ def report(db,cfg,store='all',hours=24):
         a.kind,COUNT(*) n FROM collection_plans p JOIN JSON_TABLE(p.actions,'$[*]' COLUMNS(kind VARCHAR(24) PATH '$.kind',store VARCHAR(16) PATH '$.value.store')) a
         WHERE p.created_at BETWEEN %s AND %s"""+('' if store=='all' else ' AND a.store=%s')+' GROUP BY origin,a.kind',event_args).fetchall()
     submitted={(r['origin'],r['kind']):r['n'] for r in submissions}
+    direct=db.execute("""SELECT kind,COUNT(*) n FROM collection_source_tasks WHERE source!='collection-plan'
+        AND created_at BETWEEN %s AND %s"""+('' if store=='all' else ' AND store=%s')+' GROUP BY kind',event_args).fetchall()
+    for row in direct:submitted['platform',row['kind']]=submitted.get(('platform',row['kind']),0)+row['n']
     for identifier,label in [('platform','平台提交'),('external','系统 / API 提交')]:
         count=sum(n for (origin,_),n in submitted.items() if origin==identifier)
         node(identifier,label,0,value=count,unit='已提交任务',
             note='所选窗口和商店内已接收的任务需求，重复目标可共享队列',link='#collection?view=tasks')
-    timer=node('timer','周期任务到期',0,value=sum(int(r['eligible'] or 0) for r in queues),unit='可领取目标',note='当前启用、到期且无有效租约的目标')
+    timer=node('timer','周期任务到期',0,value=sum(int(r['eligible'] or 0) for r in queues if r['kind'] not in SOURCE_KINDS),unit='可领取目标',note='周期是任务来源之一；一次性提交直接进入对应队列')
     control=collection_limits.settings(db,cfg);worker=dispatcher.status(db)
     for kind,label in KINDS.items():
         matching=[r for r in queues if r['kind']==kind];states={}
@@ -186,10 +200,11 @@ def report(db,cfg,store='all',hours=24):
              note='当前队列快照；同一目标可被多个计划复用',link='#collection?view=pipelines' if kind=='pool' else '#collection?kind='+kind)
         batch=cfg.get('apple_lookup_batch_size',50) if kind in ('details','pool') else cfg.get('google_rpc_batch_size',20)
         if kind in ('icons','featured'):batch=1
+        if kind in SOURCE_KINDS:batch=50
         node('d:'+kind,'动态分配 · '+label,2,kind=kind,value=claims.get(kind),unit='已消费任务',eligible=eligible,
              batch_limit=batch,workers=worker['workers'],paused=control['paused'],note='兼容商店、国家、语言和协议才组批；多个消费者共享额度',link='#collection?view=tasks')
         for origin in ('platform','external'):edge(origin,'q:'+kind,kind,submitted.get((origin,kind)),'次任务提交')
-        edge('timer','q:'+kind,kind)
+        if kind not in SOURCE_KINDS:edge('timer','q:'+kind,kind)
         edge('q:'+kind,'d:'+kind,kind,claims.get(kind),'次任务消费')
         by_source={}
         for row in matching:
@@ -201,13 +216,16 @@ def report(db,cfg,store='all',hours=24):
             if source:by_source.setdefault(source,0)
         for lane,source in interactions:
             if lane==kind:by_source.setdefault(source,0)
-        for source,count in by_source.items():edge('d:'+kind,'s:'+source,kind,interactions.get((kind,source)),'次 HTTP',tasks=count)
+        for source,count in by_source.items():edge('d:'+kind,'s:'+source,kind,claims.get(kind) if source=='aso_file' else interactions.get((kind,source)),'次文件处理' if source=='aso_file' else '次 HTTP',tasks=count)
     first=db.execute("SELECT next_at FROM schedules WHERE name='lineage:http-since'").fetchone()
     accounts={r['provider']:r['status'] for r in db.execute('SELECT provider,status FROM source_accounts').fetchall()}
     for source,(label,endpoint,note) in SOURCES.items():
         if store!='all' and source not in {source_for(kind,store) for kind in KINDS}:continue
         values=[r for r in observations if r['source']==source];events=http.get(source,{})
-        node('s:'+source,label,3,value=sum(int(r['attempts'] or 0) for r in values) if values else None,unit='已处理任务',
+        handled=sum(int(r['attempts'] or 0) for r in values) if values else None
+        if source=='ads' and 'aso_popularity' in claims:handled=claims['aso_popularity']
+        if source=='aso_file' and any(k in claims for k in ('aso_import','aso_report')):handled=sum(claims.get(k,0) for k in ('aso_import','aso_report'))
+        node('s:'+source,label,3,value=handled,unit='已处理任务',
              returned_records=sum(int(r['records'] or 0) for r in values) if values else None,
              allocated_tasks=sum(e.get('tasks',0) for e in edges if e['target']=='s:'+source),
              records=values,endpoint=endpoint,note=note,requests=int(events.get('requests',0)) if first and source in ('google','lookup','search','rss','today','cdn','marketdata','ads') else None,
@@ -215,7 +233,7 @@ def report(db,cfg,store='all',hours=24):
              configured=accounts.get(source),link='#datasources' if source in ('marketdata','community','directory','web_feed') else '#collection?view=tasks')
     for sink,(label,tables,unit) in SINKS.items():
         values=[r for r in observations if r['sink']==sink]
-        if store!='all' and sink in ('seed','marketdata','signals'):continue
+        if store!='all' and sink in ('seed','marketdata'):continue
         node('out:'+sink,label,4,value=sum(int(r['attempts'] or 0) for r in values),unit='目标结果',tables=tables,
              returned_records=sum(int(r['records'] or 0) for r in values),
              records=values,note='所选窗口内已提交的目标结果，包含多次采样',
@@ -243,8 +261,8 @@ def report(db,cfg,store='all',hours=24):
         edge('external','marketdata-jobs');edge('marketdata-jobs','s:marketdata',count=http.get('marketdata',{}).get('requests'),unit='次 HTTP')
         node('seed-files','种子同步 / 文件导入',1,value=db.execute('SELECT COUNT(*) n FROM imports').fetchone()['n'],unit='导入批次',note='种子同步由 monitor 流程配置；也支持手动文件导入',link='#collection?view=tasks')
         edge('seed-files','s:seed');edge('out:seed','q:pool','pool')
-        node('manual','按需数据查询',1,value=None,unit='即时调用',note='公开元数据、安装指标、网页趋势与 Apple Ads 接口；未持久化的响应条数显示 —',link='#datasources')
-        for source in ('community','directory','web_feed','ads'):edge('manual','s:'+source,count=http.get(source,{}).get('requests'),unit='次 HTTP')
+        node('manual','按需数据查询',1,value=None,unit='即时调用',note='公开元数据、安装指标与网页趋势；ASO 请求由统一消费者处理',link='#datasources')
+        for source in ('community','directory','web_feed'):edge('manual','s:'+source,count=http.get(source,{}).get('requests'),unit='次 HTTP')
     ids={n['id'] for n in nodes}
     return dict(nodes=nodes,edges=[e for e in edges if e['source'] in ids and e['target'] in ids],at=now,since=since,hours=hours,store=store,
                 workers=worker['workers'],paused=control['paused'],http_since=first['next_at'] if first else None,

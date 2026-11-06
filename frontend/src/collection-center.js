@@ -12,6 +12,9 @@ export const taskKinds = {
   featured: "编辑推荐",
   icons: "应用图标",
   permissions: "声明权限",
+  aso_popularity: "ASO 关键词热度",
+  aso_import: "ASO 热度导入",
+  aso_report: "ASO 报告入库",
 };
 const states = {
   scheduled: "定时采集",
@@ -19,6 +22,7 @@ const states = {
   running: "采集中",
   paused: "已暂停",
   error: "失败待重试",
+  done: "已完成",
 };
 
 export function createCollectionCenter(ctx) {
@@ -133,6 +137,15 @@ export function createCollectionCenter(ctx) {
   }
   async function edit(row) {
     const editRevision = currentRevision();
+    if (row.resource === "sources") {
+      const task = await api(`/research/collection/source-tasks/${row.id}`);
+      if (editRevision !== currentRevision()) return;
+      editor(
+        "一次性任务详情",
+        `<p>${esc(taskKinds[row.kind])} · ${esc(row.label)}</p><p>提交来源：${esc(task.source)} · 状态：${esc(states[task.status])}</p><p>提交后由消费者领取，完成后不自动排期。</p>${task.last_error ? `<p>${esc(task.last_error)}</p>` : ""}${task.result ? `<p>已保存 <strong>${num(task.result.returned ?? task.result.rows ?? 0)}</strong> 条数据${task.result.rejected_rows ? `，${num(task.result.rejected_rows)} 条异常记录已保留` : ""}。</p>${task.result.period_start ? `<p>统计范围：${esc(task.result.period_start)} 至 ${esc(task.result.period_end)}</p>` : ""}<a class="button secondary" href="#keywords">查看关键词数据</a>` : ""}`,
+      );
+      return;
+    }
     editor(
       "编辑采集任务",
       `<p class="sub">${esc(taskKinds[row.kind])} · ${esc(row.label)} · ${esc(row.country.toUpperCase())} / ${esc(row.language)}</p><form id="edit-task-form" class="form-grid">${field("刷新周期（小时）", "refresh_hours", row.refresh_hours, "number", 'min="0.25" max="8760" step="0.25" required')}${row.resource === "watchlist" ? field("监控分组", "group_name", row.group_name, "text", "required") : ["icons", "permissions"].includes(row.resource) ? "" : field("采集结果上限", "depth", row.depth, "number", `min="1" max="${row.resource === "keywords" ? 200 : 500}" required`)}<p class="sub full">保留已有历史及启用状态。需要切换应用或市场时，请新建独立任务。</p><div class="full form-actions"><button type="submit">保存设置</button></div></form>`,
@@ -165,7 +178,8 @@ export function createCollectionCenter(ctx) {
       <fieldset class="full task-types"><legend>选择需要采集的数据</legend>${Object.entries(
         Object.fromEntries(
           Object.entries(taskKinds).filter(
-            ([k]) => !["icons", "permissions"].includes(k),
+            ([k]) =>
+              !["icons", "permissions"].includes(k) && !k.startsWith("aso_"),
           ),
         ),
       )
@@ -362,13 +376,17 @@ export function createCollectionCenter(ctx) {
       running: "↻",
       paused: "Ⅱ",
       error: "!",
+      done: "✓",
       out_of_scope: "–",
     };
     const stateMark = (state) =>
       `<i class="collection-state-mark" data-state="${state}" aria-hidden="true">${stateSymbols[state]}</i>`;
     const distribution = (summary, kind = "") => {
-      const entries = Object.entries(stateLabels).filter(([state]) =>
-        kind ? state !== "out_of_scope" : true,
+      const entries = Object.entries(stateLabels).filter(
+        ([state]) =>
+          (!kind || state !== "out_of_scope") &&
+          (state !== "done" || kind.startsWith("aso_")) &&
+          (state !== "scheduled" || !kind.startsWith("aso_")),
       );
       const total = entries.reduce(
         (sum, [state]) => sum + (summary[state] || 0),
@@ -501,18 +519,28 @@ export function createCollectionCenter(ctx) {
                   t.category
                     ? esc(selectors.categoryName(t.store, t.category))
                     : "—",
-                  `${t.refresh_hours} 小时`,
+                  t.resource === "sources"
+                    ? "一次性"
+                    : `${t.refresh_hours} 小时`,
                   t.depth
                     ? num(t.depth) + " 条"
                     : t.kind === "permissions"
                       ? "权限声明"
                       : t.kind === "icons"
                         ? "图标缓存"
-                        : "单应用详情",
+                        : t.resource === "sources"
+                          ? "按提交范围"
+                          : "单应用详情",
                   stamp(t.success_at),
-                  t.enabled ? (t.due ? stamp(t.due) : "尽快执行") : "已暂停",
+                  t.task_state === "done"
+                    ? "—"
+                    : t.enabled
+                      ? t.due
+                        ? stamp(t.due)
+                        : "尽快执行"
+                      : "已暂停",
                   `<span class="badge ${t.task_state === "error" ? "warn" : t.task_state === "running" ? "good" : ""}">${esc(states[t.task_state])}</span>`,
-                  `<div class="task-actions"><button class="link" data-task-logs="${index}">日志${t.task_state === "running" ? " · 实时" : ""}</button><button class="link" data-edit-task="${index}">编辑</button><button class="link" data-task-action="${index}" data-action="${t.enabled ? "pause" : "resume"}">${t.enabled ? "暂停" : "恢复"}</button><button class="link" data-task-action="${index}" data-action="refresh" ${t.enabled ? "" : "disabled"}>立即采集</button></div>`,
+                  `<div class="task-actions"><button class="link" data-task-logs="${index}">日志${t.task_state === "running" ? " · 实时" : ""}</button><button class="link" data-edit-task="${index}">${t.resource === "sources" ? "详情" : "编辑"}</button><button class="link" data-task-action="${index}" data-action="${t.enabled ? "pause" : "resume"}">${t.enabled ? "暂停" : "恢复"}</button><button class="link" data-task-action="${index}" data-action="refresh" ${t.enabled ? "" : "disabled"}>${t.resource === "sources" ? "重新入队" : "立即采集"}</button></div>`,
                 ]),
               ).replace(
                 "data-table-wrap",

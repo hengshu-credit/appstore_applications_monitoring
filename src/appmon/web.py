@@ -399,16 +399,32 @@ def create_app(cfg):
     def popularity_configuration():return apple_popularity.configuration()
 
     @api.post('/discovery/keywords/apple-popularity')
-    def popularity_fetch(value:dict=Body(...),db=DB):return apple_popularity.fetch(cfg,db,value)
+    def popularity_fetch(value:dict=Body(...),db=DB):
+        from .source_tasks import enqueue
+        return enqueue(db,'aso_popularity',value,request_id=value.get('request_id'))
 
     @api.post('/discovery/keywords/apple-popularity/import')
-    def popularity_import(value:dict=Body(...),db=DB):return apple_popularity.ingest(cfg,db,value,value.get('response'))
+    def popularity_import(value:dict=Body(...),db=DB):
+        from .source_tasks import enqueue
+        return enqueue(db,'aso_import',value,request_id=value.get('request_id'))
 
     @api.post('/discovery/reports/preview')
     def report_preview(value:dict=Body(...)):return keyword_reports.preview(value)
 
     @api.post('/discovery/reports/import')
-    def report_import(value:dict=Body(...),db=DB):return keyword_reports.import_report(cfg,db,value)
+    def report_import(value:dict=Body(...),db=DB):
+        from .source_tasks import enqueue
+        return enqueue(db,'aso_report',value,request_id=value.get('request_id'))
+
+    @api.get('/discovery/keywords/tasks/{identifier}')
+    def source_task_result(identifier:int,db=DB):
+        from .source_tasks import receipt
+        return receipt(db,identifier)
+
+    @api.get('/research/collection/source-tasks/{identifier}')
+    def collection_source_result(identifier:int,db=DB):
+        from .source_tasks import receipt
+        return receipt(db,identifier)
 
     @api.get('/discovery/reports')
     def imported_reports(store:str,country:str='us',language:str='en',app_id:str='',db=DB):

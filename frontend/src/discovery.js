@@ -675,7 +675,7 @@ export function createDiscoveryPages(ctx) {
           ? `<section class="panel"><h2>Apple官方周/月搜索热度</h2><p class="sub">${esc(provider.note)} 授权配置：${provider.configured ? "已配置，查询时验证权限" : "待配置"}</p>${filterBar(
               {
                 id: "apple-popularity-form",
-                submit: "查询并保存热度",
+                submit: "提交采集任务",
                 submitDisabled: !provider.configured,
                 resetSubmit: false,
                 values: {
@@ -944,6 +944,7 @@ export function createDiscoveryPages(ctx) {
         app_id: v.app_id,
         filename: file.name,
         content_base64: content,
+        request_id: crypto.randomUUID(),
       };
       if (rev !== currentRevision()) return;
       const preview = await api("/discovery/reports/preview", payload);
@@ -953,16 +954,47 @@ export function createDiscoveryPages(ctx) {
         `<p>${esc(preview.note)}</p><p>识别市场：${esc(preview.inferred.country || "未识别")}，商店：${esc(preview.inferred.store || "未识别")}；将导入到 ${esc(m.country)} / ${esc(m.language)}，应用 ${esc(v.app_id)}</p>${table(
           ["工作表", "数据行"],
           preview.summary.map((r) => [esc(r.sheet), r.rows]),
-        )}<button id="report-confirm" type="button">确认导入 ${preview.keyword_rows} 行关键词</button>`,
+        )}<button id="report-confirm" type="button">提交导入任务 · ${preview.keyword_rows} 行关键词</button>`,
       );
       act("#report-confirm", async () => {
-        const result = await api("/discovery/reports/import", payload);
-        reportId = String(result.id);
-        reportOffset = 0;
-        toast(result.duplicate ? "此报告已导入" : "报告已导入");
-        if (rev === currentRevision()) await keywords(nextRevision());
+        followTask(
+          await api("/discovery/reports/import", payload),
+          async (result) => {
+            reportId = String(result.id);
+            reportOffset = 0;
+            toast(result.duplicate ? "此报告已导入" : "报告已入库");
+            if (rev === currentRevision()) await keywords(nextRevision());
+          },
+        );
       });
     });
+    function followTask(task, done) {
+      toast(`任务 #${task.id} 已进入采集队列，可在采集中心查看进度`);
+      const poll = async () => {
+        if (rev !== currentRevision()) return;
+        try {
+          const state = await api(`/discovery/keywords/tasks/${task.id}`);
+          if (rev !== currentRevision()) return;
+          if (state.status === "done") {
+            await done(state.result);
+            return;
+          }
+          if (
+            state.status === "paused" ||
+            (state.status === "error" && state.failures >= 3)
+          ) {
+            toast(
+              `任务 #${task.id} ${state.status === "paused" ? "已暂停" : "执行失败"}，可在采集中心查看和重试`,
+            );
+            return;
+          }
+        } catch {
+          /* The durable task continues if this page loses its connection. */
+        }
+        setTimeout(poll, 3000);
+      };
+      setTimeout(poll, 1000);
+    }
     const popularitySpec = () => {
       const f = $("#apple-popularity-form");
       return {
@@ -981,16 +1013,18 @@ export function createDiscoveryPages(ctx) {
       if (rev === currentRevision()) await keywords(nextRevision());
     };
     bindForm("#apple-popularity-form", async () =>
-      popularityDone(
+      followTask(
         await api("/discovery/keywords/apple-popularity", popularitySpec()),
+        popularityDone,
       ),
     );
     bindForm("#apple-popularity-import", async (v) =>
-      popularityDone(
+      followTask(
         await api("/discovery/keywords/apple-popularity/import", {
           ...popularitySpec(),
           response: JSON.parse(v.response),
         }),
+        popularityDone,
       ),
     );
     act("#signal-promote", async () => {

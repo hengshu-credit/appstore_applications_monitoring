@@ -1,6 +1,15 @@
 """Additive discovery storage; public metrics are never private sales estimates."""
 def tables(app_key, region):
     return {
+        'collection_source_tasks': f'''id BIGINT AUTO_INCREMENT PRIMARY KEY, {app_key}, {region},
+            kind VARCHAR(32) NOT NULL, label VARCHAR(255) NOT NULL, payload LONGTEXT NOT NULL,
+            batch_key CHAR(64) CHARACTER SET ascii NOT NULL, source VARCHAR(64) NOT NULL,
+            request_id VARCHAR(120) NOT NULL, enabled BOOLEAN NOT NULL DEFAULT TRUE,
+            due DOUBLE DEFAULT 0, lease_until DOUBLE NOT NULL DEFAULT 0, token CHAR(32),
+            failures INT NOT NULL DEFAULT 0, last_error TEXT, result LONGTEXT,
+            created_at DOUBLE NOT NULL, success_at DOUBLE,
+            UNIQUE KEY source_receipt(source,request_id),
+            INDEX source_ready(enabled,due,lease_until), INDEX source_batch(batch_key,enabled,due)''',
         'app_metrics_daily': f'''{app_key}, {region}, day BIGINT NOT NULL,
             observed_at DOUBLE NOT NULL, source VARCHAR(64) NOT NULL, parser_version VARCHAR(32) NOT NULL,
             name TEXT, category VARCHAR(128), released_at DOUBLE, installs_min BIGINT,

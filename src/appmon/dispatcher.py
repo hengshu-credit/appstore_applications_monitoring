@@ -8,10 +8,12 @@ from .collection_limits import blocked
 from .db import connect
 
 log = logging.getLogger(__name__)
-LANES = ('details', 'keywords', 'chart', 'reviews', 'featured', 'permissions', 'icons', 'pool')
+LANES = ('details', 'keywords', 'chart', 'reviews', 'featured', 'permissions', 'icons', 'pool', 'sources')
 
 
 def ready(db, cfg, lane, now):
+    if lane == 'sources':
+        return db.execute('SELECT 1 FROM collection_source_tasks WHERE enabled=1 AND due<=%s AND lease_until<=%s AND failures<3 LIMIT 1',(now,now)).fetchone() is not None
     if lane == 'details':
         sql = '''SELECT 1 FROM watchlist w JOIN jobs j USING(store,app_id,country,language)
             WHERE w.enabled=1 AND j.due<=%s AND j.lease_until<=%s LIMIT 1'''
@@ -57,6 +59,9 @@ def choose(db, cfg):
 
 
 def run_batch(db, cfg, lane):
+    if lane == 'sources':
+        from .source_tasks import work
+        return work(db,cfg)
     from .stores import Client
     from .keyword_stores import KeywordClient
     from .observation_stores import ObservationClient
