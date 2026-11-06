@@ -1,3 +1,5 @@
+import { pagination, bindPagination } from "../src/pagination.js";
+import { filterBar, bindFilterBar } from "../src/filter-bar.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -5,7 +7,9 @@ import { Window } from "happy-dom";
 
 const source = (
   await readFile(new URL("../src/availability.js", import.meta.url), "utf8")
-).replace(/^export /gm, "");
+)
+  .replace(/^import .*;$/gm, "")
+  .replace(/^export /gm, "");
 const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
 
 test("availability keeps classified watches in the header market and paginates records", async () => {
@@ -14,6 +18,9 @@ test("availability keeps classified watches in the header market and paginates r
     calls = [];
   let market = { store: "all", country: "th", language: "en" };
   doc.body.innerHTML = "<main></main>";
+  Object.assign(window,{pagination,bindPagination});
+  window.filterBar = filterBar;
+  window.bindFilterBar = bindFilterBar;
   window.eval(source + ";window.createPage=createAvailabilityPage;");
   const esc = (v) =>
     String(v ?? "")

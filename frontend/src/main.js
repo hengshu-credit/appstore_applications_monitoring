@@ -1,4 +1,12 @@
-"use strict";
+import { pagination, bindPagination } from "./pagination.js";
+import {
+  filterBar,
+  filterFields,
+  bindFilterBar,
+  initFilterBars,
+  setFilterCatalog,
+} from "./filter-bar.js";
+("use strict");
 import { createAccounts, routeResource } from "./accounts.js";
 import "./style.css";
 import "./theme.css";
@@ -18,6 +26,8 @@ import { icon, storeLogo } from "./icons.js";
 import { createTaskLogViewer } from "./task-logs.js";
 import { initMarketControls } from "./market-controls.js";
 import "./workspace.css";
+import "./filter-bar.css";
+import "./pagination.css";
 import "./monitoring.css";
 import "./experience.css";
 import "./accounts.css";
@@ -105,6 +115,7 @@ const selectors = createSelectors({
   getMarket: market,
   onError: toast,
   onCatalog: (value) => {
+    setFilterCatalog(value);
     localePreferences = value.locales;
     marketControls.setPreferences(localePreferences);
   },
@@ -114,6 +125,14 @@ const qs = (obj) =>
   new URLSearchParams(
     Object.entries(obj).filter(([, v]) => v !== "" && v != null),
   ).toString();
+initFilterBars({
+  suggest: (field, q) =>
+    field === "developer-directory"
+      ? api("/research/developers?" + qs({ store: market().store, q })).then(
+          (rows) => rows.map((r) => r.name),
+        )
+      : api("/apps/filter-options?" + qs({ ...market(), field, q })),
+});
 const kindLabel = (v) =>
   ({
     first_verified: "首次验证",
@@ -251,6 +270,8 @@ function formData(form) {
 function bindForm(id, callback) {
   const f = $(id);
   if (!f) return;
+  if (f.hasAttribute("data-filter-bar"))
+    return bindFilterBar(f, callback, toast);
   f.addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = $("button[type=submit]", f) || $("button", f);
@@ -399,28 +420,102 @@ const groupWorkspace = createGroupWorkspace({
   can: (resource, action) => accounts.can(resource, action),
   countryName: (code) => selectors.countryName(code),
 });
-async function applications(rev, filters = {}) {
-  const data = await api("/apps?" + qs({ ...market(), ...filters }));
+async function applications(rev, filters = {}, page = 1, limit = 50) {
+  const data = await api(
+    "/apps?" + qs({ ...market(), ...filters, page, limit }),
+  );
   if (
     !mount(
-      `<div id="store-discovery"></div><div class="application-layout">${selectors.categorySidebar(market().store, filters.category)}<section class="panel"><form id="app-search" class="toolbar">${field("应用名称 / 精确 ID", "q", filters.q || "", "text", 'class="wide"')}${selectors.categoryField(market().store, filters.category || "", "pool-category")}${field("开发者（精确名称）", "developer", filters.developer || "")}${select(
-        "状态",
-        "state",
-        [
-          ["", "全部"],
-          ["available", "在架观察"],
-          ["region_unavailable", "地区不可用"],
-          ["suspected_missing", "待确认"],
-        ],
-      )}<button type="submit">筛选</button><details class="advanced-filters"><summary>更多条件：评分、售价与商店日期</summary><div class="toolbar">${field("最低商店评分", "min_rating", filters.min_rating || "", "number", 'min="0" max="5" step="0.1"')}${field("最低累计评分数", "min_ratings", filters.min_ratings || "", "number", 'min="0" step="1"')}${select(
-        "售价",
-        "pricing",
-        [
-          ["", "全部"],
-          ["free", "免费"],
-          ["paid", "付费"],
-        ],
-      )}${field("商店更新时间不早于", "updated_since", filters.updated_since || "", "date")}${field("商店发布日期不早于", "released_since", filters.released_since || "", "date")}</div><p class="sub">仅筛选已观察且具备相应字段的地区记录；未知日期不会当作0。</p></details></form><div class="bulk-toolbar"><button type="button" id="bulk-monitor" class="secondary" disabled>批量加入监控</button><button type="button" id="bulk-compare" class="secondary" disabled>保存竞品集合</button><span id="pool-selection-count" class="selection-count">选择当前页应用；监控最多50个，对比2–6个。</span></div>${table(
+      `<div id="store-discovery"></div><div class="application-layout">${selectors.categorySidebar(market().store, filters.category)}<section class="panel">${filterBar(
+        {
+          id: "app-search",
+          values: filters,
+          fields: [
+            {
+              name: "q",
+              label: "应用名称 / ID",
+              source: "app",
+              wide: true,
+              matchKey: "q_match",
+              pickedMode: "id",
+              options: data.items.map((r) => [
+                r.app_id,
+                r.payload?.name || r.name || r.app_id,
+              ]),
+            },
+            {
+              html: selectors.categoryField(
+                market().store,
+                filters.category || "",
+                "pool-category",
+              ),
+            },
+            {
+              name: "developer",
+              label: "开发者",
+              source: "developer",
+              matchKey: "developer_match",
+              options: data.items
+                .map((r) => r.payload?.developer)
+                .filter(Boolean),
+            },
+            {
+              name: "state",
+              label: "状态",
+              type: "panel",
+              options: [
+                ["", "全部状态"],
+                ["available", "在架观察"],
+                ["region_unavailable", "地区不可用"],
+                ["suspected_missing", "待确认"],
+              ],
+            },
+          ],
+          after: `<details class="advanced-filters"${["min_rating", "min_ratings", "pricing", "updated_since", "released_since"].some((k) => filters[k]) ? " open" : ""}><summary>更多条件：评分、售价与商店日期</summary><div class="toolbar">${filterFields(
+            "app-search-more",
+            [
+              {
+                name: "min_rating",
+                label: "最低商店评分",
+                type: "number",
+                min: 0,
+                max: 5,
+                step: "any",
+                options: [1, 2, 3, 4, 4.5, 5],
+              },
+              {
+                name: "min_ratings",
+                label: "最低累计评分数",
+                type: "number",
+                min: 0,
+                step: 1,
+                options: [100, 1000, 10000],
+              },
+              {
+                name: "pricing",
+                label: "售价",
+                type: "select",
+                options: [
+                  ["", "全部"],
+                  ["free", "免费"],
+                  ["paid", "付费"],
+                ],
+              },
+              {
+                name: "updated_since",
+                label: "商店更新时间不早于",
+                type: "date",
+              },
+              {
+                name: "released_since",
+                label: "商店发布日期不早于",
+                type: "date",
+              },
+            ],
+            filters,
+          )}</div><p class="sub">仅筛选当前市场已观察到相应字段的记录。</p></details>`,
+        },
+      )}<div class="bulk-toolbar"><button type="button" id="bulk-monitor" class="secondary" disabled>批量加入监控</button><button type="button" id="bulk-compare" class="secondary" disabled>保存竞品集合</button><span id="pool-selection-count" class="selection-count">选择当前页应用；监控最多50个，对比2–6个。</span></div>${table(
         [
           '<input id="pool-select-all" type="checkbox" aria-label="选择本页全部应用">',
           "应用",
@@ -445,7 +540,7 @@ async function applications(rev, filters = {}) {
           `${num(r.payload?.rating)} / ${num(r.payload?.ratings)}`,
           stamp(r.last_success),
         ]),
-      )}${data.next ? '<button id="next-apps" class="secondary spacer">下一页</button>' : ""}</section></div>`,
+      )}${pagination({ id: "app-pages", offset: ((data.page || page) - 1) * limit, limit, hasMore: data.has_more ?? !!data.next, prevId: "prev-apps", nextId: "next-apps", sizes: [25, 50, 100, 200] })}</section></div>`,
       rev,
     )
   )
@@ -520,10 +615,8 @@ async function applications(rev, filters = {}) {
     ),
   );
   bindForm("#app-search", (data) => applications(++revision, data));
-  $("#next-apps")?.addEventListener("click", () =>
-    applications(++revision, { ...filters, ...data.next }).catch((e) =>
-      toast(e.message),
-    ),
+  bindPagination(document, "app-pages", (start, size) =>
+    applications(++revision, filters, start / size + 1, size),
   );
 }
 let appProgressTimer = null;
@@ -791,15 +884,7 @@ async function chartPage(rev) {
     !mount(
       `${panel(
         "榜单筛选",
-        `<form id="chart-view-form" class="toolbar">${select(
-          "榜单",
-          "collection",
-          definitions.map((d) => [
-            d.id,
-            d.name + (d.mode === "derived" ? "（本站派生）" : ""),
-          ]),
-          chartFilters.collection,
-        )}${selectors.categoryField(m.store, chartFilters.category, "chart-view-category", "chart")}<button type="submit" class="secondary">查看榜单</button><a class="button secondary" href="#collection?new=chart&collection=${encodeURIComponent(chartFilters.collection)}">配置采集</a>${data.target ? '<button id="refresh-current-chart" type="button">立即采集基榜</button>' : ""}</form>`,
+        `${filterBar({ id: "chart-view-form", values: chartFilters, submit: "查看榜单", fields: [{ type: "select", name: "collection", label: "榜单", options: definitions.map((d) => [d.id, d.name + (d.mode === "derived" ? "（本站派生）" : "")]) }, { html: selectors.categoryField(m.store, chartFilters.category, "chart-view-category", "chart") }], actions: `<a class="button secondary" href="#collection?new=chart&collection=${encodeURIComponent(chartFilters.collection)}">配置采集</a>${data.target ? '<button id="refresh-current-chart" type="button">立即采集基榜</button>' : ""}` })}`,
       )}<div class="callout">${spec.mode === "derived" ? "本站派生榜 · " : "商店直接榜单 · "}${esc(spec.note)}${data.reason ? "<p>" + esc(data.reason) + "</p>" : ""}</div>${panel(
         esc(spec.name),
         `<p class="sub">${esc(m.country.toUpperCase())} / ${esc(m.language)} · ${esc(selectors.categoryName(m.store, chartFilters.category))} · 观察于 ${stamp(data.latest_success?.observed_at)} · ${esc(data.latest_success?.source || "尚未采集")} · 本次返回 ${data.items.length} 条</p>${table(
@@ -869,12 +954,7 @@ async function multiCharts(rev) {
   );
   if (
     !mount(
-      `<form id="multi-chart-form" class="toolbar">${select(
-        "榜单",
-        "collection",
-        selectors.chartDefinitions("google").map((d) => [d.id, d.name]),
-        chartFilters.collection,
-      )}<button>查看榜单</button><span class="sub">分类榜请切换到对应商店。</span></form><div class="multi-store-grid">${results
+      `${filterBar({ id: "multi-chart-form", values: chartFilters, submit: "查看榜单", fields: [{ type: "select", name: "collection", label: "榜单", options: selectors.chartDefinitions("google").map((d) => [d.id, d.name]) }], actions: '<span class="sub">分类榜请切换到对应商店。</span>' })}<div class="multi-store-grid">${results
         .map(({ m, data, error }) =>
           panel(
             `<span class="store-caption">${storeLogo(m.store)} ${m.store === "apple" ? "App Store" : "Google Play"}</span>`,
@@ -1526,12 +1606,17 @@ const routes = {
 };
 async function render() {
   if (!accounts.user) return;
+  const rev = ++revision;
+  const requestedPage = (location.hash.slice(1) || "overview").split("?")[0];
+  updateWorkspace(document, requestedPage, accounts.can);
+  mount('<div class="empty">正在加载观察记录…</div>', rev);
   try {
     await accounts.refresh();
   } catch {
-    accounts.show();
+    if (rev === revision) accounts.show();
     return;
   }
+  if (rev !== revision) return;
   const resource = routeResource(
     (location.hash.slice(1) || "overview").split("?")[0],
   );
@@ -1572,9 +1657,7 @@ async function render() {
   $("#task-logs")?.close();
   $("#collection-editor")?.remove();
   $("#research-dialog")?.close();
-  const route = routes[name] || overview,
-    rev = ++revision;
-  mount('<div class="empty">正在加载观察记录…</div>');
+  const route = routes[name] || overview;
   try {
     const parts = name.split("/");
     if (name === "chart") {

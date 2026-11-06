@@ -1,3 +1,5 @@
+import { pagination, bindPagination } from "./pagination.js";
+import { filterBar } from "./filter-bar.js";
 export function createAccounts({ esc, onReady, toast }) {
   let user = null,
     csrf = "",
@@ -325,10 +327,10 @@ export function createAccounts({ esc, onReady, toast }) {
       "accounts",
     )}
       <div id="accounts-panel-users" role="tabpanel" aria-labelledby="accounts-tab-users">
-      <form id="user-search" class="auth-actions"><input name="q" aria-label="搜索账号" placeholder="搜索账号" value="${esc(q)}"><button>搜索</button>${own && can("administration") ? '<a href="#administration">查看全部账户</a>' : ""}</form>
+      ${filterBar({ id: "user-search", submit: "搜索", values: { q }, fields: [{ name: "q", label: "搜索账号", options: data.users.map((u) => u.username) }], actions: own && can("administration") ? '<a href="#administration">查看全部账户</a>' : "" })}
       ${isAdmin ? '<div class="auth-actions"><button type="button" id="add-account">新增账户</button></div>' : ""}
       <div class="table-wrap"><table><thead><tr><th>账号</th><th>用户组</th><th>状态</th><th>会员到期</th><th>权限来源</th><th>操作</th></tr></thead><tbody>${data.users.map((u) => `<tr><td>${esc(u.username)}${u.id === user.id ? ' <span class="sub">（当前账户）</span>' : ""}</td><td data-account-groups="${u.id}">${esc(groupLabel(u))}</td><td>${u.enabled ? "启用" : "停用"}</td><td>${u.member_until ? new Date(u.member_until * 1000).toLocaleString() : "—"}</td><td>${u.role === "admin" ? "全部权限" : u.override === null ? "用户组授权" : "单独配置"}</td><td>${u.id === user.id || canManage ? `<button data-user="${u.id}" class="secondary">编辑</button>` : "仅查看"}</td></tr>`).join("")}</tbody></table></div>
-      <div class="auth-actions"><button id="users-prev" ${offset ? "" : "disabled"} class="secondary">上一页</button><span>共 ${data.total} 个账户</span><button id="users-next" ${offset + 100 < data.total ? "" : "disabled"} class="secondary">下一页</button></div></div>
+      ${pagination({ id: "users-pages", offset, limit: 100, total: data.total, prevId: "users-prev", nextId: "users-next" })}</div>
       ${isAdmin ? '<div id="accounts-panel-roles" role="tabpanel" aria-labelledby="accounts-tab-roles" hidden></div><div id="accounts-panel-audit" role="tabpanel" aria-labelledby="accounts-tab-audit" hidden></div>' : ""}</section>`;
     const reload = () => management(root, q, offset);
     root.querySelector("#add-account")?.addEventListener("click", () =>
@@ -340,12 +342,7 @@ export function createAccounts({ esc, onReady, toast }) {
         permissions: data.roles.user,
       }),
     );
-    root.querySelector("#users-prev").onclick = () =>
-      management(root, q, Math.max(0, offset - 100)).catch((e) =>
-        toast(e.message),
-      );
-    root.querySelector("#users-next").onclick = () =>
-      management(root, q, offset + 100).catch((e) => toast(e.message));
+    bindPagination(root, "users-pages", (start) => management(root, q, start));
     root.querySelector("#user-search").onsubmit = (e) => {
       e.preventDefault();
       management(root, new FormData(e.target).get("q")).catch((e) =>

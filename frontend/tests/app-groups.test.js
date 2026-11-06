@@ -1,3 +1,5 @@
+import { pagination, bindPagination } from "../src/pagination.js";
+import { filterBar, bindFilterBar } from "../src/filter-bar.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -5,7 +7,9 @@ import { Window } from "happy-dom";
 
 const source = (
   await readFile(new URL("../src/app-groups.js", import.meta.url), "utf8")
-).replace(/^export /gm, "");
+)
+  .replace(/^import .*;$/gm, "")
+  .replace(/^export /gm, "");
 const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
 const member = {
   id: 11,
@@ -79,6 +83,9 @@ function setup(handler = () => undefined, write = true) {
     calls = [],
     errors = [];
   doc.body.innerHTML = "<main></main>";
+  Object.assign(window, { pagination, bindPagination });
+  window.filterBar = filterBar;
+  window.bindFilterBar = bindFilterBar;
   window.eval(source + ";window.createGroupWorkspace=createGroupWorkspace;");
   const esc = (value) =>
     String(value ?? "")
@@ -143,14 +150,9 @@ test("group dashboard drills through countries and keeps unknown observations se
     c.doc.querySelector('[data-group-country="th"]').click();
     await tick();
     assert.ok(c.calls.some((r) => r.path.includes("country=th")));
-    assert.match(
-      c.doc.querySelector("#group-tab-content").textContent,
-      /无商店记录/,
-    );
-    assert.match(
-      c.doc.querySelector("#group-tab-content").textContent,
-      /参考不在架/,
-    );
+    assert.equal(c.doc.querySelector('[data-col="source"]'), null);
+    assert.equal(c.doc.querySelector('[data-col="observed"]'), null);
+    assert.equal(c.doc.querySelector('[data-col="reference"]'), null);
     assert.equal(c.doc.querySelector('img[src="x"]'), null);
     assert.deepEqual(
       [...c.doc.querySelectorAll("[data-group-tab]")].map((e) => e.textContent),
@@ -441,13 +443,13 @@ test("unified rows show permissions rankings money and ratings without mixing mi
       [
         "应用信息",
         "状态监控",
+        "商店资料",
+        "榜单",
         "权限采集",
         "下载量",
         "收入",
         "评分",
         "关键词",
-        "榜单",
-        "商店资料",
       ],
     );
     assert.equal(cell("permission_state").textContent, "已采集");
@@ -547,10 +549,7 @@ test("inline corrections keep the market row and permission unknowns distinct an
     c.doc.querySelector('[data-group-tab="matrix"]').click();
     await tick();
     const row = () => c.doc.querySelector('[data-member-row="11"]');
-    assert.equal(
-      row().querySelector('[data-col="source"]').textContent,
-      "导入记录",
-    );
+    assert.equal(row().querySelector('[data-col="source"]'), null);
     assert.equal(
       row().querySelector('[data-permission="Camera"]').textContent,
       "—",
@@ -593,10 +592,7 @@ test("inline corrections keep the market row and permission unknowns distinct an
     row().querySelector('[data-edit-permission="SMS"]').value = "";
     row().querySelector("[data-save-row]").click();
     await tick();
-    assert.equal(
-      row().querySelector('[data-col="source"]').textContent,
-      "导入记录",
-    );
+    assert.equal(row().querySelector('[data-col="source"]'), null);
     assert.equal(
       row().querySelector('[data-permission="Camera"]').textContent,
       "—",

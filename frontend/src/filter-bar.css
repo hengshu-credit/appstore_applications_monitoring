@@ -1,0 +1,105 @@
+.filter-bar {
+  align-items: end;
+}
+#content .toolbar > .filter-control,
+.filter-bar .toolbar > .filter-control {
+  flex: 1 1 145px;
+  min-width: min(145px, 100%);
+}
+#content .toolbar > .filter-control.wide {
+  flex: 2 1 210px;
+}
+.filter-control {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.filter-control > span:first-child,
+.filter-control > label {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--muted);
+}
+.filter-control .filter-trigger {
+  width: 100%;
+  justify-content: space-between;
+  color: var(--ink);
+}
+.filter-caption,
+.filter-popup [role="option"] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.filter-caption > span,
+.filter-popup [role="option"] > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filter-caption small,
+.filter-popup small {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.filter-control .country-flag,
+.filter-popup .country-flag {
+  width: 22px;
+  height: 16px;
+  object-fit: contain;
+  flex: none;
+}
+.filter-control .store-logo,
+.filter-popup .store-logo {
+  width: 19px;
+  height: 19px;
+  object-fit: contain;
+  flex: none;
+}
+.filter-popup {
+  position: fixed;
+  inset: auto;
+  z-index: 40;
+  margin: 0;
+  padding: 7px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 6px 24px var(--shadow);
+  max-width: calc(100vw - 16px);
+}
+.filter-popup input {
+  width: 100%;
+  margin-bottom: 5px;
+}
+.filter-popup [role="listbox"] {
+  max-height: min(240px, 32dvh);
+  overflow: auto;
+}
+.filter-popup [role="option"] {
+  width: 100%;
+  background: transparent;
+  color: var(--ink);
+  border: 0;
+  text-align: left;
+  justify-content: flex-start;
+  padding: 7px 8px;
+  font-size: 13px;
+  min-height: 32px;
+}
+.filter-popup [role="option"]:hover,
+.filter-popup .highlighted,
+.filter-popup [aria-selected="true"] {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+[data-filter-type="panel"] .filter-popup [role="listbox"] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}

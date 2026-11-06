@@ -1,3 +1,5 @@
+import { pagination, bindPagination } from "./pagination.js";
+import { filterBar } from "./filter-bar.js";
 import "./collection-center.css";
 import { icon, storeLogo } from "./icons.js";
 import { createTaskLogViewer } from "./task-logs.js";
@@ -42,8 +44,11 @@ export function createCollectionCenter(ctx) {
   } = ctx;
   let filters = { kind: "", store: "", state: "", country: "", q: "" },
     page = 1,
+    pageSize = 50,
     section = "tasks";
-  let preset = null;
+  let preset = null,
+    pendingPool,
+    recentRegistry;
   const options = (obj) => Object.entries(obj);
   const refresh = () => render(nextRevision());
   function closeEditor() {
@@ -66,7 +71,7 @@ export function createCollectionCenter(ctx) {
     const editRevision = currentRevision();
     editor(
       "编辑采集任务",
-      `<p class="sub">${esc(taskKinds[row.kind])} · ${esc(row.label)} · ${esc(row.country.toUpperCase())} / ${esc(row.language)}</p><form id="edit-task-form" class="form-grid">${field("刷新周期（小时）", "refresh_hours", row.refresh_hours, "number", 'min="0.25" max="8760" step="0.25" required')}${row.resource === "watchlist" ? field("监控分组", "group_name", row.group_name, "text", "required") : ["icons","permissions"].includes(row.resource) ? "" : field("采集结果上限", "depth", row.depth, "number", `min="1" max="${row.resource === "keywords" ? 200 : 500}" required`)}<p class="sub full">保留已有历史及启用状态。需要切换应用或市场时，请新建独立任务。</p><div class="full form-actions"><button type="submit">保存设置</button></div></form>`,
+      `<p class="sub">${esc(taskKinds[row.kind])} · ${esc(row.label)} · ${esc(row.country.toUpperCase())} / ${esc(row.language)}</p><form id="edit-task-form" class="form-grid">${field("刷新周期（小时）", "refresh_hours", row.refresh_hours, "number", 'min="0.25" max="8760" step="0.25" required')}${row.resource === "watchlist" ? field("监控分组", "group_name", row.group_name, "text", "required") : ["icons", "permissions"].includes(row.resource) ? "" : field("采集结果上限", "depth", row.depth, "number", `min="1" max="${row.resource === "keywords" ? 200 : 500}" required`)}<p class="sub full">保留已有历史及启用状态。需要切换应用或市场时，请新建独立任务。</p><div class="full form-actions"><button type="submit">保存设置</button></div></form>`,
     );
     bindForm("#edit-task-form", async (v) => {
       await api(
@@ -75,7 +80,7 @@ export function createCollectionCenter(ctx) {
           refresh_hours: Number(v.refresh_hours),
           ...(row.resource === "watchlist"
             ? { group_name: v.group_name }
-            : ["icons","permissions"].includes(row.resource)
+            : ["icons", "permissions"].includes(row.resource)
               ? {}
               : { depth: Number(v.depth) }),
         },
@@ -95,7 +100,9 @@ export function createCollectionCenter(ctx) {
       ${field("计划名称", "name", "应用研究计划", "text", "required")}${field("监控分组", "group_name", "重点应用", "text", "required")}${field("刷新周期（小时）", "refresh_hours", 24, "number", 'min="0.25" max="8760" step="0.25" required')}
       <fieldset class="full task-types"><legend>选择需要采集的数据</legend>${Object.entries(
         Object.fromEntries(
-          Object.entries(taskKinds).filter(([k]) => !["icons","permissions"].includes(k)),
+          Object.entries(taskKinds).filter(
+            ([k]) => !["icons", "permissions"].includes(k),
+          ),
         ),
       )
         .map(
@@ -179,7 +186,9 @@ export function createCollectionCenter(ctx) {
         collection: v.collection,
         category: v.category,
         ...Object.fromEntries(
-          Object.entries(flags).filter(([key]) => !["keywords","permissions"].includes(key)),
+          Object.entries(flags).filter(
+            ([key]) => !["keywords", "permissions"].includes(key),
+          ),
         ),
       };
       const result = await api("/research/plans/preview", spec);
@@ -232,15 +241,21 @@ export function createCollectionCenter(ctx) {
       );
     }
     filters.store = market().store;
+    const registryPath =
+      "/research/collection/tasks?" +
+      new URLSearchParams({ ...filters, page, limit: pageSize });
+    const registry =
+      section !== "tasks" && recentRegistry?.path === registryPath
+        ? recentRegistry.data
+        : api(registryPath);
     const [tasks, pipelines, quality, limits] = await Promise.all([
-      api(
-        "/research/collection/tasks?" +
-          new URLSearchParams({ ...filters, page, limit: 50 }),
-      ),
-      api("/research/collection/pipelines"),
+      registry,
+      api("/research/collection/pipelines?counts=false"),
       api("/research/collection/activity"),
       api("/research/collection/limits"),
     ]);
+    if (rev !== currentRevision()) return;
+    recentRegistry = { path: registryPath, data: tasks };
     const stateLabels = { ...states, out_of_scope: "未启用市场" };
     const stateSymbols = {
       scheduled: "◷",
@@ -296,7 +311,7 @@ export function createCollectionCenter(ctx) {
       .filter((p) => p.id === "pool")
       .map(
         (p) =>
-          `<article class="collection-category"><button type="button" class="category-heading" data-pool-card title="所有商店与市场；管理基础流程"><span>全池应用详情</span><strong>${num(p.total || 0)}</strong></button>${distribution(p.summary || {})}</article>`,
+          `<article class="collection-category" id="pool-task-card"><button type="button" class="category-heading" data-pool-card title="所有商店与市场；管理基础流程"><span>全池应用详情</span><strong>—</strong></button><div class="pool-summary" role="status">正在统计…</div></article>`,
       )
       .join("")}</div>`;
     const tab = (key, label) =>
@@ -311,16 +326,37 @@ export function createCollectionCenter(ctx) {
             )
           : `${panel(
               "采集任务",
-              `<form id="task-filters" class="toolbar">${field("搜索目标", "q", filters.q, "search", 'placeholder="应用 ID / 名称 / 关键词"')}${select("采集类型", "kind", [["", "全部类型"], ...options(taskKinds)], filters.kind)}${select(
-                "商店",
-                "store",
-                [
-                  ["all", "全部商店"],
-                  ["google", "Google Play"],
-                  ["apple", "App Store"],
+              `${filterBar({
+                id: "task-filters",
+                values: filters,
+                submit: "查询",
+                fields: [
+                  {
+                    name: "q",
+                    label: "搜索目标",
+                    placeholder: "应用 ID / 名称 / 关键词",
+                    options: tasks.items.map((r) => [
+                      r.app_id || r.label,
+                      r.label || r.app_id,
+                    ]),
+                  },
+                  {
+                    name: "kind",
+                    label: "采集类型",
+                    type: "panel",
+                    options: [["", "全部类型"], ...options(taskKinds)],
+                  },
+                  { name: "store", label: "商店", type: "store" },
+                  {
+                    name: "state",
+                    label: "任务状态",
+                    type: "panel",
+                    options: [["", "全部状态"], ...options(states)],
+                  },
+                  { name: "country", label: "国家 / 地区", type: "country" },
+                  { name: "language", label: "请求语言", type: "language" },
                 ],
-                filters.store,
-              )}${select("任务状态", "state", [["", "全部状态"], ...options(states)], filters.state)}${field("国家代码", "country", filters.country, "text", 'maxlength="2" placeholder="全部"')}<button type="submit" class="secondary">查询</button><button type="button" class="secondary" id="reset-task-filters">重置</button></form><div class="task-bulk"><span id="selected-count">已选 0 项</span><button type="button" class="secondary small" data-batch="refresh">立即采集</button><button type="button" class="secondary small" data-batch="pause">暂停</button><button type="button" class="secondary small" data-batch="resume">恢复</button><button type="button" class="secondary small" data-batch="interval">修改周期</button><button type="button" class="secondary small" id="retry-failed-tasks">重试筛选内失败任务</button><button type="button" class="secondary small" id="select-filtered-tasks">全选筛选结果（跨页）</button><button type="button" class="secondary small" id="select-every-task">全选配置任务（所有商店）</button><button type="button" class="secondary small" id="clear-task-selection">取消选择</button></div>${table(
+              })}<div class="task-bulk"><span id="selected-count">已选 0 项</span><button type="button" class="secondary small" data-batch="refresh">立即采集</button><button type="button" class="secondary small" data-batch="pause">暂停</button><button type="button" class="secondary small" data-batch="resume">恢复</button><button type="button" class="secondary small" data-batch="interval">修改周期</button><button type="button" class="secondary small" id="retry-failed-tasks">重试筛选内失败任务</button><button type="button" class="secondary small" id="select-filtered-tasks">全选筛选结果（跨页）</button><button type="button" class="secondary small" id="select-every-task">全选配置任务（所有商店）</button><button type="button" class="secondary small" id="clear-task-selection">取消选择</button></div>${table(
                 [
                   '<input type="checkbox" id="select-all-tasks" aria-label="选择当前页全部任务">',
                   "采集类型 / 目标",
@@ -334,12 +370,12 @@ export function createCollectionCenter(ctx) {
                   `<input type="checkbox" data-task-index="${index}" aria-label="选择任务 ${esc(t.kind === "chart" ? selectors.chartDefinitions(t.store).find((d) => d.id === t.collection)?.name || t.label : t.label)}">`,
                   `<span class="task-kind">${icon(t.kind === "details" ? "apps" : t.kind === "chart" ? "charts" : t.kind)}${esc(taskKinds[t.kind])}</span><div class="task-label">${t.app_id ? appLink(t.store, t.app_id, t.label, null, t.country, t.language) : esc(t.kind === "chart" ? selectors.chartDefinitions(t.store).find((d) => d.id === t.collection)?.name || t.label : t.label)}</div>${t.category ? `<div class="sub">${esc(selectors.categoryName(t.store, t.category))}</div>` : ""}`,
                   `<span class="store-caption">${storeLogo(t.store)}${t.store === "apple" ? "App Store" : "Google Play"}</span><div class="sub">${esc(t.country.toUpperCase())} · ${esc(t.language)}</div>`,
-                  `${t.refresh_hours} 小时<div class="sub">${t.depth ? num(t.depth) + " 条" : t.kind === "icons" ? "图标缓存" : "单应用详情"}</div>`,
+                  `${t.refresh_hours} 小时<div class="sub">${t.depth ? num(t.depth) + " 条" : t.kind === "permissions" ? "权限声明" : t.kind === "icons" ? "图标缓存" : "单应用详情"}</div>`,
                   `${stamp(t.success_at)}<div class="sub">${t.enabled ? "到期 " + (t.due ? stamp(t.due) : "尽快执行") : "已暂停"}</div>`,
                   `<span class="badge ${t.task_state === "error" ? "warn" : t.task_state === "running" ? "good" : ""}">${esc(states[t.task_state])}</span>`,
                   `<div class="task-actions"><button class="link" data-task-logs="${index}">日志${t.task_state === "running" ? " · 实时" : ""}</button><button class="link" data-edit-task="${index}">编辑</button><button class="link" data-task-action="${index}" data-action="${t.enabled ? "pause" : "resume"}">${t.enabled ? "暂停" : "恢复"}</button><button class="link" data-task-action="${index}" data-action="refresh" ${t.enabled ? "" : "disabled"}>立即采集</button></div>`,
                 ]),
-              )}<div class="task-pagination"><span>共 ${num(tasks.total)} 个任务 · 第 ${page} / ${Math.max(1, Math.ceil(tasks.total / 50))} 页</span><div class="actions"><button class="secondary small" id="previous-tasks" ${page <= 1 ? "disabled" : ""}>上一页</button><button class="secondary small" id="next-tasks" ${tasks.has_more ? "" : "disabled"}>下一页</button></div></div>`,
+              )}${pagination({ id: "task-pages", offset: (page - 1) * pageSize, limit: pageSize, total: tasks.total, hasMore: tasks.has_more, prevId: "previous-tasks", nextId: "next-tasks", sizes: [25, 50, 100, 200] })}</div>`,
             )}
       <details class="panel plan-history"><summary>计划执行记录 <span class="sub">最近 100 个</span></summary>${table(
         ["计划名称", "目标配置进度", "状态", "创建时间", "操作"],
@@ -362,7 +398,9 @@ export function createCollectionCenter(ctx) {
       !mount(
         `<button id="new-collection" data-workspace-action>${icon("plus")}新建采集计划</button>${categoryCards}<div class="collection-result-count">筛选结果 <strong>${num(tasks.total)}</strong></div><div class="collection-tabs" role="tablist" aria-label="采集管理视图">${tab("tasks", "采集任务")}${tab("pipelines", "基础采集流程")}${section === "create" ? tab("create", "新建计划") : ""}</div><details class="panel collection-limits-panel"><summary>整体采集控频 · ${limits.paused ? "已暂停请求" : (limits.daily_request_limit ?? 0) ? "每日预算 " + num(limits.daily_request_limit ?? 0) + " 次" : "每日预算不限"}</summary><div class="spacer"><form id="collection-limits" class="form-grid">${field("整体最小请求间隔（秒）", "global_interval_seconds", limits.global_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Google 最小间隔（秒）", "google_interval_seconds", limits.google_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("Apple 最小间隔（秒）", "apple_interval_seconds", limits.apple_interval_seconds, "number", 'min="0.1" max="3600" step="0.1" required')}${field("每日请求预算（UTC，0 为不限）", "daily_request_limit", limits.daily_request_limit ?? 0, "number", 'min="0" max="10000000" step="1" required')}${field("受限后整体冷却（秒）", "cooldown_seconds", limits.cooldown_seconds, "number", 'min="60" max="86400" required')}<label class="check-label"><input type="checkbox" name="paused" ${limits.paused ? "checked" : ""}>暂停所有商店采集请求</label><p class="sub full">同市场 App Store 详情每批最多 50 个，Google 详情、关键词、榜单、评论和权限每批最多 20 个；保留原采集周期与深度。每日预算耗尽后等待下一 UTC 日，所有采集 worker 共用额度，详情、关键词、榜单、评论、推荐和图标请求均计入。403 / 429 / 5xx 会触发共享冷却，并遵守更长的 Retry-After。保存后新请求生效，已发出的请求会完成。此开关不停止种子包同步和第三方数据源手动操作。</p><button type="submit">保存控频设置</button></form></div></details>${body}`,
         rev,
-        quality.heartbeat?.next_at ? `后台心跳 ${stamp(quality.heartbeat.next_at)}` : "等待后台首次心跳",
+        quality.heartbeat?.next_at
+          ? `后台心跳 ${stamp(quality.heartbeat.next_at)}`
+          : "等待后台首次心跳",
       )
     )
       return;
@@ -376,13 +414,34 @@ export function createCollectionCenter(ctx) {
           refresh().catch((e) => toast(e.message));
         }),
     );
-    document.querySelectorAll("[data-pool-card]").forEach(
-      (b) =>
-        (b.onclick = () => {
-          section = "pipelines";
-          refresh().catch((e) => toast(e.message));
-        }),
-    );
+    const poolCard = $("#pool-task-card");
+    if (poolCard) {
+      poolCard.onclick = (event) => {
+        if (!event.target.closest("[data-pool-card]")) return;
+        section = "pipelines";
+        refresh().catch((e) => toast(e.message));
+      };
+      pendingPool ||= api("/research/collection/pipelines").finally(() => {
+        pendingPool = null;
+      });
+      pendingPool
+        .then((rows) => {
+          if (!poolCard.isConnected || rev !== currentRevision()) return;
+          const info = rows.find((p) => p.id === "pool");
+          if (!info) return;
+          poolCard.querySelector("strong").textContent = num(info.total);
+          poolCard.querySelector(".pool-summary").innerHTML = distribution(
+            info.summary || {},
+          );
+          if (info.observed_at)
+            poolCard.title = "统计时间 " + stamp(info.observed_at);
+        })
+        .catch(() => {
+          if (poolCard.isConnected)
+            poolCard.querySelector(".pool-summary").textContent =
+              "统计暂不可用";
+        });
+    }
     bindForm("#collection-limits", async (v, f) => {
       await api(
         "/research/collection/limits",
@@ -405,6 +464,8 @@ export function createCollectionCenter(ctx) {
     const storeFilter = $('#task-filters [name="store"]');
     if (storeFilter)
       storeFilter.onchange = () => {
+        filters = Object.fromEntries(new FormData(storeFilter.form));
+        page = 1;
         $("#global-store").value = storeFilter.value;
         $("#global-store").dispatchEvent(
           new Event("change", { bubbles: true }),
@@ -557,21 +618,23 @@ export function createCollectionCenter(ctx) {
     bindForm("#task-filters", async (v) => {
       filters = v;
       page = 1;
+      if (v.store !== market().store) {
+        $("#global-store").value = v.store;
+        $("#global-store").dispatchEvent(
+          new Event("change", { bubbles: true }),
+        );
+        return;
+      }
+      page = 1;
       await refresh();
     });
-    $("#reset-task-filters").onclick = () => {
-      filters = { kind: "", store: "", state: "", country: "", q: "" };
-      page = 1;
-      refresh().catch((e) => toast(e.message));
-    };
-    $("#previous-tasks").onclick = () => {
-      page--;
-      refresh().catch((e) => toast(e.message));
-    };
-    $("#next-tasks").onclick = () => {
-      page++;
-      refresh().catch((e) => toast(e.message));
-    };
+
+    bindPagination(document, "task-pages", (start, size) => {
+      pageSize = size;
+      page = start / size + 1;
+      return refresh();
+    });
+
     let selectionScope = "selected";
     const selected = () =>
       [...document.querySelectorAll("[data-task-index]:checked")].map(

@@ -49,6 +49,34 @@ class WorkbenchTest(MySQLTestCase):
             (m['store'],m['app_id'],m['country'],m['language'],review_id,rating,p['content'],'','1','2026-11-03',now,now,dump(p)))
         return m|{'review_id':review_id}
 
+    def test_app_filter_suggestions_and_free_text_keep_market_scope(self):
+        from appmon.scoped_views import apps, filter_options
+        self.seed_listing('123', name='Loan Box', developer='Paper_100%')
+        self.seed_listing('456', name='Loan Plus', developer='Paper_100% Labs')
+        self.seed_listing('789', name='Loan Foreign', developer='Paper Abroad',country='th',language='th')
+        common=dict(store='apple',country='us',language='en')
+        self.assertEqual(filter_options(self.db,'app',q='loan',**common),[['123','Loan Box'],['456','Loan Plus']])
+        self.assertEqual(len(filter_options(self.db,'developer',q='paper',**common)),2)
+        self.assertEqual(len(apps(self.db,**common,developer='_100%',developer_match='contains')['items']),2)
+        self.assertEqual([r['app_id'] for r in apps(self.db,**common,developer='Paper_100%',developer_match='exact')['items']],['123'])
+        self.assertEqual([r['app_id'] for r in apps(self.db,**common,q='23',q_match='contains')['items']],['123'])
+        self.assertEqual([r['app_id'] for r in apps(self.db,**common,q='123',q_match='id')['items']],['123'])
+        self.assertEqual(filter_options(self.db,'app',q='x',**common),[])
+        with self.assertRaises(ValueError):filter_options(self.db,'unexpected',q='loan',**common)
+
+    def test_numbered_app_pages_cover_uneven_stores_and_clamp_past_end(self):
+        from appmon.scoped_views import apps
+        add_apps(self.db,[('apple',str(100+i),'App '+str(i),None) for i in range(7)]+[('google','com.test.one','Only google',None)],'test')
+        seen=[]
+        for page in (1,2,3):
+            result=apps(self.db,store='all',page=page,limit=3)
+            seen.extend((r['store'],r['app_id']) for r in result['items'])
+        self.assertEqual(len(seen),8)
+        self.assertEqual(len(set(seen)),8)
+        last=apps(self.db,store='all',page=99,limit=3)
+        self.assertEqual(last['page'],3)
+        self.assertFalse(last['has_more'])
+
     def test_draft_versions_conflict_and_private_keywords_not_inferred(self):
         m=self.seed_listing()
         loaded=workspace(self.db,m)

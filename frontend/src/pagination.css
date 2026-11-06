@@ -1,0 +1,78 @@
+.table-pager,
+.pager-controls,
+.pager-jump,
+.pager-jump label {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.table-pager {
+  justify-content: flex-start;
+  gap: 8px 12px;
+  width: 100%;
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.pager-summary {
+  margin-right: 0;
+}
+.pager-controls,
+.pager-jump,
+.pager-jump label {
+  gap: 4px;
+  flex-direction: row;
+}
+#content .table-pager .pager-button,
+#content .table-pager input,
+#content .table-pager select,
+.group-dialog .table-pager .pager-button,
+.group-dialog .table-pager input {
+  width: auto;
+  min-width: 30px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 1.25;
+}
+#content .table-pager input,
+.group-dialog .table-pager input {
+  width: 62px;
+}
+.table-pager [aria-current="page"] {
+  border-color: var(--accent-text);
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+.pager-feedback:empty {
+  display: none;
+}
+@media (max-width: 650px) {
+  .table-pager {
+    justify-content: flex-start;
+  }
+  .pager-summary {
+    flex-basis: 100%;
+  }
+  .table-pager [data-page][aria-label]:not([aria-current="page"]) {
+    display: none;
+  }
+}
+
+.table-pager .pager-controls .pager-button {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink);
+}
+.table-pager .pager-controls .pager-button[aria-current="page"] {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.table-pager .pager-button:disabled {
+  color: var(--muted);
+  opacity: 0.5;
+}
+.pager-jump {
+  margin-left: auto;
+}

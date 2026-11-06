@@ -1,3 +1,5 @@
+import { pagination, bindPagination } from "./pagination.js";
+import { filterBar } from "./filter-bar.js";
 export function createChartDetail(ctx) {
   const {
     api,
@@ -95,16 +97,30 @@ export function createChartDetail(ctx) {
     };
     if (
       !mount(
-        `<div class="panel-heading"><div><h2>${esc(country)} · ${esc(name)}</h2><p class="sub">${esc(selectors.categoryName(scope.store, scope.category))} · ${esc(scope.language)} · ${esc(d.definition.mode === "derived" ? "本站派生榜" : "商店榜单")}</p></div><a class="button secondary" href="#globalcharts">返回全球排行榜</a></div><form id="chart-detail-filter" class="toolbar">${field("搜索应用 / ID / 开发者", "q", scope.q)}${select(
-          "每页应用",
-          "limit",
-          [
-            [25, "25个"],
-            [50, "50个"],
-            [100, "100个"],
-          ],
-          scope.limit,
-        )}<button type="submit">筛选</button>${d.target ? '<button type="button" id="chart-detail-refresh" class="secondary">安排榜单刷新</button>' : ""}</form><div class="toolbar"><button id="chart-detail-prev" class="secondary" ${d.offset ? "" : "disabled"}>上一页</button><span>当前 ${d.total ? Math.min(d.offset + 1, d.total) : 0}–${Math.min(d.offset + d.items.length, d.total)} / ${d.total} 个应用；该快照共 ${d.chart_count} 个，基榜返回 ${d.base_returned_count} 个</span><button id="chart-detail-next" class="secondary" ${d.has_more ? "" : "disabled"}>下一页</button></div>${panel("榜单应用资料", `<div class="chart-detail-table">${`<details><summary>榜单来源与口径</summary><p>${esc(d.latest_success?.source || "暂无来源")} · ${esc(d.definition.note)} ${esc(d.reason)} ${esc(d.metadata_note)} ${esc(d.metadata_warning)}</p></details>` + table(["名次", "应用", "开发者", "分类", "售价", "评分", "评分数", "公开累计安装数（全球）", "版本", "商店更新", "资料观察时间"], rows)}</div>`)}<p class="sub">点击应用名称进入该市场的应用详情，可采集尚缺资料；这里只展示来源实际返回的榜单范围。</p>`,
+        `<div class="panel-heading"><div><h2>${esc(country)} · ${esc(name)}</h2><p class="sub">${esc(selectors.categoryName(scope.store, scope.category))} · ${esc(scope.language)} · ${esc(d.definition.mode === "derived" ? "本站派生榜" : "商店榜单")}</p></div><a class="button secondary" href="#globalcharts">返回全球排行榜</a></div>${filterBar(
+          {
+            id: "chart-detail-filter",
+            values: scope,
+            fields: [
+              {
+                name: "q",
+                label: "搜索应用 / ID / 开发者",
+                options: d.items
+                  .flatMap((r) => [r.name, r.app_id, r.metadata?.developer])
+                  .filter(Boolean),
+              },
+              {
+                name: "limit",
+                label: "每页应用",
+                type: "select",
+                options: [25, 50, 100].map((n) => [n, n + "个"]),
+              },
+            ],
+            actions: d.target
+              ? '<button type="button" id="chart-detail-refresh" class="secondary">安排榜单刷新</button>'
+              : "",
+          },
+        )}${pagination({ id: "chart-detail-pages", offset: d.offset, limit: d.limit || scope.limit, total: d.total, hasMore: d.has_more, prevId: "chart-detail-prev", nextId: "chart-detail-next" })}<p class="sub">快照共 ${d.chart_count} 个应用，基榜返回 ${d.base_returned_count} 条。</p>${panel("榜单应用资料", `<div class="chart-detail-table">${`<details><summary>榜单来源与口径</summary><p>${esc(d.latest_success?.source || "暂无来源")} · ${esc(d.definition.note)} ${esc(d.reason)} ${esc(d.metadata_note)} ${esc(d.metadata_warning)}</p></details>` + table(["名次", "应用", "开发者", "分类", "售价", "评分", "评分数", "公开累计安装数（全球）", "版本", "商店更新", "资料观察时间"], rows)}</div>`)}<p class="sub">点击应用名称进入该市场的应用详情，可采集尚缺资料；这里只展示来源实际返回的榜单范围。</p>`,
         rev,
         [
           quality[d.quality] || "尚未采集",
@@ -119,10 +135,9 @@ export function createChartDetail(ctx) {
     bindForm("#chart-detail-filter", async (v) =>
       update({ q: v.q, limit: Number(v.limit), offset: 0 }),
     );
-    $("#chart-detail-prev").onclick = () =>
-      update({ offset: Math.max(0, d.offset - d.limit) });
-    $("#chart-detail-next").onclick = () =>
-      update({ offset: d.offset + d.limit });
+    bindPagination(document, "chart-detail-pages", (offset) =>
+      update({ offset }),
+    );
     const refresh = $("#chart-detail-refresh");
     if (refresh)
       refresh.onclick = async () => {

@@ -8,7 +8,9 @@ const html = (
 ).replace(/<script[^>]*><\/script>/g, "");
 const accountSource = (
   await readFile(new URL("../src/accounts.js", import.meta.url), "utf8")
-).replace(/^export /gm, "");
+)
+  .replace(/^import .*;$/gm, "")
+  .replace(/^export /gm, "");
 const themeSource = (
   await readFile(new URL("../src/theme.js", import.meta.url), "utf8")
 ).replace(/^export /gm, "");
@@ -78,6 +80,11 @@ async function wrappedModule(name, exports) {
 }
 const newModules = (
   await Promise.all([
+    wrappedModule(
+      "filter-bar.js",
+      "filterBar,filterFields,bindFilterBar,initFilterBars,setFilterCatalog",
+    ),
+    wrappedModule("pagination.js", "pagination,bindPagination"),
     wrappedModule("icons.js", "icon,storeLogo"),
     wrappedModule("shell-layout.js", "initShellLayout"),
     wrappedModule(
@@ -264,7 +271,10 @@ async function setup(responder) {
         summary: { running: 0, pending: 0, error: 0, paused: 0 },
         has_more: false,
       };
-    if (data === undefined && path === "/api/research/collection/pipelines")
+    if (
+      data === undefined &&
+      path.split("?")[0] === "/api/research/collection/pipelines"
+    )
       data = [];
     if (data === undefined && path === "/api/research/collection/limits")
       data = {
@@ -1576,7 +1586,7 @@ test("coverage pagination reaches later terms and resets after a market change",
     window.location.hash = "keywords";
     await tick();
     window.document
-      .querySelector('[data-coverage-page="keywords"][data-offset="100"]')
+      .querySelector('[data-pager="coverage-keywords"] [data-page="2"]')
       .click();
     await tick();
     assert.ok(calls.some((c) => c.path.includes("keyword_offset=100")));
@@ -1814,7 +1824,7 @@ test("multi-store global boards preserve store links and count countries once", 
     assert.match(links[1], /store=apple/);
     assert.match(
       window.document.querySelector("#content").textContent,
-      /第 1–1 个 \/ 共 1 个国家/,
+      /共 1 国/,
     );
     assert.ok(
       window.document.querySelector('[data-store="apple"][data-app="123"]'),

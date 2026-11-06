@@ -1,3 +1,5 @@
+import { pagination, bindPagination } from "../src/pagination.js";
+import { filterBar } from "../src/filter-bar.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
@@ -5,7 +7,9 @@ import { readFile } from "node:fs/promises";
 
 const source = (
   await readFile(new URL("../src/accounts.js", import.meta.url), "utf8")
-).replace(/^export /gm, "");
+)
+  .replace(/^import .*;$/gm, "")
+  .replace(/^export /gm, "");
 const tick = async () => {
   for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 5));
 };
@@ -24,6 +28,8 @@ function setup(responder) {
       json: async () => result.data,
     };
   };
+  Object.assign(window,{pagination,bindPagination});
+  window.filterBar = filterBar;
   window.eval(
     source +
       `\nwindow.accounts=createAccounts({esc:v=>String(v??'').replaceAll('<','&lt;'),toast:()=>{},onReady:()=>{window.ready=true;}});`,

@@ -1,3 +1,5 @@
+import { pagination, bindPagination } from "./pagination.js";
+import { filterBar } from "./filter-bar.js";
 import { createCollectionCenter } from "./collection-center.js";
 // Business workflows built on observed records. Shared visual tokens live in theme.css.
 export function createResearchPages(ctx) {
@@ -159,17 +161,44 @@ export function createResearchPages(ctx) {
       !mount(
         `<div class="cards">${metric("观察事件", total, "当前市场与筛选区间")}${metric("资料变化", changed, "包含版本、素材、价格等字段")}${metric("地区不可用", data.summary.find((r) => r.kind === "region_unavailable")?.count || 0, "保留多次确认口径")}${metric("人工注记", data.annotations.length, "手工记录，不冒充采集事件")}</div>${panel(
           "事件筛选",
-          `<form id="event-filter" class="toolbar">${field("应用 ID", "app_id", filters.app_id || "")}${select("事件", "kind", [["", "全部"], ...Object.entries(eventNames)])}${select("变更字段", "field", [["", "全部"], ...Object.entries(fieldNames)])}${field("关注分组", "group_name", filters.group_name || "")}${select(
-            "观察区间",
-            "days",
-            [
-              ["7", "最近7天"],
-              ["30", "最近30天"],
-              ["90", "最近90天"],
-              ["365", "最近365天"],
+          `${filterBar({
+            id: "event-filter",
+            values: { days: 30, ...filters },
+            submit: "查询",
+            fields: [
+              {
+                name: "app_id",
+                label: "应用 ID",
+                options: data.items.map((r) => [r.app_id, r.name || r.app_id]),
+              },
+              {
+                name: "kind",
+                label: "事件",
+                type: "panel",
+                options: [["", "全部"], ...Object.entries(eventNames)],
+              },
+              {
+                name: "field",
+                label: "变更字段",
+                type: "select",
+                options: [["", "全部"], ...Object.entries(fieldNames)],
+              },
+              {
+                name: "group_name",
+                label: "关注分组",
+                options: data.items.map((r) => r.group_name).filter(Boolean),
+              },
+              {
+                name: "days",
+                label: "观察区间",
+                type: "select",
+                options: [7, 30, 90, 365].map((n) => [n, `最近${n}天`]),
+              },
             ],
-          )}<button type="submit">查询</button><button type="button" class="secondary" id="add-annotation">添加复盘注记</button></form><p class="sub">${esc(data.scope)}</p>`,
-        )}${panel("每日观察日历（UTC）", `<div class="event-calendar">${[...days].map(([at, count]) => `<button class="calendar-cell secondary" data-event-day="${at}"><span>${esc(dateInput(at))}</span><strong>${num(count)}</strong><small>观察事件</small></button>`).join("") || empty("区间内暂无事件")}</div><div id="day-selection" class="sub"></div>`)}${panel("变更记录 · 最近300条", `<div id="event-table"></div>`)}${panel(
+            actions:
+              '<button type="button" class="secondary" id="add-annotation">添加复盘注记</button>',
+          })}<p class="sub">${esc(data.scope)}</p>`,
+        )}${panel("每日观察日历（UTC）", `<div class="event-calendar">${[...days].map(([at, count]) => `<button class="calendar-cell content-card secondary" data-event-day="${at}"><span>${esc(dateInput(at))}</span><strong>${num(count)}</strong><small>观察事件</small></button>`).join("") || empty("区间内暂无事件")}</div><div id="day-selection" class="sub"></div>`)}${panel("变更记录 · 最近300条", `<div id="event-table"></div>`)}${panel(
           "人工复盘注记",
           table(
             ["事件时间", "应用", "标题", "备注 / 证据"],
@@ -298,7 +327,7 @@ export function createResearchPages(ctx) {
       );
       if (rev !== currentRevision() || request !== libraryRequest) return;
       $("#aso-library").innerHTML =
-        `<p class="sub">当前应用共 ${words.total} 个自然搜索词。${esc(words.note)}</p><form id="aso-library-search" class="toolbar">${field("筛选报告词", "q", libraryQuery)}<button type="submit">筛选</button></form><div class="toolbar"><button type="button" id="aso-library-add">本页加入核查词库</button><button type="button" id="aso-library-prev" class="secondary" ${libraryOffset ? "" : "disabled"}>上一页</button><button type="button" id="aso-library-next" class="secondary" ${libraryOffset + words.limit < words.total ? "" : "disabled"}>下一页</button><span>每页 ${words.limit} 词，核查最多500词</span></div>${table(
+        `<p class="sub">当前应用共 ${words.total} 个自然搜索词。${esc(words.note)}</p>${filterBar({ id: "aso-library-search", values: { q: libraryQuery }, fields: [{ name: "q", label: "筛选报告词", options: words.items.map((r) => r.keyword) }] })}<div class="toolbar"><button type="button" id="aso-library-add">本页加入核查词库</button>${pagination({ id: "aso-library-pages", offset: libraryOffset, limit: words.limit, total: words.total, prevId: "aso-library-prev", nextId: "aso-library-next" })}<span>每页 ${words.limit} 词，核查最多500词</span></div>${table(
           ["关键词", "最佳报告排名", "最近报告日期"],
           words.items.map((r) => [
             esc(r.keyword),
@@ -311,13 +340,9 @@ export function createResearchPages(ctx) {
         libraryOffset = 0;
         await loadLibrary();
       });
-      bindButton("#aso-library-prev", async () => {
-        libraryOffset = Math.max(0, libraryOffset - words.limit);
-        await loadLibrary();
-      });
-      bindButton("#aso-library-next", async () => {
-        libraryOffset += words.limit;
-        await loadLibrary();
+      bindPagination(document, "aso-library-pages", (start) => {
+        libraryOffset = start;
+        return loadLibrary();
       });
       bindButton("#aso-library-add", () => {
         const current = $("#aso-words")
@@ -487,7 +512,16 @@ export function createResearchPages(ctx) {
       "/research/reviews?" + query({ ...market(), ...filters }),
     );
     const mean = data.summary.mean_review_rating;
-    const pageActions = `<div class="actions"><span class="sub">第 ${Math.floor((filters.offset || 0) / 50) + 1} 页 · ${num(data.items.length)} 条</span><button id="reviews-prev" class="secondary small" ${(filters.offset || 0) > 0 ? "" : "disabled"}>上一页</button><button id="reviews-next" class="secondary small" ${data.next_offset == null ? "disabled" : ""}>下一页</button></div>`;
+    const pageActions = pagination({
+      id: "review-pages",
+      offset: Number(filters.offset) || 0,
+      limit: 50,
+      total: data.summary.total,
+      pages: data.page_count,
+      hasMore: data.next_offset != null,
+      prevId: "reviews-prev",
+      nextId: "reviews-next",
+    });
     const cards = data.items
       .map(
         (r, i) =>
@@ -496,7 +530,50 @@ export function createResearchPages(ctx) {
       .join("");
     if (
       !mount(
-        `<div class="cards">${metric("匹配评论", data.summary.total, "当前筛选的已采集记录")}${metric("评论平均星级", mean == null ? null : Number(mean).toFixed(2), "评论样本均值，非商店累计评分")}${metric("覆盖应用", data.summary.apps, "当前筛选内按商店区分应用")}${metric("当前页记录", data.items.length, market().store === "all" ? "每店每页最多50条" : "每页最多50条")}</div>${panel("评论筛选", `<form id="review-record-filter" class="toolbar">${field("应用 ID", "app_id", filters.app_id || "")}${select("星级", "rating", [["", "全部"], ...["1", "2", "3", "4", "5"].map((v) => [v, v + "星"])], filters.rating || "")}${field("应用版本", "version", filters.version || "")}${field("评论内容 / 标题", "q", filters.q || "")}${field("首次观察开始日（UTC）", "since_day", dateInput(filters.since), "date")}<button type="submit">查询</button><button type="button" class="secondary" id="configure-reviews">配置评论采集</button></form><p class="sub">${esc(data.scope)}</p>`)}<div class="grid2">${panel("星级分布", bars(data.ratings))}${panel(
+        `<div class="cards">${metric("匹配评论", data.summary.total, "当前筛选的已采集记录")}${metric("评论平均星级", mean == null ? null : Number(mean).toFixed(2), "评论样本均值，非商店累计评分")}${metric("覆盖应用", data.summary.apps, "当前筛选内按商店区分应用")}${metric("当前页记录", data.items.length, market().store === "all" ? "每店每页最多50条" : "每页最多50条")}</div>${panel(
+          "评论筛选",
+          `${filterBar({
+            id: "review-record-filter",
+            submit: "查询",
+            values: { ...filters, since_day: dateInput(filters.since) },
+            fields: [
+              {
+                name: "app_id",
+                label: "应用 ID",
+                options: data.items.map((r) => [
+                  r.app_id,
+                  r.app_name || r.app_id,
+                ]),
+              },
+              {
+                name: "rating",
+                label: "星级",
+                type: "number",
+                min: 1,
+                max: 5,
+                step: 1,
+                options: [1, 2, 3, 4, 5],
+              },
+              {
+                name: "version",
+                label: "应用版本",
+                options: data.items.map((r) => r.version).filter(Boolean),
+              },
+              {
+                name: "q",
+                label: "评论内容 / 标题",
+                options: data.items.map((r) => r.title).filter(Boolean),
+              },
+              {
+                name: "since_day",
+                label: "首次观察开始日（UTC）",
+                type: "date",
+              },
+            ],
+            actions:
+              '<button type="button" class="secondary" id="configure-reviews">配置评论采集</button>',
+          })}<p class="sub">${esc(data.scope)}</p>`,
+        )}<div class="grid2">${panel("星级分布", bars(data.ratings))}${panel(
           "首次观察趋势（UTC日期）",
           chart(
             data.daily.map((r) => ({ at: r.day, value: r.count })),
@@ -515,14 +592,8 @@ export function createResearchPages(ctx) {
         since: since_day ? Date.parse(since_day + "T00:00:00Z") / 1000 : null,
       });
     });
-    bindButton("#reviews-prev", () =>
-      reviews(nextRevision(), {
-        ...filters,
-        offset: Math.max(0, (filters.offset || 0) - 50),
-      }),
-    );
-    bindButton("#reviews-next", () =>
-      reviews(nextRevision(), { ...filters, offset: data.next_offset }),
+    bindPagination(document, "review-pages", (offset) =>
+      reviews(nextRevision(), { ...filters, offset }),
     );
     bindButton("#configure-reviews", () =>
       ctx.reviewTargets(
@@ -719,7 +790,7 @@ export function createResearchPages(ctx) {
       !mount(
         `${panel(
           "开发者检索",
-          `<form id="developer-filter" class="toolbar">${field("开发者名称", "q", q)}<button type="submit">搜索</button></form>` +
+          `${filterBar({ id: "developer-filter", submit: "搜索", values: { q }, fields: [{ name: "q", label: "开发者名称", options: rows.map((r) => r.name), source: "developer-directory" }] })}` +
             table(
               [
                 "开发者",

@@ -48,6 +48,45 @@ GOOGLE_MAPPING = {"name": "title", "version": "version", "description": "descrip
                        "icon": "icon", "screenshots": "screenshots", "video": "video",
                        "release_notes": "recentChanges", "summary": "summary", "category_id": "genreId"}
 
+APPLE_MAPPING.update({
+    "app_id":"trackId", "ipad_screenshots":"ipadScreenshotUrls", "appletv_screenshots":"appletvScreenshotUrls",
+    "current_version_rating":"averageUserRatingForCurrentVersion", "current_version_ratings":"userRatingCountForCurrentVersion",
+    "features":"features", "advisories":"advisories", "is_game_center":"isGameCenterEnabled",
+    "formatted_price":"formattedPrice", "seller_url":"sellerUrl",
+})
+GOOGLE_MAPPING.update({
+    "reviews":"reviews", "rating_distribution":"histogram", "content_rating":"contentRating",
+    "content_rating_description":"contentRatingDescription", "minimum_os":"androidVersion",
+    "developer_email":"developerEmail", "developer_website":"developerWebsite", "developer_address":"developerAddress",
+    "developer_legal_name":"developerLegalName", "developer_legal_email":"developerLegalEmail",
+    "developer_legal_address":"developerLegalAddress", "developer_legal_phone":"developerLegalPhoneNumber",
+    "privacy_url":"privacyPolicy", "iap_range":"IAPRange", "categories":"categories",
+    "header_image":"headerImage", "video_image":"videoImage", "preview_video":"previewVideo",
+    "sale":"sale", "original_price":"originalPrice", "price_text":"priceText",
+    "early_access":"earlyAccessEnabled", "preregister":"preregister", "play_pass":"isAvailableInPlayPass",
+})
+
+def detail_payload(app, mapping, app_id):
+    payload={key:app.get(value) for key,value in mapping.items()}
+    payload["app_id"]=str(app_id)
+    # Preserve fields returned by this response without another network request.
+    payload["store_fields"]=app
+    return payload
+
+def google_detail(data, app_id):
+    from appgoblin_play_scraper.constants.element import ElementSpecs
+    try:
+        identity=data[1][2][77][0]
+        if identity != app_id:
+            raise ValueError("Detail application identity mismatch")
+        app={name:spec.extract_content({"ds:5":data}) for name,spec in ElementSpecs.Detail.items()}
+        if not app.get("title"):
+            raise ValueError("Missing detail title")
+        app["appId"]=app_id
+        return app
+    except (ValueError,TypeError,IndexError,KeyError) as exc:
+        raise FetchError("Google detail identity or schema mismatch") from exc
+
 class Client:
     def __init__(self, cfg, db):
         self.cfg, self.db = cfg, db
@@ -131,7 +170,7 @@ class Client:
             except Exception as e:
                 raise FetchError("Google parser failed; retain previous state") from e
             mapping = GOOGLE_MAPPING
-        payload = {k: app.get(v) for k, v in mapping.items()}
+        payload = detail_payload(app,mapping,app_id)
         return Result("ok", payload, r.content)
 
     def fetch_many(self, jobs):
@@ -166,13 +205,12 @@ class Client:
                 found[identifier] = app
         except (ValueError,TypeError,KeyError,AttributeError) as exc:
             raise FetchError('Apple response schema changed') from exc
-        return [Result('ok', {k:found[i].get(v) for k,v in APPLE_MAPPING.items()}, r.content) if i in found
+        return [Result('ok', detail_payload(found[i],APPLE_MAPPING,i), r.content) if i in found
                 else Result('missing',raw=r.content) if len(ids)==1
                 else FetchError('Apple batch omitted this ID; verify with a single lookup',60) for i in ids]
 
     def fetch_google_many(self, jobs):
         from .google_rpc import same_market, template, rpc_many
-        from appgoblin_play_scraper.constants.element import ElementSpecs
         from urllib.parse import urlencode
         same_market(jobs)
         calls=[]
@@ -185,14 +223,10 @@ class Client:
             if isinstance(data,FetchError):
                 results.append(data);continue
             try:
-                if data[1][2][77][0]!=job['app_id']:
-                    raise ValueError('Mismatched detail identity')
-                app={name:ElementSpecs.Detail[name].extract_content({'ds:5':data}) for name in set(GOOGLE_MAPPING.values())-{'url'}}
-                if not app.get('title'):
-                    raise ValueError('Missing detail title')
+                app=google_detail(data,job['app_id'])
                 app['url']='https://play.google.com/store/apps/details?'+urlencode({'id':job['app_id'],'gl':job['country'],'hl':job['language']})
-                results.append(Result('ok',{key:app.get(value) for key,value in GOOGLE_MAPPING.items()},raw))
-            except (ValueError,TypeError,IndexError,KeyError):
+                results.append(Result('ok',detail_payload(app,GOOGLE_MAPPING,job['app_id']),raw))
+            except (ValueError,TypeError,IndexError,KeyError,FetchError):
                 results.append(FetchError('Google batch detail schema changed; retry separately',60))
         return results
 

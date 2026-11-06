@@ -36,6 +36,8 @@ def create_app(cfg):
     pool_cache = {}
     pool_lock = threading.Lock()
     category_cache = {}
+    pipeline_cache = {}
+    pipeline_lock = threading.Lock()
     @asynccontextmanager
     async def lifespan(app):
         db = connect(cfg)
@@ -154,13 +156,17 @@ def create_app(cfg):
                 category_cache[store] = cached
             return cached
 
+    @api.get("/apps/filter-options")
+    def app_filter_options(field:str,q:str=Query("",max_length=255),store:str="",country:str="us",language:str="en",db=DB):
+        return scoped_views.filter_options(db,field,store,country,language,q)
+
     @api.get("/apps")
     def apps(q: str = Query("", max_length=255), store: str = "", country: str = "us", language: str = "en", category: str = "",
-             developer: str = "", state: str = "", after_store: str = "", after_id: str = "", limit: int = Query(50, ge=1, le=200),
+             page:int|None=Query(None,ge=1,le=1000000),q_match: str = "auto", developer_match: str = "exact", developer: str = "", state: str = "", after_store: str = "", after_id: str = "", limit: int = Query(50, ge=1, le=200),
              after_google:str="",after_apple:str="",google_done:bool=False,apple_done:bool=False,
              min_rating: float | None = Query(None, ge=0, le=5), min_ratings: int | None = Query(None,ge=0),
              pricing: str = "", updated_since: str = "", released_since: str = "", db=DB):
-        return scoped_views.apps(db,store=store,country=country,language=language,q=q,category=category,developer=developer,state=state,limit=limit,
+        return scoped_views.apps(db,store=store,country=country,language=language,q=q,page=page,q_match=q_match,category=category,developer=developer,developer_match=developer_match,state=state,limit=limit,
             after_store=after_store,after_id=after_id,after_google=after_google,after_apple=after_apple,google_done=google_done,apple_done=apple_done,
             min_rating=min_rating,min_ratings=min_ratings,pricing=pricing,updated_since=updated_since,released_since=released_since)
 
@@ -655,7 +661,19 @@ def create_app(cfg):
         return collection_tasks.edit_task(db,resource,identifier,value)
 
     @api.get('/research/collection/pipelines')
-    def collection_pipelines(db=DB):return pipelines.report(db,cfg)
+    def collection_pipelines(counts:bool=True,db=DB):
+        rows=pipelines.report(db,cfg,counts=False)
+        if counts:
+            pool=rows[0]
+            key=(tuple(pool['countries']),pool['language'],pool['enabled'])
+            with pipeline_lock:
+                cached=pipeline_cache.get(key)
+                if not cached or time.time()-cached['observed_at']>=60:
+                    cached=pipelines.pool_summary(db,pool)
+                    pipeline_cache.clear()
+                    pipeline_cache[key]=cached
+            pool.update(cached)
+        return rows
 
     @api.get('/research/collection/limits')
     def collection_limit_settings(db=DB):

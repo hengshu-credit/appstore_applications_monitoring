@@ -558,3 +558,98 @@ th input[type="checkbox"] {
     margin-left: 0;
   }
 }
+/* Multiline content and native pickers size independently of action buttons. */
+.event-calendar {
+  grid-template-columns: repeat(auto-fill, minmax(min(115px, 100%), 1fr));
+  align-items: stretch;
+}
+.event-calendar .calendar-cell {
+  height: auto;
+  min-height: 76px;
+  align-items: start;
+  justify-content: center;
+  gap: 3px;
+  margin: 0;
+  line-height: 1.25;
+}
+#day-selection:not(:empty) {
+  margin-top: 10px;
+}
+dialog .form-grid {
+  align-items: start;
+  align-content: start;
+  gap: 12px;
+}
+dialog .form-grid label {
+  margin: 0;
+}
+dialog .form-grid > p,
+dialog .form-grid > .callout {
+  margin: 0;
+}
+dialog .form-grid label:has(> input[type="checkbox"]) {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+dialog .form-grid input[type="checkbox"] {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  margin: 0;
+  flex: none;
+}
+.group-check-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+.group-check-options label {
+  padding: 4px 0;
+  color: var(--ink);
+}
+dialog .form-grid > button {
+  justify-self: start;
+  align-self: end;
+}
+dialog:has(#group-control),
+dialog:has(#group-collect),
+dialog:has(#group-metrics),
+dialog:has(#group-add),
+dialog:has(#group-edit) {
+  width: min(680px, calc(100vw - 24px));
+}
+#group-control {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+input[type="file"] {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+input[type="file"]::file-selector-button {
+  font: inherit;
+  color: var(--ink);
+  background: var(--soft);
+  border: 0;
+  border-inline-end: 1px solid var(--line);
+  padding: 0 10px;
+  height: 100%;
+  margin-inline-end: 8px;
+}
+input[type="file"]:not([type="hidden"]):not([type="radio"]):not(
+    [type="checkbox"]
+  ):not([type="color"]) {
+  padding: 0;
+  line-height: 40px;
+}
+@media (max-width: 600px) {
+  #group-control {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  dialog .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

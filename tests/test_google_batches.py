@@ -62,7 +62,9 @@ class GoogleBatchParserTest(unittest.TestCase):
             results=client.fetch_many(jobs)
         self.assertEqual(http.call_count,1)
         old=parse_dom(html,jobs[0]['app_id'],results[0].payload['url'])
-        self.assertEqual(results[0].payload,{k:old.get(v) for k,v in GOOGLE_MAPPING.items()})
+        self.assertEqual({k:results[0].payload[k] for k in GOOGLE_MAPPING},{k:old.get(v) for k,v in GOOGLE_MAPPING.items()})
+        self.assertEqual(results[0].payload['app_id'],jobs[0]['app_id'])
+        self.assertEqual(results[0].payload['store_fields']['developerId'],old['developerId'])
         self.assertEqual(results[0].payload,results[1].payload)
         with patch.object(client,'request',side_effect=send):
             bad=client.fetch_many([jobs[0]|{'app_id':'com.wrong.app'}])[0]

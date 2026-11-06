@@ -99,7 +99,12 @@ export function createAppInsights(ctx) {
           : "—",
       ],
       ["最低系统", p.minimum_os],
-      ["年龄分级", p.age_rating],
+      ["年龄分级", p.age_rating || p.content_rating],
+      ["开发者 ID", p.developer_id],
+      ["开发者邮箱", p.developer_email],
+      ["开发者网站", p.developer_website || p.developer_url],
+      ["隐私政策",p.privacy_url],
+      ["内购范围",p.iap_range],
       ["支持语言", (p.languages || []).join(" / ")],
       ["首次入库", stamp(base.first_seen)],
     ];

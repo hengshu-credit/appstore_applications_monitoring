@@ -1,3 +1,5 @@
+import { pagination, bindPagination } from "./pagination.js";
+import { filterBar, bindFilterBar } from "./filter-bar.js";
 export function createAvailabilityPage(ctx) {
   const {
     api,
@@ -37,18 +39,25 @@ export function createAvailabilityPage(ctx) {
         qs({ ...watchedFilters, offset: watchedOffset, limit: 100 }),
     );
     if (!anchor?.isConnected || revision !== watchedRevision) return;
-    const options = (values, selected, empty) =>
-      `<option value="">${empty}</option>` +
-      values
-        .map(
-          (v) =>
-            `<option value="${esc(v)}" ${selected === v ? "selected" : ""}>${esc(v)}</option>`,
-        )
-        .join("");
     anchor.innerHTML = `<p class="sub">名单跟随顶部商店与国家，包含该国全部请求语言。未验证不代表下架；跨国分类看板请进入<a href="#groups">应用分组</a>。</p>
-      <form id="watched-filter" class="toolbar">
-      <label>分类标记<select name="group_name">${options(data.groups, watchedFilters.group_name, "全部分类")}</select></label>
-      <label class="wide">应用名称 / ID<input name="q" value="${esc(watchedFilters.q)}" placeholder="搜索关注应用"></label><button>筛选</button></form>
+      ${filterBar({
+        id: "watched-filter",
+        values: watchedFilters,
+        fields: [
+          {
+            name: "group_name",
+            label: "分类标记",
+            type: "panel",
+            options: [["", "全部分类"], ...data.groups],
+          },
+          {
+            name: "q",
+            label: "应用名称 / ID",
+            wide: true,
+            options: data.items.map((r) => [r.app_id, r.name || r.app_id]),
+          },
+        ],
+      })}
       <p>共 ${num(data.total)} 条国家观察记录 · 当前 ${data.total ? data.offset + 1 : 0}–${data.offset + data.items.length}</p>
       ${table(
         [
@@ -78,26 +87,20 @@ export function createAvailabilityPage(ctx) {
           stamp(row.checked_at),
         ]),
       )}
-      <div class="toolbar"><button id="watched-prev" class="secondary" ${data.offset === 0 ? "disabled" : ""}>上一页</button><button id="watched-next" class="secondary" ${data.has_more ? "" : "disabled"}>下一页</button><a class="button secondary" href="#collection">管理采集与复核</a></div>`;
-    anchor.querySelector("#watched-filter").onsubmit = (event) => {
-      event.preventDefault();
-      const form = event.currentTarget;
-      watchedFilters = {
-        ...watchedFilters,
-        group_name: form.elements.group_name.value,
-        q: form.elements.q.value,
-      };
-      watchedOffset = 0;
-      bindWatched().catch((e) => toast(e.message));
-    };
-    for (const [selector, direction] of [
-      ["#watched-prev", -1],
-      ["#watched-next", 1],
-    ])
-      anchor.querySelector(selector).onclick = () => {
-        watchedOffset = Math.max(0, data.offset + direction * data.limit);
-        bindWatched().catch((e) => toast(e.message));
-      };
+      ${pagination({ id: "watched-pages", offset: data.offset, limit: data.limit, total: data.total, hasMore: data.has_more, prevId: "watched-prev", nextId: "watched-next" })}<a class="button secondary" href="#collection">管理采集与复核</a>`;
+    bindFilterBar(
+      anchor.querySelector("#watched-filter"),
+      async ({ group_name, q }) => {
+        watchedFilters = { ...watchedFilters, group_name, q };
+        watchedOffset = 0;
+        await bindWatched();
+      },
+      toast,
+    );
+    bindPagination(anchor, "watched-pages", (start) => {
+      watchedOffset = start;
+      return bindWatched();
+    });
   }
   async function render(rev, days = 30) {
     const m = { ...market() },
@@ -114,7 +117,7 @@ export function createAvailabilityPage(ctx) {
           )
           .join(
             "",
-          )}${metric("未验证的重点应用", r.unobserved_watched, "当前市场已启用但尚无观察")}</div>${panel("观察范围与新鲜度", `<form id="availability-period" class="toolbar"><label>趋势区间<select name="days">${[7, 30, 90, 365].map((n) => `<option value="${n}" ${n === Number(days) ? "selected" : ""}>最近${n}天</option>`).join("")}</select></label><button>查看</button><a class="button secondary" href="#collection">管理采集与复核</a></form><p class="sub">${esc(r.scope)}</p><p>统计时间 ${stamp(r.observed_at)} · 最近48小时检查 ${num(r.counts.reduce((s, c) => s + Number(c.fresh), 0))} / 已观察 ${num(r.counts.reduce((s, c) => s + c.count, 0))} 个应用。请求失败保留原状态。</p>`)}<div class="grid2">${Object.entries(
+          )}${metric("未验证的重点应用", r.unobserved_watched, "当前市场已启用但尚无观察")}</div>${panel("观察范围与新鲜度", `${filterBar({ id: "availability-period", submit: "查看", values: { days }, fields: [{ name: "days", label: "趋势区间", type: "select", options: [7, 30, 90, 365].map((n) => [n, `最近${n}天`]) }], actions: '<a class="button secondary" href="#collection">管理采集与复核</a>' })}<p class="sub">${esc(r.scope)}</p><p>统计时间 ${stamp(r.observed_at)} · 最近48小时检查 ${num(r.counts.reduce((s, c) => s + Number(c.fresh), 0))} / 已观察 ${num(r.counts.reduce((s, c) => s + c.count, 0))} 个应用。请求失败保留原状态。</p>`)}<div class="grid2">${Object.entries(
           labels,
         )
           .map(([state, label]) =>
