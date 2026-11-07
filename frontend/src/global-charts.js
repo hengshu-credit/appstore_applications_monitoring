@@ -170,26 +170,33 @@ export function createGlobalCharts(ctx) {
       b.unsupported
         ? ""
         : `<a class="chart-more-link" href="${esc(detailUrl(c, b))}">查看完整榜单与应用资料 →</a>`;
+    const rankedItems = (b) =>
+      [...b.items].sort((a, b) => a.position - b.position);
+    const applications = (c, b) =>
+      b.items.length
+        ? `<ol class="global-chart-apps" role="list" aria-label="${esc(c.name + " " + b.definition.name)}">${rankedItems(
+            b,
+          )
+            .map(
+              (r) =>
+                `<li class="global-ranked-app" value="${Number(r.position)}" style="--rank-position:${Number(r.position)}"><span class="global-position" aria-hidden="true">${Number(r.position)}</span>${appLink(
+                  c.store || store,
+                  r.app_id,
+                  r.name,
+                  r.icon,
+                  c.country,
+                  c.language,
+                )}</li>`,
+            )
+            .join("")}</ol>`
+        : `<div class="global-chart-empty"><strong>暂无数据</strong><span>请调整筛选，或添加对应数据后刷新。</span></div>`;
     const cards = data.countries
       .map(
         (c) =>
-          `<section class="panel global-country"><div class="panel-heading"><h2>${esc(c.name)} <span class="sub">${esc(c.country.toUpperCase())}${store === "all" ? " · " + storeName(c) : ""}</span></h2><span class="sub">${esc(c.language)}</span></div><div class="global-lists" role="region" aria-label="${esc(c.name)}排行榜" tabindex="0">${c.boards
+          `<section class="panel global-country" style="--chart-slots:${Math.max(1, ...c.boards.flatMap((b) => b.items.map((r) => Number(r.position))))}"><div class="panel-heading"><h2>${esc(c.name)} <span class="sub">${esc(c.country.toUpperCase())}${store === "all" ? " · " + storeName(c) : ""}</span></h2><span class="sub">${esc(c.language)}</span></div><div class="global-lists" role="region" aria-label="${esc(c.name)}排行榜" tabindex="0">${c.boards
             .map(
               (b) =>
-                `<section class="global-chart"><h3>${boardTitle(c, b, b.definition.name + (b.definition.mode === "derived" ? "（派生）" : ""))}</h3>${boardMeta(b)}${table(
-                  ["名次", "应用"],
-                  b.items.map((r) => [
-                    r.position,
-                    appLink(
-                      c.store || store,
-                      r.app_id,
-                      r.name,
-                      r.icon,
-                      c.country,
-                      c.language,
-                    ),
-                  ]),
-                )}${more(c, b)}</section>`,
+                `<section class="global-chart"><div class="global-chart-summary"><h3>${boardTitle(c, b, b.definition.name + (b.definition.mode === "derived" ? "（派生）" : ""))}</h3>${boardMeta(b)}</div>${applications(c, b)}${more(c, b)}</section>`,
             )
             .join("")}</div></section>`,
       )
@@ -224,8 +231,8 @@ export function createGlobalCharts(ctx) {
               label: "布局",
               name: "layout",
               options: [
-                ["rows", "按行显示（每国一行）"],
-                ["columns", "按列显示（每国一列）"],
+                ["rows", "横向排列（每行一个榜单）"],
+                ["columns", "纵向排列（每国一列）"],
               ],
             },
           ],
@@ -246,7 +253,7 @@ export function createGlobalCharts(ctx) {
       )
     )
       return;
-    bindGlobalChartHover({
+    const chartHover = bindGlobalChartHover({
       root: $("#global-rankings"),
       api,
       esc,
@@ -309,6 +316,7 @@ export function createGlobalCharts(ctx) {
       "change",
       (event) => {
         filters.layout = normalizeLayout(event.target.value);
+        chartHover.clear();
         $("#global-rankings .global-board-grid").dataset.layout =
           filters.layout;
         persist(store);

@@ -22,13 +22,14 @@
 .global-country {
   min-width: 0;
 }
-.global-chart tr.same-ranked-app td {
+.global-chart tr.same-ranked-app td,
+.global-chart .global-ranked-app.same-ranked-app {
   background: var(--accent-soft);
   box-shadow:
     inset 0 1px var(--accent),
     inset 0 -1px var(--accent);
 }
-.global-chart tr.same-ranked-app .appname {
+.global-chart .same-ranked-app .appname {
   color: var(--accent-text);
 }
 .global-app-summary {
@@ -59,8 +60,7 @@
 }
 .global-lists {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(240px, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   overflow-x: auto;
   overscroll-behavior-x: contain;
@@ -77,6 +77,127 @@
 }
 .global-chart h3 {
   margin: 12px 0 4px;
+}
+.global-chart-apps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.global-ranked-app {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  min-width: 0;
+  min-height: 64px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.global-position {
+  text-align: center;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.global-chart-empty {
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.global-chart-empty strong {
+  color: var(--ink);
+}
+/* One shared scroller keeps every chart's app columns aligned by source rank. */
+.global-board-grid[data-layout="rows"] .global-country {
+  --chart-label-width: 170px;
+  --chart-app-width: 128px;
+}
+.global-board-grid[data-layout="rows"] .global-lists {
+  gap: 0;
+}
+.global-board-grid[data-layout="rows"] .global-chart {
+  display: grid;
+  grid-template-columns: var(--chart-label-width) minmax(0, 1fr);
+  min-width: calc(
+    var(--chart-label-width) + var(--chart-slots) * var(--chart-app-width)
+  );
+}
+.global-board-grid[data-layout="rows"] .global-chart-summary,
+.global-board-grid[data-layout="rows"] .global-chart > .chart-more-link {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  grid-column: 1;
+  padding-inline: 12px;
+  background: var(--surface);
+  box-shadow: 1px 0 var(--line-soft);
+}
+.global-board-grid[data-layout="rows"] .global-chart-summary {
+  grid-row: 1;
+}
+.global-board-grid[data-layout="rows"] .global-chart > .chart-more-link {
+  grid-row: 2;
+  margin-top: 0;
+  padding-block: 4px 10px;
+  white-space: normal;
+  font-size: 11px;
+}
+.global-board-grid[data-layout="rows"] .global-chart-apps {
+  display: grid;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  grid-template-columns: repeat(
+    var(--chart-slots),
+    minmax(var(--chart-app-width), 1fr)
+  );
+}
+.global-board-grid[data-layout="rows"] .global-ranked-app {
+  display: block;
+  grid-row: 1;
+  grid-column: var(--rank-position);
+  min-height: 138px;
+  padding: 14px 10px;
+  border-bottom: 0;
+  border-right: 1px solid var(--line-soft);
+}
+.global-board-grid[data-layout="rows"] .global-position {
+  display: none;
+}
+.global-board-grid[data-layout="rows"] .global-chart .appcell {
+  height: auto;
+  flex-direction: column;
+  gap: 10px;
+}
+.global-board-grid[data-layout="rows"] .global-chart .appcell > div:last-child {
+  width: 100%;
+  flex: none;
+}
+.global-board-grid[data-layout="rows"] .global-chart .appname {
+  text-align: center;
+  font-size: 12px;
+}
+.global-board-grid[data-layout="rows"]
+  .global-chart
+  :is(.appicon-wrap, .appicon) {
+  width: 56px;
+  height: 56px;
+}
+.global-board-grid[data-layout="rows"] .global-chart-empty {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  position: sticky;
+  left: var(--chart-label-width);
+  width: min(420px, calc(100vw - 200px));
+  min-height: 138px;
+}
+@media (max-width: 560px) {
+  .global-board-grid[data-layout="rows"] .global-country {
+    --chart-label-width: 132px;
+    --chart-app-width: 112px;
+  }
 }
 .global-chart .appcell {
   min-width: 0;

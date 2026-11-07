@@ -43,7 +43,9 @@ export function bindGlobalChartHover({
     active = null;
     tip.hidden = true;
     cells.forEach((cell) =>
-      cell.closest("tr")?.classList.remove("same-ranked-app"),
+      cell
+        .closest(".global-ranked-app, tr")
+        ?.classList.remove("same-ranked-app"),
     );
   };
   const show = (cell) => {
@@ -54,7 +56,7 @@ export function bindGlobalChartHover({
     const version = generation;
     cells.forEach((item) =>
       item
-        .closest("tr")
+        .closest(".global-ranked-app, tr")
         ?.classList.toggle("same-ranked-app", !!same(identity(item), app)),
     );
     app.element.setAttribute("aria-describedby", tip.id);

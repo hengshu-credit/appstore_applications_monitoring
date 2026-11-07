@@ -1597,8 +1597,8 @@ test("global rankings show countries and multiple chart kinds together and previ
         o.textContent,
       ]),
       [
-        ["rows", "按行显示（每国一行）"],
-        ["columns", "按列显示（每国一列）"],
+        ["rows", "横向排列（每行一个榜单）"],
+        ["columns", "纵向排列（每国一列）"],
       ],
     );
     const countryNodes = [...grid.querySelectorAll(".global-country")];
@@ -1658,6 +1658,84 @@ test("global rankings show countries and multiple chart kinds together and previ
     doc.querySelector("#global-configure").click();
     await tick();
     assert.equal(plan.countries, "jp");
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("horizontal chart app cells preserve source rank slots and links when switching orientation", async () => {
+  const { window } = await setup((path) => {
+    if (!path.startsWith("/api/charts/global?")) return;
+    return {
+      ...emptyGlobalBoard(),
+      selected_codes: ["jp"],
+      countries: [
+        {
+          country: "jp",
+          name: "日本",
+          language: "ja",
+          boards: ["top-free", "top-paid"].map((collection) => ({
+            collection,
+            definition: catalogFixture.charts.google.find(
+              (d) => d.id === collection,
+            ),
+            items: [
+              { position: 3, app_id: "com.example.third", name: "Third <app>" },
+              { position: 1, app_id: "com.example.first", name: "First app" },
+            ],
+            fresh: true,
+            observed_at: 10,
+            returned_count: 3,
+          })),
+        },
+      ],
+    };
+  });
+  try {
+    window.location.hash = "globalcharts";
+    await tick();
+    const doc = window.document;
+    const country = doc.querySelector(".global-country");
+    assert.equal(country.style.getPropertyValue("--chart-slots"), "3");
+    const lists = [...country.querySelectorAll(".global-chart-apps")];
+    assert.equal(lists.length, 2);
+    for (const list of lists) {
+      const cells = [...list.querySelectorAll(".global-ranked-app")];
+      assert.deepEqual(
+        cells.map((c) => c.getAttribute("value")),
+        ["1", "3"],
+      );
+      assert.deepEqual(
+        cells.map((c) => c.style.getPropertyValue("--rank-position")),
+        ["1", "3"],
+      );
+      assert.deepEqual(
+        cells.map((c) => c.querySelector("[data-app]").dataset.app),
+        ["com.example.first", "com.example.third"],
+      );
+      assert.ok(
+        cells.every((c) =>
+          c.querySelector("[data-country='jp'][data-language='ja']"),
+        ),
+      );
+    }
+    assert.equal(country.querySelector("table"), null);
+    const select = doc.querySelector('[name="layout"]');
+    select.value = "columns";
+    select.dispatchEvent(new window.Event("change", { bubbles: true }));
+    assert.equal(country.closest("[data-layout]").dataset.layout, "columns");
+    assert.deepEqual(
+      [...country.querySelectorAll(".global-chart-apps")],
+      lists,
+    );
+    assert.equal(
+      lists[0].querySelectorAll(".global-position")[1].textContent,
+      "3",
+    );
+    select.value = "rows";
+    select.dispatchEvent(new window.Event("change", { bubbles: true }));
+    assert.equal(country.closest("[data-layout]").dataset.layout, "rows");
+    assert.equal(country.querySelectorAll(".global-ranked-app").length, 4);
   } finally {
     await window.happyDOM.close();
   }
@@ -2066,7 +2144,7 @@ test("global row and column layouts migrate old preferences and persist per stor
     await switchStore("google");
     assert.equal(layout(), "columns");
     window.document
-      .querySelector('#global-chart-form [data-filter-reset-button]')
+      .querySelector("#global-chart-form [data-filter-reset-button]")
       .click();
     await tick();
     assert.equal(layout(), "rows");

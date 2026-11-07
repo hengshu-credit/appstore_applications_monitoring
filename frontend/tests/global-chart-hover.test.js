@@ -74,3 +74,45 @@ test("hover and keyboard link exact store IDs, cache summaries, ignore late resp
     await win.happyDOM.close();
   }
 });
+
+test("ranked app cells highlight matching store IDs and clear on scroll in horizontal lists", async () => {
+  const win = new Window();
+  const doc = win.document;
+  doc.body.innerHTML =
+    '<div id="root"><ol>' +
+    [
+      ["google", "one"],
+      ["google", "one"],
+      ["apple", "one"],
+    ]
+      .map(
+        ([store, id]) =>
+          `<li class="global-ranked-app"><div class="appcell"><button data-store="${store}" data-app="${id}">${store}</button></div></li>`,
+      )
+      .join("") +
+    "</ol></div>";
+  bindGlobalChartHover({
+    root: doc.querySelector("#root"),
+    win,
+    esc: String,
+    scope: {},
+    delay: 0,
+    api: async () => ({ depth: 10, charts: [], note: "fixture" }),
+  });
+  try {
+    doc.querySelector("[data-app]").focus();
+    assert.equal(doc.querySelectorAll("li.same-ranked-app").length, 2);
+    assert.equal(
+      doc
+        .querySelector('[data-store="apple"]')
+        .closest("li")
+        .classList.contains("same-ranked-app"),
+      false,
+    );
+    doc.querySelector("ol").dispatchEvent(new win.Event("scroll"));
+    assert.equal(doc.querySelectorAll(".same-ranked-app").length, 0);
+    assert.equal(doc.querySelector('[role="tooltip"]').hidden, true);
+  } finally {
+    await win.happyDOM.close();
+  }
+});
