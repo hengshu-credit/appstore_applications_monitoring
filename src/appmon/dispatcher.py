@@ -6,6 +6,7 @@ import time
 
 from .collection_limits import blocked
 from .db import connect
+from .batch_limits import APPLE_DETAIL_MAX,GOOGLE_RPC_MAX
 
 log = logging.getLogger(__name__)
 LANES = ('details', 'keywords', 'chart', 'reviews', 'featured', 'permissions', 'icons', 'screenshots', 'pool', 'sources')
@@ -128,8 +129,8 @@ def dispatch_once(db, cfg, worker_id):
 def worker(cfg, role='collector'):
     from threading import Thread, Event
     from .rpc_coalescer import RpcCoalescer, LookupCoalescer
-    coalescer=RpcCoalescer(100)
-    lookup=LookupCoalescer(200)
+    coalescer=RpcCoalescer(GOOGLE_RPC_MAX)
+    lookup=LookupCoalescer(APPLE_DETAIL_MAX)
     stop=Event()
     runtime=cfg | {'_rpc_coalescer':coalescer,'_lookup_coalescer':lookup}
     threads=[Thread(target=_worker_loop,args=(runtime,role,stop),name=f'{role}-{i+1}',daemon=True)

@@ -5,7 +5,7 @@ import time
 import logging
 import pymysql
 
-NETWORK_ERRORS = r'^(HTTP [0-9]{3}|ConnectTimeout|ReadTimeout|ConnectionError|ProxyError|SSLError|整体采集已暂停|等待共享限速窗口)'
+NETWORK_ERRORS = r'^(HTTP [0-9]{3}|ConnectTimeout|ReadTimeout|ConnectionError|ProxyError|SSLError|ChunkedEncodingError|ContentDecodingError|整体采集已暂停|等待共享限速窗口)'
 
 
 def can_batch(row):

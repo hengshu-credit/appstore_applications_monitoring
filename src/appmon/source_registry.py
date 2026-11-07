@@ -2,10 +2,11 @@
 import json,time,os,re
 from pathlib import Path
 from .db import dump
+from .batch_limits import APPLE_DETAIL_MAX,GOOGLE_RPC_MAX
 
 CATALOG={
- 'apple_lookup':dict(name='Apple 应用详情',origin='https://itunes.apple.com/lookup',access='公开接口',fields='应用详情、开发者、评分、素材地址',batch_max=200),
- 'google_play':dict(name='Google Play',origin='https://play.google.com',access='公开商店',fields='详情、榜单、评论、关键词、权限',batch_max=100,batch_scope='应用详情；其他类型保持原验证批量'),
+ 'apple_lookup':dict(name='Apple 应用详情',origin='https://itunes.apple.com/lookup',access='公开接口',fields='应用详情、开发者、评分、素材地址',batch_max=APPLE_DETAIL_MAX),
+ 'google_play':dict(name='Google Play',origin='https://play.google.com',access='公开商店',fields='详情、榜单、评论、关键词、权限',batch_max=GOOGLE_RPC_MAX,batch_scope='应用详情；其他类型保持原验证批量'),
  'apple_rss':dict(name='Apple 榜单与评论',origin='https://itunes.apple.com',access='公开 RSS',fields='榜单及近期评论；不保证全历史'),
  'apple_search':dict(name='Apple 搜索',origin='https://itunes.apple.com/search',access='公开接口',fields='关键词搜索结果与排名'),
  'apple_today':dict(name='Apple Today',origin='https://apps.apple.com',access='公开页面',fields='可见编辑推荐'),

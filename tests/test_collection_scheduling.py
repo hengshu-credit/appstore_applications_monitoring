@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 import pymysql
 from appmon import collection_limits,dispatcher,pipelines
-from appmon.db import add_apps,enqueue
+from appmon.db import add_apps,enqueue,connect
 from appmon.keywords import add_targets
 from appmon.monitor import work
 from appmon.stores import Client
@@ -54,3 +54,20 @@ class CollectionSchedulingTest(MySQLTestCase):
             for table in ('requests','listings','snapshots'):
                 self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM '+table).fetchone()['n'],3)
         finally:client.session.close()
+
+    def test_large_response_commits_bounded_chunks_and_retries_only_uncommitted_chunk(self):
+        add_apps(self.db,[('apple',str(i),None,None) for i in range(1000,1210)],'fixture');enqueue(self.db,['us'],'en')
+        cfg=self.cfg|{'apple_lookup_batch_size':210};client=Client(cfg,self.db);observer=connect(cfg,initialize=False)
+        data={'resultCount':210,'results':[dict(trackId=i,wrapperType='software',trackName=str(i)) for i in range(1000,1210)]}
+        response=SimpleNamespace(status_code=200,json=lambda:data,content=json.dumps(data).encode())
+        execute=self.db.execute;committed=[]
+        def conflict(sql,args=None):
+            if not committed and sql.startswith('INSERT INTO listings') and args[1]=='1150':
+                committed.append(observer.execute('SELECT COUNT(*) n FROM requests').fetchone()['n'])
+                raise pymysql.OperationalError(1213,'fixture second-chunk conflict')
+            return execute(sql,args)
+        try:
+            with patch.object(client,'get',return_value=response) as remote,patch.object(self.db,'execute',side_effect=conflict):result=work(cfg,self.db,210,client)
+            remote.assert_called_once();self.assertEqual(committed,[100]);self.assertEqual((result['processed'],result['ok']),(210,210))
+            self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM snapshots').fetchone()['n'],210)
+        finally:client.session.close();observer.close()

@@ -13,8 +13,8 @@ def main():
     try:
         before={'limits':collection_limits.settings(db,cfg),'sources':source_registry.rows(db)}
         if args.apply:
-            source_registry.save(db,cfg,'apple_lookup',{'batch_size':200})
-            source_registry.save(db,cfg,'google_play',{'batch_size':100})
+            source_registry.save(db,cfg,'apple_lookup',{'batch_size':source_registry.CATALOG['apple_lookup']['batch_max']})
+            source_registry.save(db,cfg,'google_play',{'batch_size':source_registry.CATALOG['google_play']['batch_max']})
             # Different stores may use their own existing slots concurrently.
             # This does not relax either store's interval, quotas, or pause flag.
             collection_limits.save(db,cfg,{'global_interval_seconds':min(before['limits']['global_interval_seconds'],1)})

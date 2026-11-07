@@ -62,26 +62,30 @@ def work_details(cfg, db, limit, client, *, watchlist=False, managed=False, max_
                     raise FetchError('批次结果数量异常，保留原有数据')
             except FetchError as exc:
                 results = [exc]*len(jobs)
-            before_counts=counts.copy()
-            app_keys=[(j['store'],j['app_id']) for j,r in zip(jobs,results) if not isinstance(r,Exception) and r.outcome=='ok']
-            def save_results(writer):
-                counts.clear();counts.update(before_counts)
-                for job,result,task_log in zip(jobs,results,logs):
-                    if isinstance(result,CollectionDeferred):
-                        from .collection_batch import defer
-                        accepted=defer(writer,'jobs',job,result)
-                        task_log.write('deferred' if accepted else 'stale',str(result))
-                        counts['processed']+=1;counts['deferred']=counts.get('deferred',0)+int(bool(accepted))
-                        counts['stale']+=int(not accepted)
-                        continue
-                    local_cfg = cfg | {'refresh_hours':job['refresh_hours']} if watchlist else cfg
-                    failure = result if isinstance(result,FetchError) else None
-                    accepted = save_result(writer,local_cfg,job,error=failure) if failure else save_result(writer,local_cfg,job,result=result)
-                    outcome = 'error' if failure else result.outcome
-                    task_log.finish(outcome,accepted,'批次结果按应用独立保存',error=failure)
-                    counts['processed'] += 1
-                    counts[('ok' if watchlist and outcome=='missing' else outcome) if accepted else 'stale'] += 1
-            persist_batch(db,save_results,app_keys)
+            entries=list(zip(jobs,results,logs))
+            # Keep upstream batches wide while bounding lock duration per commit.
+            for offset in range(0,len(entries),100):
+                portion=entries[offset:offset+100]
+                before_counts=counts.copy()
+                app_keys=[(j['store'],j['app_id']) for j,r,_ in portion if not isinstance(r,Exception) and r.outcome=='ok']
+                def save_results(writer):
+                    counts.clear();counts.update(before_counts)
+                    for job,result,task_log in portion:
+                        if isinstance(result,CollectionDeferred):
+                            from .collection_batch import defer
+                            accepted=defer(writer,'jobs',job,result)
+                            task_log.write('deferred' if accepted else 'stale',str(result))
+                            counts['processed']+=1;counts['deferred']=counts.get('deferred',0)+int(bool(accepted))
+                            counts['stale']+=int(not accepted)
+                            continue
+                        local_cfg = cfg | {'refresh_hours':job['refresh_hours']} if watchlist else cfg
+                        failure = result if isinstance(result,FetchError) else None
+                        accepted = save_result(writer,local_cfg,job,error=failure) if failure else save_result(writer,local_cfg,job,result=result)
+                        outcome = 'error' if failure else result.outcome
+                        task_log.finish(outcome,accepted,'批次结果按应用独立保存',error=failure)
+                        counts['processed'] += 1
+                        counts[('ok' if watchlist and outcome=='missing' else outcome) if accepted else 'stale'] += 1
+                persist_batch(db,save_results,app_keys)
             if any(isinstance(result,FetchError) and result.retry_after>=300 for result in results):
                 break
         finally:

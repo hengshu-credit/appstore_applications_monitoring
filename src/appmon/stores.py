@@ -13,6 +13,7 @@ from urllib.parse import unquote_plus, urlsplit
 import requests
 
 from . import collection_limits
+from .batch_limits import APPLE_DETAIL_MAX
 
 
 class FetchError(Exception):
@@ -156,6 +157,7 @@ class Client:
             record_http(self.db,store,url,r.status_code,time.monotonic()-started,lane=getattr(self,'lineage_lane',None))
             self.report('response', f'HTTP {r.status_code}；响应耗时 {time.monotonic()-started:.2f} 秒')
             if r.status_code in (403, 429) or r.status_code >= 500:
+                if kwargs.get('stream') and callable(getattr(r,'close',None)):r.close()
                 delay = 300
                 value = r.headers.get("Retry-After", "")
                 try:
@@ -170,6 +172,7 @@ class Client:
                 delay = collection_limits.cooldown(self.db,self.cfg,store,delay)
                 raise FetchError(f"HTTP {r.status_code}", delay, details|dict(status_code=r.status_code,retry_after_seconds=delay))
             if r.status_code not in (200, 404):
+                if kwargs.get('stream') and callable(getattr(r,'close',None)):r.close()
                 raise FetchError(f"HTTP {r.status_code}",details=details|dict(status_code=r.status_code))
             return r
         finally:collection_limits.withdraw(self.db,ticket)
@@ -207,14 +210,14 @@ class Client:
             return self.fetch_google_many(jobs)
         from .collection_batch import can_batch
         if self.lookup_coalescer and all(not j.get('failures') or can_batch(j) for j in jobs):
-            if len(jobs)>200 or len({(j['store'],j['country'],j.get('language','en')) for j in jobs})!=1 or jobs[0]['store']!='apple':
-                raise ValueError('A detail batch must contain at most 200 jobs in one market')
+            if len(jobs)>APPLE_DETAIL_MAX or len({(j['store'],j['country'],j.get('language','en')) for j in jobs})!=1 or jobs[0]['store']!='apple':
+                raise ValueError(f'A detail batch must contain at most {APPLE_DETAIL_MAX} jobs in one market')
             return self.lookup_coalescer.submit(self,jobs[0],[('lookup',j['app_id']) for j in jobs])[0]
         return self.fetch_apple_many(jobs)
 
     def fetch_apple_many(self,jobs):
-        if len(jobs) > 200 or len({(j['store'],j['country'],j.get('language','en')) for j in jobs}) != 1:
-            raise ValueError('A detail batch must contain at most 200 jobs in one market')
+        if len(jobs) > APPLE_DETAIL_MAX or len({(j['store'],j['country'],j.get('language','en')) for j in jobs}) != 1:
+            raise ValueError(f'A detail batch must contain at most {APPLE_DETAIL_MAX} jobs in one market')
         if jobs[0]['store'] != 'apple':
             raise ValueError('This store does not support multi-ID detail lookup')
         ids = [j['app_id'] for j in jobs]

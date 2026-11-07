@@ -23,7 +23,7 @@ class SourceRegistryTest(MySQLTestCase):
         details=source_registry.collector_config(self.db,self.cfg,'pool')
         self.assertEqual((details['google_rpc_batch_size'],details['apple_lookup_batch_size']),(100,200))
         self.assertEqual(source_registry.collector_config(self.db,self.cfg,'reviews')['google_rpc_batch_size'],20)
-        with self.assertRaises(ValueError):source_registry.save(self.db,self.cfg,'google_play',{'batch_size':101})
+        with self.assertRaises(ValueError):source_registry.save(self.db,self.cfg,'google_play',{'batch_size':source_registry.CATALOG['google_play']['batch_max']+1})
 
     def test_endpoint_change_blocks_old_credentials_and_ads_token_never_roundtrips(self):
         secret=data_sources.cipher(self.cfg,create=True).encrypt(b'{"email":"me@example.org","password":"old-password","cookies":[]}').decode()
