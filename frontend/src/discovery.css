@@ -1,0 +1,54 @@
+.keyword-coverage-overview {
+  min-width: 0;
+}
+.keyword-coverage-overview .panel-heading {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.keyword-coverage-metrics {
+  margin-block: 12px;
+}
+.keyword-coverage-metrics .value {
+  font-size: 24px;
+}
+.keyword-coverage-overview .table-wrap {
+  max-height: 380px;
+  overflow: auto;
+}
+.keyword-coverage-overview table {
+  min-width: 850px;
+}
+.keyword-coverage-overview thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--soft);
+}
+.keyword-coverage-overview :is(th, td):nth-child(n + 3) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.keyword-scope-name {
+  white-space: nowrap;
+}
+.keyword-scope-name small {
+  color: var(--muted);
+  margin-left: 6px;
+}
+.keyword-coverage-note {
+  margin-bottom: 0;
+  line-height: 1.7;
+}
+.keyword-overview-tools {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-block: 12px;
+}
+.keyword-overview-tools label {
+  width: min(100%, 320px);
+}
+.keyword-overview-tools > span {
+  padding-bottom: 10px;
+}

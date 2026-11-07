@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 import requests
 from .keywords import validate_target, add_targets
 from .locales import PREFERENCES
+from .catalog import CATALOG
 from .db import dump
 from .growth import cutoff
 
@@ -154,6 +155,50 @@ def track(db,value):
 
 def fresh_sql():
     return "t.enabled=1 AND t.failures=0 AND r.outcome='ok' AND r.requested_depth=t.depth AND r.observed_at+t.refresh_hours*3600>%s"
+
+
+def monitoring_overview(db):
+    """Global inventory and monitoring, grouped by country and request language."""
+    now = time.time()
+    # One statement gives the inventory and live target counts the same snapshot.
+    rows = db.execute('''WITH inventory AS (
+        SELECT country,language,COUNT(DISTINCT keyword) library_words FROM (
+            SELECT country,language,keyword FROM keyword_candidates
+            UNION ALL SELECT country,language,keyword FROM keyword_targets
+        ) words GROUP BY country,language
+    ), monitored AS (
+        SELECT t.country,t.language,COUNT(DISTINCT t.keyword) monitored_words,
+            COUNT(DISTINCT CASE WHEN t.enabled=1 THEN t.keyword END) enabled_words,
+            COUNT(DISTINCT CASE WHEN '''+fresh_sql()+''' THEN t.keyword END) fresh_words,
+            COUNT(*) tasks,SUM(CASE WHEN '''+fresh_sql()+''' THEN 1 ELSE 0 END) fresh_tasks
+        FROM keyword_targets t LEFT JOIN keyword_runs r ON r.id=t.latest_success_id
+        GROUP BY t.country,t.language
+    )
+    SELECT i.country,i.language,i.library_words,COALESCE(m.monitored_words,0) monitored_words,
+        COALESCE(m.enabled_words,0) enabled_words,COALESCE(m.fresh_words,0) fresh_words,
+        COALESCE(m.tasks,0) tasks,COALESCE(m.fresh_tasks,0) fresh_tasks
+    FROM inventory i LEFT JOIN monitored m USING(country,language)
+    ORDER BY monitored_words DESC,library_words DESC,i.country,i.language''', (now,now)).fetchall()
+    keys = ('library_words','monitored_words','enabled_words','fresh_words','tasks','fresh_tasks')
+    country_names = {c['code']:c['name'] for c in CATALOG['countries']}
+    country_monitored = {}
+    for row in rows:
+        for key in keys:
+            row[key] = int(row[key])
+        row['paused_words'] = row['monitored_words'] - row['enabled_words']
+        row['country_name'] = country_names.get(row['country'],row['country'].upper())
+        row['language_name'] = PREFERENCES['languages'].get(row['language'],
+            PREFERENCES['languages'].get(row['language'].split('-')[0], row['language']))
+        country_monitored[row['country']] = country_monitored.get(row['country'],0) + row['monitored_words']
+    rows.sort(key=lambda row: (-country_monitored[row['country']],row['country'],-row['monitored_words'],row['language']))
+    totals = {key: sum(row[key] for row in rows) for key in (*keys, 'paused_words')}
+    totals.update(languages=len({r['language'] for r in rows}),
+        countries=len({r['country'] for r in rows}),
+        monitoring_languages=len({r['language'] for r in rows if r['monitored_words']}),
+        monitoring_countries=len({r['country'] for r in rows if r['monitored_words']}))
+    return dict(items=rows, totals=totals, observed_at=now,
+        scope='all_stores_countries_languages',
+        note='全系统统计，不受顶部筛选影响。每行一个国家与请求语言组合；已收录包含候选词和监控词，同一国家、语言下同词跨商店去重，国家与语言变体分别计数。“已纳入监控”包含暂停词；“全部暂停”指该词在本国家、语言下所有商店任务均暂停；“有效采样”指至少一个启用商店有未过期、深度一致且最近未失败的成功结果。监控任务按商店、国家、语言、关键词分别计数。')
 
 
 def coverage(db,m,app_id='',app_offset=0,keyword_offset=0,app_keyword_offset=0,q='',limit=100):

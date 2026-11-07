@@ -122,6 +122,25 @@ const emptyCoverage = {
   app_keywords: [],
   note: "测试词库",
 };
+const emptyKeywordOverview = () => ({
+  items: [],
+  observed_at: 100,
+  scope: "all_stores_countries_languages",
+  note: "全系统统计，同一语言内去重。",
+  totals: {
+    library_words: 0,
+    monitored_words: 0,
+    enabled_words: 0,
+    paused_words: 0,
+    fresh_words: 0,
+    tasks: 0,
+    fresh_tasks: 0,
+    languages: 0,
+    monitoring_languages: 0,
+    countries: 0,
+    monitoring_countries: 0,
+  },
+});
 const overview = {
   counts: {
     watchlist: 1,
@@ -297,6 +316,8 @@ async function setup(responder) {
         shared_between_types: 0,
         note: "测试汇总",
       };
+    if (data === undefined && path === "/api/discovery/keywords/overview")
+      data = emptyKeywordOverview();
     if (data === undefined) throw new Error("Unmocked route " + path);
     return { ok: true, status: 200, json: async () => data };
   };
@@ -497,6 +518,189 @@ test("failed API produces visible error and retry recovers", async () => {
     await tick();
     assert.ok(
       window.document.querySelector('a[href="#collection?new=keywords"]'),
+    );
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("keyword country overview shows global inventory and monitoring across tabs and store filters", async () => {
+  const stats = {
+    ...emptyKeywordOverview(),
+    totals: {
+      library_words: 14000,
+      monitored_words: 7000,
+      enabled_words: 5000,
+      paused_words: 2000,
+      fresh_words: 3000,
+      tasks: 18000,
+      languages: 2,
+      monitoring_languages: 1,
+      countries: 2,
+      monitoring_countries: 1,
+    },
+    items: [
+      {
+        country: "us",
+        country_name: "美国",
+        language: "en",
+        language_name: "英语",
+        library_words: 10000,
+        monitored_words: 7000,
+        enabled_words: 5000,
+        paused_words: 2000,
+        fresh_words: 3000,
+        countries: 2,
+        tasks: 18000,
+      },
+      {
+        country: "th",
+        country_name: "泰国",
+        language: "th",
+        language_name: "泰语 <sample>",
+        library_words: 4000,
+        monitored_words: 0,
+        enabled_words: 0,
+        paused_words: 0,
+        fresh_words: 0,
+        countries: 0,
+        tasks: 0,
+      },
+    ],
+  };
+  const { window, calls } = await setup((path) => {
+    if (path === "/api/discovery/keywords/overview") return stats;
+    if (path.startsWith("/api/keywords?"))
+      return [
+        {
+          id: 88,
+          store: "google",
+          country: "us",
+          language: "en",
+          keyword: "loan",
+          depth: 50,
+          refresh_hours: 24,
+        },
+      ];
+    if (path.startsWith("/api/discovery/keywords/coverage?"))
+      return emptyCoverage;
+    if (path.startsWith("/api/discovery/keywords/candidates?"))
+      return { items: [], total: 0, source_records: 0 };
+    if (path === "/api/discovery/keywords/sources")
+      return { note: "fixture", frequency_languages: ["en"] };
+  });
+  try {
+    window.location.hash = "keywords";
+    await tick();
+    const panel = () =>
+      window.document.querySelector(".keyword-coverage-overview");
+    assert.match(panel().textContent, /全系统.*全部商店与国家/);
+    const rows = [...panel().querySelectorAll("tbody tr")];
+    assert.equal(rows.length, 2);
+    assert.deepEqual(
+      [...panel().querySelectorAll(".metric .value")].map(
+        (el) => el.textContent,
+      ),
+      ["7,000", "5,000", "3,000", "1"],
+    );
+    assert.deepEqual(
+      [...rows[0].querySelectorAll("td")].map((td) => td.textContent.trim()),
+      [
+        "美国 US",
+        "英语 en",
+        "10,000",
+        "7,000",
+        "5,000",
+        "2,000",
+        "3,000",
+        "18,000",
+      ],
+    );
+    assert.match(rows[1].textContent, /泰语 <sample>/);
+    assert.equal(panel().querySelector("sample"), null);
+    const filter = window.document.querySelector("#keyword-overview-filter");
+    filter.value = "th";
+    filter.dispatchEvent(new window.Event("input"));
+    assert.equal(rows[0].hidden, true);
+    assert.equal(rows[1].hidden, false);
+    assert.match(
+      window.document.querySelector("#keyword-overview-count").textContent,
+      /1 \/ 2/,
+    );
+    filter.value = "";
+    filter.dispatchEvent(new window.Event("input"));
+    assert.ok(rows.every((row) => !row.hidden));
+    window.document.querySelector('[data-keyword-tab="candidates"]').click();
+    await tick();
+    assert.match(panel().textContent, /泰语/);
+    const before = calls.filter((c) =>
+      c.path.startsWith("/api/discovery/keywords/candidates?"),
+    ).length;
+    window.document.querySelector("#global-store").value = "all";
+    window.document
+      .querySelector("#global-store")
+      .dispatchEvent(new window.Event("change"));
+    await tick();
+    assert.ok(panel(), window.document.querySelector("main").textContent);
+    assert.match(panel().textContent, /已纳入监控/);
+    assert.equal(
+      calls.filter((c) =>
+        c.path.startsWith("/api/discovery/keywords/candidates?"),
+      ).length,
+      before,
+    );
+    assert.equal(window.document.querySelector("[data-keyword-tab]"), null);
+    assert.ok(window.document.querySelector('[data-keyword="88"]'));
+    assert.ok(
+      calls
+        .filter((c) => c.path.includes("/discovery/keywords/overview"))
+        .every((c) => c.path === "/api/discovery/keywords/overview"),
+    );
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("keyword country overview failures are retryable and late responses cannot replace another page", async () => {
+  let phase = "error",
+    finish;
+  const { window } = await setup((path) => {
+    if (path === "/api/discovery/keywords/overview") {
+      if (phase === "error") throw Error("offline");
+      if (phase === "pending")
+        return new Promise((resolve) => (finish = resolve));
+      return emptyKeywordOverview();
+    }
+    if (path.startsWith("/api/discovery/keywords/coverage?"))
+      return emptyCoverage;
+    if (path.startsWith("/api/apps?")) return { items: [], next: null };
+  });
+  try {
+    window.location.hash = "keywords";
+    await tick();
+    assert.match(
+      window.document.querySelector(".keyword-coverage-overview").textContent,
+      /暂时无法加载/,
+    );
+    assert.equal(
+      window.document.querySelector(".keyword-coverage-metrics"),
+      null,
+    );
+    assert.ok(window.document.querySelector("#coverage-app-form"));
+    phase = "ok";
+    window.document.querySelector("#keyword-overview-retry").click();
+    await tick();
+    assert.ok(window.document.querySelector(".keyword-coverage-metrics"));
+    phase = "pending";
+    window.document.querySelector("#refresh-page").click();
+    await tick();
+    window.location.hash = "apps";
+    await tick();
+    finish(emptyKeywordOverview());
+    await tick();
+    assert.equal(
+      window.document.querySelector(".keyword-coverage-overview"),
+      null,
     );
   } finally {
     await window.happyDOM.close();

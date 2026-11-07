@@ -414,9 +414,64 @@ export function createDiscoveryPages(ctx) {
       hasMore: p.has_more,
     });
   };
+  const monitoringOverview = ({ data, error }) => {
+    if (error)
+      return `<section class="panel keyword-coverage-overview"><div class="panel-heading"><h2>各国关键词覆盖</h2><button id="keyword-overview-retry" type="button" class="secondary small">重试</button></div><p role="status">各国覆盖统计暂时无法加载。</p></section>`;
+    const total = data.totals;
+    return `<section class="panel keyword-coverage-overview" aria-label="各国关键词覆盖"><div class="panel-heading"><h2>各国关键词覆盖</h2><span class="sub">全系统 · 全部商店与国家 · ${esc(stamp(data.observed_at))}</span></div><div class="cards keyword-coverage-metrics">${metric("已纳入监控", total.monitored_words, "按国家和语言去重，包含暂停")}${metric("启用中", total.enabled_words, "至少一个商店启用监控")}${metric("有效采样", total.fresh_words, "至少一个商店有当前有效结果")}${metric("监控国家", total.monitoring_countries, `已收录 ${num(total.countries)} 个国家/地区`)}</div><div class="keyword-overview-tools"><label>筛选国家或语言<input id="keyword-overview-filter" type="search" placeholder="国家名称、国家代码或语言" ${data.items.length ? "" : "disabled"}></label><span id="keyword-overview-count" class="sub" aria-live="polite">${num(data.items.length)} 行</span></div>${table(
+      [
+        "国家 / 地区",
+        "请求语言",
+        "已收录关键词",
+        "已纳入监控",
+        "启用中",
+        "全部暂停",
+        "有效采样",
+        "监控任务",
+      ],
+      data.items.map((row) => [
+        `<span class="keyword-scope-name" data-keyword-overview-scope="${esc([row.country_name, row.country, row.language_name, row.language].join(" "))}">${esc(row.country_name)} <small>${esc(row.country.toUpperCase())}</small></span>`,
+        `<span class="keyword-scope-name">${esc(row.language_name)} <small>${esc(row.language)}</small></span>`,
+        num(row.library_words),
+        num(row.monitored_words),
+        num(row.enabled_words),
+        num(row.paused_words),
+        num(row.fresh_words),
+        num(row.tasks),
+      ]),
+    )}<p id="keyword-overview-empty" class="sub" hidden>没有匹配的国家或语言。</p><details class="keyword-coverage-note"><summary>统计口径</summary><p class="sub">${esc(data.note)}</p></details></section>`;
+  };
+  const loadOverview = () =>
+    api("/discovery/keywords/overview").then(
+      (data) => monitoringOverview({ data }),
+      (error) => monitoringOverview({ error }),
+    );
+  const bindOverview = (reload) => {
+    act("#keyword-overview-retry", reload);
+    const input = $("#keyword-overview-filter");
+    if (input)
+      input.addEventListener("input", () => {
+        const q = input.value.trim().toLocaleLowerCase();
+        const scopes = [
+          ...document.querySelectorAll("[data-keyword-overview-scope]"),
+        ];
+        let shown = 0;
+        for (const label of scopes) {
+          const matched = label.dataset.keywordOverviewScope
+            .toLocaleLowerCase()
+            .includes(q);
+          label.closest("tr").hidden = !matched;
+          shown += Number(matched);
+        }
+        $("#keyword-overview-count").textContent =
+          `${num(shown)} / ${num(scopes.length)} 行`;
+        $("#keyword-overview-empty").hidden = shown > 0;
+      });
+  };
   async function keywords(rev) {
     const m = single();
     if (!m) return;
+    const overviewRequest = loadOverview();
     const signature = [m.store, m.country, m.language].join("/");
     if (signature !== keywordMarket) {
       if (keywordMarket && keywordMarket.split("/")[0] !== m.store)
@@ -773,9 +828,11 @@ export function createDiscoveryPages(ctx) {
         ]),
       )}</details>`;
     }
+    const overview = await overviewRequest;
+    if (rev !== currentRevision()) return;
     if (
       !mount(
-        `<div class="toolbar">${[
+        `${overview}<div class="toolbar">${[
           ["coverage", "覆盖与排名"],
           ["candidates", "候选词库"],
           ["aso-library", "ASO词库"],
@@ -794,6 +851,7 @@ export function createDiscoveryPages(ctx) {
       )
     )
       return;
+    bindOverview(() => keywords(nextRevision()));
     document.querySelectorAll("[data-keyword-tab]").forEach((el) =>
       el.addEventListener("click", () => {
         keywordTab = el.dataset.keywordTab;
@@ -1045,5 +1103,5 @@ export function createDiscoveryPages(ctx) {
       if (rev === currentRevision()) await keywords(nextRevision());
     });
   }
-  return { charts, keywords };
+  return { charts, keywords, overview: loadOverview, bindOverview };
 }

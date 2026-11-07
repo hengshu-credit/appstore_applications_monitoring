@@ -359,6 +359,9 @@ def create_app(cfg):
     @api.get('/discovery/keywords/sources')
     def keyword_sources():return keyword_discovery.source_catalog()
 
+    @api.get('/discovery/keywords/overview')
+    def keyword_monitoring_overview(db=DB):return keyword_discovery.monitoring_overview(db)
+
     @api.get('/discovery/keywords/coverage')
     def keyword_coverage(store:str,country:str='us',language:str='en',app_id:str='',app_offset:int=0,keyword_offset:int=0,app_keyword_offset:int=0,q:str=Query('',max_length=255),limit:int=100,db=DB):
         m=intel.market(dict(store=store,country=country,language=language,app_id=app_id),require_app=bool(app_id))

@@ -15,6 +15,7 @@ import "./selectors.css";
 import "./research.css";
 import { createResearchPages } from "./research.js";
 import { createDiscoveryPages } from "./discovery.js";
+import "./discovery.css";
 import { createGlobalCharts } from "./global-charts.js";
 import { createDataSourcePage } from "./data-sources.js";
 import { createChartDetail } from "./chart-detail.js";
@@ -1295,33 +1296,40 @@ async function targetDetail(id, runId, rev = ++revision) {
 }
 async function keywordPage(rev) {
   const m = market();
+  const overviewRequest = discoveryPages.overview();
   const rows = (await api("/keywords")).filter(
     (r) =>
       (m.store === "all" || r.store === m.store) &&
       r.country === m.country &&
       r.language === market(r.store).language,
   );
-  mount(
-    collectionLink("keywords") +
-      panel(
-        "跟踪词库",
-        table(
-          ["关键词", "商店 / 市场", "深度 / 周期", "最近尝试", "管理"],
-          rows.map((r) => [
-            `<button class="link" data-keyword="${r.id}">${esc(r.keyword)}</button>`,
-            `${esc(r.store)} · ${esc(r.country)} / ${esc(r.language)}`,
-            `${r.depth} / ${r.refresh_hours}h`,
-            r.last_error
-              ? esc(r.last_error)
-              : r.latest_success_id
-                ? "已有观察"
-                : "等待采集",
-            '<a href="#collection">管理任务</a>',
-          ]),
+  const overview = await overviewRequest;
+  if (
+    !mount(
+      overview +
+        collectionLink("keywords") +
+        panel(
+          "跟踪词库",
+          table(
+            ["关键词", "商店 / 市场", "深度 / 周期", "最近尝试", "管理"],
+            rows.map((r) => [
+              `<button class="link" data-keyword="${r.id}">${esc(r.keyword)}</button>`,
+              `${esc(r.store)} · ${esc(r.country)} / ${esc(r.language)}`,
+              `${r.depth} / ${r.refresh_hours}h`,
+              r.last_error
+                ? esc(r.last_error)
+                : r.latest_success_id
+                  ? "已有观察"
+                  : "等待采集",
+              '<a href="#collection">管理任务</a>',
+            ]),
+          ),
         ),
-      ),
-    rev,
-  );
+      rev,
+    )
+  )
+    return;
+  discoveryPages.bindOverview(() => keywordPage(++revision));
 }
 async function keywordDetail(id, rev = ++revision) {
   const r = await api("/keywords/" + id);
