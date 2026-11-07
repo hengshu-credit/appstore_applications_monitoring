@@ -1,6 +1,7 @@
 import { pagination, bindPagination } from "./pagination.js";
 import { filterBar } from "./filter-bar.js";
 import "./collection-center.css";
+import { taskProgress, taskLabels, taskMark } from "./collection-progress.js";
 import { icon, storeLogo } from "./icons.js";
 import { createTaskLogViewer } from "./task-logs.js";
 import { createCollectionLineage } from "./collection-lineage.js";
@@ -371,52 +372,22 @@ export function createCollectionCenter(ctx) {
         limits,
         at: Date.now(),
       };
-    const stateLabels = { ...states, out_of_scope: "未启用市场" };
-    const stateSymbols = {
-      scheduled: "◷",
-      pending: "○",
-      running: "↻",
-      paused: "Ⅱ",
-      error: "!",
-      done: "✓",
-      out_of_scope: "–",
-    };
-    const stateMark = (state) =>
-      `<i class="collection-state-mark" data-state="${state}" aria-hidden="true">${stateSymbols[state]}</i>`;
-    const distribution = (summary, kind = "") => {
-      const entries = Object.entries(stateLabels).filter(
-        ([state]) =>
-          (!kind || state !== "out_of_scope") &&
-          (state !== "done" || kind.startsWith("aso_")) &&
-          (state !== "scheduled" || !kind.startsWith("aso_")),
+    const distribution = (summary, kind = "", total, collected) =>
+      taskProgress(
+        {
+          summary,
+          kind,
+          total,
+          collected,
+          selected: filters.kind === kind,
+          activeState: filters.state,
+        },
+        { num, esc },
       );
-      const total = entries.reduce(
-        (sum, [state]) => sum + (summary[state] || 0),
-        0,
-      );
-      let position = 0;
-      return `<svg class="category-distribution" viewBox="0 0 1000 10" preserveAspectRatio="none" aria-hidden="true">${entries
-        .filter(([state]) => summary[state] > 0)
-        .map(([state]) => {
-          const width = (summary[state] / total) * 1000,
-            start = position;
-          position += width;
-          return `<rect x="${start}" width="${width}" height="10" data-state="${state}"></rect>`;
-        })
-        .join("")}</svg><div class="category-counts">${entries
-        .map(([state, label]) => {
-          const caption = `${label}：${num(summary[state] || 0)}`;
-          const attrs = kind
-            ? `data-category="${kind}" data-category-state="${state}" aria-pressed="${filters.kind === kind && filters.state === state}"`
-            : "data-pool-card";
-          return `<button type="button" ${attrs} title="${caption}" aria-label="${caption}">${stateMark(state)}<b>${compact(summary[state] || 0)}</b></button>`;
-        })
-        .join("")}</div>`;
-    };
-    const categoryCards = `<div class="collection-legend" aria-label="任务状态图例">${Object.entries(
-      stateLabels,
+    const categoryCards = `<div class="collection-progress-meta"><span>分类任务 · 按列表筛选范围统计</span><span>快照 ${stamp(tasks.observed_at)} · 自动更新</span></div><div class="collection-legend" aria-label="任务状态图例">${Object.entries(
+      taskLabels,
     )
-      .map(([state, label]) => `<span>${stateMark(state)}${label}</span>`)
+      .map(([state, label]) => `<span>${taskMark(state)}${label}</span>`)
       .join(
         "",
       )}</div><div class="collection-categories" aria-label="任务分类概览">${Object.entries(
@@ -427,13 +398,13 @@ export function createCollectionCenter(ctx) {
           total: 0,
           summary: {},
         };
-        return `<article class="collection-category ${filters.kind === kind ? "active" : ""}"><button type="button" class="category-heading" data-category="${kind}" aria-pressed="${filters.kind === kind}"><span>${esc(label)}</span><strong title="${num(category.total)}">${compact(category.total)}</strong></button>${distribution(category.summary, kind)}</article>`;
+        return `<article class="collection-category ${filters.kind === kind ? "active" : ""}"><button type="button" class="category-heading" data-category="${kind}" aria-pressed="${filters.kind === kind}"><span>${esc(label)}</span><strong title="${num(category.total)}">${compact(category.total)}</strong></button>${distribution(category.summary, kind, category.total, category.collected)}</article>`;
       })
       .join("")}${pipelines
       .filter((p) => p.id === "pool")
       .map(
         (p) =>
-          `<article class="collection-category" id="pool-task-card"><button type="button" class="category-heading" data-pool-card title="所有商店与市场；管理基础流程"><span>全池应用详情</span><strong class="stat-skeleton" aria-label="统计中"></strong></button><div class="pool-summary" role="status" aria-live="polite"><span class="stat-loading">正在统计全池…</span></div></article>`,
+          `<article class="collection-category" id="pool-task-card"><button type="button" class="category-heading" data-pool-card title="所有商店与市场；管理基础流程"><span>全池应用详情<small>全部商店 / 市场</small></span><strong class="stat-skeleton" aria-label="统计中"></strong></button><div class="pool-summary" role="status" aria-live="polite"><span class="stat-loading">正在统计全池…</span></div></article>`,
       )
       .join("")}</div>`;
     const body =
@@ -616,10 +587,14 @@ export function createCollectionCenter(ctx) {
           if (!info) return;
           const count = poolCard.querySelector("strong");
           count.classList.remove("stat-skeleton");
+          count.removeAttribute("aria-label");
           count.textContent = compact(info.total);
           count.title = num(info.total);
           poolCard.querySelector(".pool-summary").innerHTML = distribution(
             info.summary || {},
+            "",
+            info.total,
+            info.collected,
           );
           if (info.observed_at)
             poolCard.title = "统计时间 " + stamp(info.observed_at);

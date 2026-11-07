@@ -12,6 +12,19 @@ from test_monitor import MySQLTestCase
 
 
 class CollectionCenterTest(MySQLTestCase):
+    def test_card_success_coverage_is_separate_from_status_and_survives_state_drilldown(self):
+        self.seed()
+        self.db.execute("UPDATE keyword_targets SET latest_success_id=99,failures=2,last_error='HTTP 429'")
+        add_targets(self.db,[dict(store='google',country='th',language='th',keyword='pending')])
+        result=list_tasks(self.db,kind='keywords',state='error')
+        card=next(c for c in result['categories'] if c['kind']=='keywords')
+        self.assertEqual((result['total'],card['total'],card['collected']),(1,2,1))
+        self.assertEqual(card['summary']['pending'],1)
+        self.db.execute("UPDATE keyword_targets SET enabled=0 WHERE latest_success_id=99")
+        card=next(c for c in list_tasks(self.db,kind='keywords')['categories'] if c['kind']=='keywords')
+        self.assertEqual((card['collected'],card['summary']['paused']),(1,1))
+        self.assertLess(abs(result['observed_at']-time.time()),10)
+
     def test_cross_page_control_snapshots_filter_and_handles_all_resources(self):
         self.seed()
         add_targets(self.db,[dict(store='apple',country='us',language='en',keyword=f'word {i}') for i in range(125)])

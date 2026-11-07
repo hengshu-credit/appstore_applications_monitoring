@@ -112,6 +112,7 @@ const newModules = (
     wrappedModule("market-controls.js", "initMarketControls"),
     wrappedModule("task-logs.js", "createTaskLogViewer"),
     wrappedModule("collection-lineage.js", "createCollectionLineage"),
+    wrappedModule("collection-progress.js", "taskProgress,taskLabels,taskMark"),
     wrappedModule("collection-center.js", "createCollectionCenter"),
   ])
 ).join("\n");
@@ -929,10 +930,15 @@ test("category cards drill into state and batch interval preserves scope", async
       /失败待重试.*3/,
     );
     assert.equal(
-      keywordCard
-        .querySelector(".category-distribution")
-        .getAttribute("aria-hidden"),
+      keywordCard.querySelector(".state-track").getAttribute("aria-hidden"),
       "true",
+    );
+    assert.equal(keywordCard.querySelectorAll(".state-track").length, 5);
+    assert.equal(
+      keywordCard.querySelector(
+        '[data-category-state="error"] .state-track > span',
+      ).style.width,
+      "0.0025%",
     );
     window.document
       .querySelector('[data-category="keywords"][data-category-state="error"]')

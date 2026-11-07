@@ -77,4 +77,8 @@ def pool_summary(db,pool):
         (*pool['countries'],pool['language'],pool['enabled'],now,now)).fetchall()
     summary = dict.fromkeys(('paused','running','error','pending','scheduled','out_of_scope'),0)
     summary.update({r['state']:r['n'] for r in counts})
-    return dict(summary=summary,total=sum(summary.values()),observed_at=time.time())
+    # Drive from the much smaller successful listing set, not millions of jobs.
+    collected=db.execute('''SELECT COUNT(*) n FROM listings l JOIN jobs j USING(store,app_id,country,language)
+        WHERE l.last_success IS NOT NULL AND NOT EXISTS(SELECT 1 FROM watchlist w
+        WHERE w.store=l.store AND w.app_id=l.app_id AND w.country=l.country AND w.language=l.language)''').fetchone()['n']
+    return dict(summary=summary,total=sum(summary.values()),collected=collected,observed_at=time.time())

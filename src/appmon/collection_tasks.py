@@ -49,14 +49,14 @@ def _task_union(kind='', light=False, search=False, refs=None):
         app_join=' LEFT JOIN apps a USING(store,app_id)' if search else ''
         permission_name='COALESCE(a.name,p.app_id)' if search else "''"
         parts=[f'''SELECT 'watchlist' resource,w.id,'details' kind,w.store,w.country,w.language,{ident('w')} app_id,{name} label,'' category,
-            w.enabled,COALESCE(j.failures,0) failures,j.due,j.lease_until FROM watchlist w{app_join}
-            LEFT JOIN jobs j USING(store,app_id,country,language)''',
-            f"SELECT 'keywords',t.id,'keywords',t.store,t.country,t.language,'',{keyword},'',t.enabled,t.failures,t.due,t.lease_until FROM keyword_targets t",
-            f"SELECT 'targets',t.id,t.kind,t.store,t.country,t.language,{ident('t')},{label},{category},t.enabled,t.failures,t.due,t.lease_until FROM observation_targets t",
-            f"SELECT 'icons',i.id,'icons',i.store,i.country,i.language,{ident('i')},{icon_label},'',i.enabled,i.failures,i.due,i.lease_until FROM app_icons i WHERE i.requested=1",
-            f"SELECT 'permissions',p.id,'permissions',p.store,p.country,'en',{ident('p')},{permission_name},'',p.enabled,p.failures,p.due,p.lease_until FROM app_permission_targets p{app_join}",
-            "SELECT 'sources',s.id,s.kind,s.store,s.country,s.language,s.app_id,s.label,'',s.enabled,s.failures,s.due,s.lease_until FROM collection_source_tasks s",
-            "SELECT 'media',m.id,'screenshots',m.store,'','','',m.label,'',m.enabled,m.failures,m.due,m.lease_until FROM app_media_assets m"]
+            w.enabled,COALESCE(j.failures,0) failures,j.due,j.lease_until,(l.last_success IS NOT NULL) has_success FROM watchlist w{app_join}
+            LEFT JOIN jobs j USING(store,app_id,country,language) LEFT JOIN listings l USING(store,app_id,country,language)''',
+            f"SELECT 'keywords',t.id,'keywords',t.store,t.country,t.language,'',{keyword},'',t.enabled,t.failures,t.due,t.lease_until,(t.latest_success_id IS NOT NULL) FROM keyword_targets t",
+            f"SELECT 'targets',t.id,t.kind,t.store,t.country,t.language,{ident('t')},{label},{category},t.enabled,t.failures,t.due,t.lease_until,(t.latest_success_id IS NOT NULL) FROM observation_targets t",
+            f"SELECT 'icons',i.id,'icons',i.store,i.country,i.language,{ident('i')},{icon_label},'',i.enabled,i.failures,i.due,i.lease_until,(i.checked_at IS NOT NULL) FROM app_icons i WHERE i.requested=1",
+            f"SELECT 'permissions',p.id,'permissions',p.store,p.country,'en',{ident('p')},{permission_name},'',p.enabled,p.failures,p.due,p.lease_until,(p.success_at IS NOT NULL) FROM app_permission_targets p{app_join}",
+            "SELECT 'sources',s.id,s.kind,s.store,s.country,s.language,s.app_id,s.label,'',s.enabled,s.failures,s.due,s.lease_until,(s.success_at IS NOT NULL) FROM collection_source_tasks s",
+            "SELECT 'media',m.id,'screenshots',m.store,'','','',m.label,'',m.enabled,m.failures,m.due,m.lease_until,(m.checked_at IS NOT NULL) FROM app_media_assets m"]
     selected=[];args=[]
     for part,(resource,alias,kinds) in zip(parts,[('watchlist','w',('details',)),('keywords','t',('keywords',)),('targets','t',('chart','reviews','featured')),('icons','i',('icons',)),('permissions','p',('permissions',)),('sources','s',tuple(SOURCE_KINDS)),('media','m',('screenshots',))]):
         if kind and kind not in kinds:continue
@@ -83,7 +83,7 @@ def task_query(*, kind='', store='', country='', language='', state='', q='', li
         raise ValueError('搜索参数无效')
     now = time.time()
     union,args=_task_union(kind,light,bool(q),refs)
-    columns='resource,id,kind,store,country,language,app_id,label,category,'+('enabled,failures,due,lease_until' if light else 'collection,group_name,depth,refresh_hours,enabled,failures,last_error,due,lease_until,success_at')
+    columns='resource,id,kind,store,country,language,app_id,label,category,'+('enabled,failures,due,lease_until,has_success' if light else 'collection,group_name,depth,refresh_hours,enabled,failures,last_error,due,lease_until,success_at')
     query = f'''SELECT task.*,CASE WHEN resource='sources' AND due IS NULL THEN 'done' WHEN enabled=0 THEN 'paused' WHEN lease_until>{now} THEN 'running'
         WHEN failures>0 THEN 'error' WHEN COALESCE(due,0)<={now} THEN 'pending'
         ELSE 'scheduled' END task_state FROM ({union}) task ({columns})'''
@@ -115,15 +115,16 @@ def list_tasks(db, *, page=1, limit=50, **filters):
     count_sql=[];count_args=[]
     for kind in KINDS:
         overview,overview_args=task_query(**(filters|{'kind':kind,'state':''}),light=True)
-        count_sql.append(f'SELECT kind,task_state,count(*) n FROM ({overview}) f GROUP BY kind,task_state')
+        count_sql.append(f'SELECT kind,task_state,count(*) n,SUM(has_success) collected FROM ({overview}) f GROUP BY kind,task_state')
         count_args.extend(overview_args)
     counts=db.execute(' UNION ALL '.join(count_sql),count_args).fetchall()
-    categories = {kind:dict(kind=kind,total=0,summary=dict.fromkeys(STATES,0)) for kind in KINDS}
+    categories = {kind:dict(kind=kind,total=0,collected=0,summary=dict.fromkeys(STATES,0)) for kind in KINDS}
     summary = dict.fromkeys(STATES,0)
     for row in counts:
         category = categories[row['kind']]
         category['summary'][row['task_state']] = row['n']
         category['total'] += row['n']
+        category['collected'] += int(row['collected'] or 0)
         if (not filters.get('kind') or filters['kind']==row['kind']) and (not filters.get('state') or filters['state']==row['task_state']):
             summary[row['task_state']] += row['n']
     total = sum(summary.values())
@@ -132,7 +133,7 @@ def list_tasks(db, *, page=1, limit=50, **filters):
     if refs:
         detail,detail_args=task_query(refs=refs)
         rows=db.execute(detail+' ORDER BY resource,id DESC',detail_args).fetchall()
-    return {'items':rows,'total':total,'summary':summary,'categories':list(categories.values()),'page':page,'limit':limit,'has_more':page*limit<total,'data_revision':data_revision}
+    return {'items':rows,'total':total,'summary':summary,'categories':list(categories.values()),'page':page,'limit':limit,'has_more':page*limit<total,'data_revision':data_revision,'observed_at':time.time()}
 
 
 def _target(db, resource, identifier):

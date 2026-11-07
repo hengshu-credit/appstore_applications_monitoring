@@ -148,5 +148,8 @@ class CollectionBatchTest(MySQLTestCase):
     def test_pool_summary_includes_queue_and_excludes_priority_without_claims(self):
         self.seed(3);enqueue(self.db,['gb'],'en')
         watch(self.db,dict(store='apple',app_id='1000',country='us',language='en'))
+        for app_id,country in [('1000','us'),('1001','us'),('1001','gb')]:
+            self.db.execute("INSERT INTO listings(store,app_id,country,language,state,checked_at,last_success) VALUES('apple',%s,%s,'en','available',10,10)",(app_id,country))
         pool=pipelines.report(self.db,self.cfg)[0]
         self.assertEqual((pool['total'],pool['summary']['pending'],pool['summary']['out_of_scope']),(5,2,3))
+        self.assertEqual(pool['collected'],2)
