@@ -2098,6 +2098,121 @@ const emptyGlobalBoard = () => ({
   available_countries: [{ code: "us", name: "美国", english: "United States" }],
 });
 
+test("compact global chart headings keep observation details on hover and failures visible", async () => {
+  const states = [
+    { fresh: true },
+    { fresh: false, last_error: "<unsafe>source failed</unsafe>" },
+    { fresh: false },
+    { fresh: false, observed_at: null },
+    { fresh: false, quality: "insufficient_history", reason: "need history" },
+    { fresh: false, unsupported: true },
+  ];
+  const { window } = await setup((path) => {
+    if (!path.startsWith("/api/charts/global?")) return;
+    return {
+      ...emptyGlobalBoard(),
+      countries: [
+        {
+          country: "us",
+          name: "美国",
+          language: "en",
+          boards: states.map((state, i) => ({
+            collection: catalogFixture.charts.google[i].id,
+            definition: catalogFixture.charts.google[i],
+            items: [],
+            observed_at: 10,
+            returned_count: 100,
+            ...state,
+          })),
+        },
+      ],
+    };
+  });
+  try {
+    window.location.hash = "globalcharts";
+    await tick();
+    const doc = window.document;
+    const headings = [...doc.querySelectorAll(".global-chart-summary")];
+    assert.equal(headings.length, 6);
+    assert.ok(
+      headings.every(
+        (h) => !/更新时间|返回 100 条|有效观察/.test(h.textContent),
+      ),
+    );
+    assert.match(
+      headings[0].querySelector("a").title,
+      /更新时间：.*返回 100 条/,
+    );
+    assert.match(
+      headings[0].querySelector("a").getAttribute("aria-label"),
+      /更新时间/,
+    );
+    assert.deepEqual(
+      headings.map(
+        (h) => h.querySelector(".global-chart-status")?.textContent || "",
+      ),
+      ["", "采集异常", "待更新", "未采集", "历史不足", "不支持"],
+    );
+    assert.match(headings[1].title, /<unsafe>source failed<\/unsafe>/);
+    assert.equal(doc.querySelector("unsafe"), null);
+    assert.equal(
+      doc.querySelector(".global-chart-meta,.chart-more-link"),
+      null,
+    );
+    assert.ok(headings[5].querySelector('[tabindex="0"][title]'));
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("horizontal Top 10 preferences upgrade once to Top 20 and later explicit choices persist", async () => {
+  const { window, calls } = await setup((path) =>
+    path.startsWith("/api/charts/global?") ? emptyGlobalBoard() : undefined,
+  );
+  const depth = () =>
+    new URL(
+      calls.filter((c) => c.path.startsWith("/api/charts/global?")).at(-1).path,
+      "http://localhost",
+    ).searchParams.get("depth");
+  try {
+    window.localStorage.setItem(
+      "appmon-global-chart-filters",
+      JSON.stringify({
+        google: { layout: "rows", depth: "10" },
+        apple: { layout: "columns", depth: "10" },
+      }),
+    );
+    window.location.hash = "globalcharts";
+    await tick();
+    assert.equal(depth(), "20");
+    const form = window.document.querySelector("#global-chart-form");
+    form.elements.depth.value = "10";
+    form.dispatchEvent(
+      new window.Event("submit", { bubbles: true, cancelable: true }),
+    );
+    await tick();
+    assert.equal(depth(), "10");
+    assert.equal(
+      JSON.parse(window.localStorage.getItem("appmon-global-chart-filters"))
+        .google.display_version,
+      2,
+    );
+    const changeStore = async (value) => {
+      window.document.querySelector("#global-store").value = value;
+      window.document
+        .querySelector("#global-store")
+        .dispatchEvent(new window.Event("change"));
+      await tick();
+    };
+    await changeStore("apple");
+    assert.equal(depth(), "10");
+    await changeStore("google");
+    assert.equal(depth(), "10");
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
 test("global row and column layouts migrate old preferences and persist per store through refresh and reset", async () => {
   const { window, calls } = await setup((path) =>
     path.startsWith("/api/charts/global?") ? emptyGlobalBoard() : undefined,
@@ -2185,7 +2300,7 @@ test("global filters recover invalid saved values and reject future dates withou
     assert.equal(query.get("store"), "google");
     assert.equal(query.get("countries"), "us");
     assert.equal(query.get("collections"), "top-free");
-    assert.equal(query.get("depth"), "10");
+    assert.equal(query.get("depth"), "20");
     assert.equal(query.get("category"), null);
     assert.equal(query.get("as_of"), null);
     const form = window.document.querySelector("#global-chart-form");

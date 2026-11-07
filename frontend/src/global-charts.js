@@ -25,7 +25,7 @@ export function createGlobalCharts(ctx) {
       collections: "top-free,top-paid,top-grossing",
       category: "",
       as_of: "",
-      depth: "10",
+      depth: "20",
       layout: "rows",
     },
     offset = 0,
@@ -85,7 +85,13 @@ export function createGlobalCharts(ctx) {
               : "",
           as_of:
             typeof v.as_of === "string" && validDate(v.as_of) ? v.as_of : "",
-          depth: ["10", "20", "50"].includes(v.depth) ? v.depth : "10",
+          depth: ["10", "20", "50"].includes(v.depth)
+            ? v.depth === "10" &&
+              normalizeLayout(v.layout) === "rows" &&
+              v.display_version !== 2
+              ? "20"
+              : v.depth
+            : defaults.depth,
           layout: normalizeLayout(v.layout),
         };
       }
@@ -97,7 +103,7 @@ export function createGlobalCharts(ctx) {
       const all = JSON.parse(
         localStorage.getItem("appmon-global-chart-filters") || "{}",
       );
-      all[store] = filters;
+      all[store] = { ...filters, display_version: 2 };
       localStorage.setItem("appmon-global-chart-filters", JSON.stringify(all));
     } catch {}
   };
@@ -139,37 +145,36 @@ export function createGlobalCharts(ctx) {
       });
     const boardTitle = (c, b, label) =>
       b.unsupported
-        ? esc(label)
-        : `<a class="chart-title-link" href="${esc(detailUrl(c, b))}" title="${esc(c.name + " " + b.definition.name + "：查看完整榜单")}" aria-label="${esc(c.name + " " + b.definition.name + "：查看完整榜单")}">${esc(label)}<span aria-hidden="true">↗</span></a>`;
+        ? `<span tabindex="0" title="${esc(boardMeta(b))}" aria-label="${esc(label + "，" + boardMeta(b))}">${esc(label)}</span>`
+        : `<a class="chart-title-link" href="${esc(detailUrl(c, b))}" title="${esc(c.name + " " + b.definition.name + "：查看完整榜单 · " + boardMeta(b))}" aria-label="${esc(c.name + " " + b.definition.name + "：查看完整榜单，" + boardMeta(b))}">${esc(label)}<span aria-hidden="true">↗</span></a>`;
     const storeName = (c) =>
       c.store === "apple" ? "App Store" : "Google Play";
-    const boardMeta = (b) => {
-      const state = b.unsupported
-        ? "此组合不支持"
+    const boardState = (b) =>
+      b.unsupported
+        ? "不支持"
         : b.quality === "insufficient_history"
-          ? "历史不足，暂不能生成派生榜"
-          : b.fresh
-            ? "有效观察"
+          ? "历史不足"
+          : b.last_error
+            ? "采集异常"
             : b.lease_until > Date.now() / 1000
               ? "采集中"
-              : b.observed_at
-                ? "历史数据待更新"
-                : "尚未采集";
-      const detail = [
-        state,
-        stamp(b.observed_at),
-        `返回 ${b.returned_count} 条`,
+              : b.fresh
+                ? ""
+                : b.observed_at
+                  ? "待更新"
+                  : "未采集";
+    const boardMeta = (b) =>
+      [
+        boardState(b) || "有效观察",
+        b.observed_at ? `更新时间：${stamp(b.observed_at)}` : "尚无成功采样",
+        typeof b.returned_count === "number"
+          ? `返回 ${b.returned_count} 条`
+          : "",
         b.last_error,
         b.reason,
       ]
         .filter(Boolean)
         .join(" · ");
-      return `<p class="smallprint global-chart-meta" title="${esc(detail)}">${esc(state)} · ${stamp(b.observed_at)}<br>返回 ${b.returned_count} 条${b.last_error ? " · " + esc(b.last_error) : ""}${b.reason ? " · " + esc(b.reason) : ""}</p>`;
-    };
-    const more = (c, b) =>
-      b.unsupported
-        ? ""
-        : `<a class="chart-more-link" href="${esc(detailUrl(c, b))}">查看完整榜单与应用资料 →</a>`;
     const rankedItems = (b) =>
       [...b.items].sort((a, b) => a.position - b.position);
     const applications = (c, b) =>
@@ -189,14 +194,14 @@ export function createGlobalCharts(ctx) {
                 )}</li>`,
             )
             .join("")}</ol>`
-        : `<div class="global-chart-empty"><strong>暂无数据</strong><span>请调整筛选，或添加对应数据后刷新。</span></div>`;
+        : `<div class="global-chart-empty"><strong>暂无数据</strong></div>`;
     const cards = data.countries
       .map(
         (c) =>
           `<section class="panel global-country" style="--chart-slots:${Math.max(1, ...c.boards.flatMap((b) => b.items.map((r) => Number(r.position))))}"><div class="panel-heading"><h2>${esc(c.name)} <span class="sub">${esc(c.country.toUpperCase())}${store === "all" ? " · " + storeName(c) : ""}</span></h2><span class="sub">${esc(c.language)}</span></div><div class="global-lists" role="region" aria-label="${esc(c.name)}排行榜" tabindex="0">${c.boards
             .map(
               (b) =>
-                `<section class="global-chart"><div class="global-chart-summary"><h3>${boardTitle(c, b, b.definition.name + (b.definition.mode === "derived" ? "（派生）" : ""))}</h3>${boardMeta(b)}</div>${b.items.length ? '<div class="global-chart-head" aria-hidden="true"><span>排名</span><span>应用</span></div>' : ""}${applications(c, b)}${more(c, b)}</section>`,
+                `<section class="global-chart"><div class="global-chart-summary" title="${esc(boardMeta(b))}"><h3>${boardTitle(c, b, b.definition.name + (b.definition.mode === "derived" ? "（派生）" : ""))}</h3>${boardState(b) ? `<span class="global-chart-status" data-error="${Boolean(b.last_error)}">${esc(boardState(b))}</span>` : ""}</div>${b.items.length ? '<div class="global-chart-head" aria-hidden="true"><span>排名</span><span>应用</span></div>' : ""}${applications(c, b)}</section>`,
             )
             .join("")}</div></section>`,
       )

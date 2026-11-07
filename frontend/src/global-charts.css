@@ -67,7 +67,23 @@
   border-top: 1px solid var(--line);
 }
 .global-chart h3 {
-  margin: 12px 0 4px;
+  margin: 0;
+}
+.global-chart-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 38px;
+  padding-block: 6px;
+}
+.global-chart-status {
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+}
+.global-chart-status[data-error="true"] {
+  color: var(--red);
 }
 .global-chart-head {
   display: grid;
@@ -118,8 +134,8 @@
 }
 /* One shared scroller keeps every chart's app columns aligned by source rank. */
 .global-board-grid[data-layout="rows"] .global-country {
-  --chart-label-width: 170px;
-  --chart-app-width: 128px;
+  --chart-label-width: 136px;
+  --chart-app-width: 104px;
 }
 .global-board-grid[data-layout="rows"] .global-lists {
   gap: 0;
@@ -131,41 +147,33 @@
     var(--chart-label-width) + var(--chart-slots) * var(--chart-app-width)
   );
 }
-.global-board-grid[data-layout="rows"] .global-chart-summary,
-.global-board-grid[data-layout="rows"] .global-chart > .chart-more-link {
+.global-board-grid[data-layout="rows"] .global-chart-summary {
   position: sticky;
   left: 0;
   z-index: 1;
   grid-column: 1;
-  padding-inline: 12px;
+  padding-inline: 10px;
   background: var(--surface);
   box-shadow: 1px 0 var(--line-soft);
 }
 .global-board-grid[data-layout="rows"] .global-chart-summary {
   grid-row: 1;
-}
-.global-board-grid[data-layout="rows"] .global-chart > .chart-more-link {
-  grid-row: 2;
-  margin-top: 0;
-  padding-block: 4px 10px;
-  white-space: normal;
-  font-size: 11px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
 }
 .global-board-grid[data-layout="rows"] .global-chart-apps {
   display: grid;
   grid-column: 2;
-  grid-row: 1 / span 2;
-  grid-template-columns: repeat(
-    var(--chart-slots),
-    minmax(var(--chart-app-width), 1fr)
-  );
+  grid-row: 1;
+  grid-template-columns: repeat(var(--chart-slots), var(--chart-app-width));
 }
 .global-board-grid[data-layout="rows"] .global-ranked-app {
   display: block;
   grid-row: 1;
   grid-column: var(--rank-position);
-  min-height: 138px;
-  padding: 14px 10px;
+  min-height: 112px;
+  padding: 10px 6px;
   border-bottom: 0;
   border-right: 1px solid var(--line-soft);
 }
@@ -175,34 +183,37 @@
 .global-board-grid[data-layout="rows"] .global-chart .appcell {
   height: auto;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 .global-board-grid[data-layout="rows"] .global-chart .appcell > div:last-child {
   width: 100%;
   flex: none;
+  height: 36px;
 }
 .global-board-grid[data-layout="rows"] .global-chart .appname {
   text-align: center;
   font-size: 12px;
+  line-height: 18px;
+  max-height: 36px;
 }
 .global-board-grid[data-layout="rows"]
   .global-chart
   :is(.appicon-wrap, .appicon) {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
 }
 .global-board-grid[data-layout="rows"] .global-chart-empty {
   grid-column: 2;
-  grid-row: 1 / span 2;
+  grid-row: 1;
   position: sticky;
   left: var(--chart-label-width);
   width: min(420px, calc(100vw - 200px));
-  min-height: 138px;
+  min-height: 112px;
 }
 @media (max-width: 560px) {
   .global-board-grid[data-layout="rows"] .global-country {
-    --chart-label-width: 132px;
-    --chart-app-width: 112px;
+    --chart-label-width: 112px;
+    --chart-app-width: 96px;
   }
 }
 .global-chart .appcell {
@@ -260,15 +271,6 @@
 .global-chart th:last-child {
   padding-left: 4px;
 }
-.global-chart-meta {
-  height: 34px;
-  line-height: 17px;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow: hidden;
-}
 .chart-title-link {
   display: inline-flex;
   align-items: center;
@@ -284,12 +286,6 @@
 .chart-title-link span {
   color: var(--muted);
   font-size: 12px;
-}
-.chart-more-link {
-  display: block;
-  margin-top: 10px;
-  font-size: 12px;
-  white-space: nowrap;
 }
 .chart-detail-table table {
   min-width: 1550px;
