@@ -42,7 +42,8 @@ class PermissionClient(Client):
 
 
 def save_batch_result(db, cfg, target, result=None, error=None):
-    raw = raw_save(cfg['data_dir'],result.raw) if result else None
+    from .storage_policy import archive_raw
+    raw = archive_raw(db,cfg,target['store'],[target['app_id']],result.raw) if result else None
     with db:
         current = db.execute('SELECT * FROM app_permission_targets WHERE id=%s AND token=%s AND enabled=1 FOR UPDATE',
                              (target['id'],target['token'])).fetchone()
@@ -140,7 +141,8 @@ def work(cfg, db, limit=5, client=None):
                     data=Formats.Permissions.build_body(row['app_id']),headers={'Content-Type':'application/x-www-form-urlencoded'})
                 if response.status_code!=200:raise FetchError('权限接口暂不可用')
                 payload=parse(response.content)
-                raw_path=raw_save(cfg['data_dir'],response.content)
+                from .storage_policy import archive_raw
+                raw_path=archive_raw(db,cfg,'google',[row['app_id']],response.content)
             except FetchError as exc:error=str(exc);delay=exc.retry_after
             except Exception as exc:error='权限采集失败：'+type(exc).__name__
             with db:

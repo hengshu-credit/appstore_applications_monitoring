@@ -47,6 +47,13 @@ def worker(cfg, db):
             from .collection import work_plans
             ensure_verification_jobs(db)
             work_plans(db,100)
+            if cfg.get('media_scope')=='groups_and_current_charts':
+                from .db import reserve
+                scheduled=db.execute("SELECT next_at FROM schedules WHERE name='media-scope-sync'").fetchone()
+                if not scheduled or scheduled['next_at']<=time.time():
+                    from .app_media import sync_existing
+                    sync_existing(db,cfg)
+                    reserve(db,'media-scope-sync',300)
             evaluate(db)
             work_export(cfg,db)
             record_daily(db)
@@ -79,6 +86,10 @@ def marketdata_worker(cfg):
         db=None
         try:
             db=connect(cfg,initialize=False)
+            from .storage_policy import storage_guard
+            if storage_guard(db,cfg):
+                time.sleep(10)
+                continue
             result=work(cfg,db)
             if result['processed'] or result['error']:log.info('Marketdata cycle %s',result)
         except Exception as exc:log.error('Marketdata cycle failed: %s',type(exc).__name__)

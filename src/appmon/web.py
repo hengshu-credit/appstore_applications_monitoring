@@ -125,6 +125,13 @@ def create_app(cfg):
         if path is None:raise HTTPException(404,'图标正在采集或尚不可用')
         return FileResponse(path,media_type=row['mime'])
 
+    @api.get('/media/{identifier}')
+    def media_file(identifier:int,db=DB):
+        row=db.execute('SELECT * FROM app_media_assets WHERE id=%s',(identifier,)).fetchone()
+        path=app_icons.cached_path(cfg,row) if row else None
+        if path is None:raise HTTPException(404,'图片正在采集或尚不可用')
+        return FileResponse(path,media_type=row['mime'])
+
     @api.get("/openapi.json")
     def schema():
         return app.openapi()

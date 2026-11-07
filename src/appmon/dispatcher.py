@@ -8,10 +8,13 @@ from .collection_limits import blocked
 from .db import connect
 
 log = logging.getLogger(__name__)
-LANES = ('details', 'keywords', 'chart', 'reviews', 'featured', 'permissions', 'icons', 'pool', 'sources')
+LANES = ('details', 'keywords', 'chart', 'reviews', 'featured', 'permissions', 'icons', 'screenshots', 'pool', 'sources')
 
 
 def ready(db, cfg, lane, now):
+    if lane=='screenshots':
+        from .app_media import active_predicate
+        return db.execute('SELECT 1 FROM app_media_assets a WHERE enabled=1 AND due<=%s AND lease_until<=%s AND '+active_predicate()+' LIMIT 1',(now,now)).fetchone() is not None
     if lane == 'sources':
         return db.execute('SELECT 1 FROM collection_source_tasks WHERE enabled=1 AND due<=%s AND lease_until<=%s AND failures<3 LIMIT 1',(now,now)).fetchone() is not None
     if lane == 'details':
@@ -37,6 +40,9 @@ def ready(db, cfg, lane, now):
             args += (lane,)
         if lane == 'icons':
             sql += ' AND requested=1'
+            if cfg.get('media_scope','all')!='all':
+                from .storage_policy import media_predicate
+                sql+=' AND '+media_predicate(table)
         sql += ' LIMIT 1'
     return db.execute(sql,args).fetchone() is not None
 
@@ -70,6 +76,9 @@ def run_batch(db, cfg, lane):
     client.lineage_lane = lane
     size = cfg.get('google_rpc_batch_size',20)
     try:
+        if lane=='screenshots':
+            from .app_media import work
+            return work(cfg,db,client)
         if lane in ('details','pool'):
             from .detail_batches import work_details
             return work_details(cfg,db,max(size,cfg.get('apple_lookup_batch_size',50)),client,

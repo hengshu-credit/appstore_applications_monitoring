@@ -127,6 +127,10 @@ def connect(cfg, *, initialize=True, allow_migration=False):
         if initialize:
             for table, columns in TABLES.items():
                 db.execute(f'CREATE TABLE IF NOT EXISTS `{table}` ({columns}){ENGINE}')
+            if not db.execute("SHOW COLUMNS FROM app_media_assets LIKE 'manual_paused'").fetchone():
+                with db.named_lock('media-pause-column',timeout=30):
+                    if not db.execute("SHOW COLUMNS FROM app_media_assets LIKE 'manual_paused'").fetchone():
+                        db.execute('ALTER TABLE app_media_assets ADD COLUMN manual_paused BOOLEAN NOT NULL DEFAULT FALSE')
             if not db.execute("SHOW COLUMNS FROM collection_logs LIKE 'details'").fetchone():
                 # Multiple services may initialize concurrently on deployment.
                 name='appmon:log-details-migration'

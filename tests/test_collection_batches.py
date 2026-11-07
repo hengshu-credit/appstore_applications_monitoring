@@ -96,7 +96,7 @@ class CollectionBatchTest(MySQLTestCase):
         result=list_tasks(self.db,kind='keywords',state='error')
         self.assertEqual(result['total'],1)
         self.assertCountEqual([c['kind'] for c in result['categories']],
-            ['details','keywords','chart','reviews','featured','icons','permissions',
+            ['details','keywords','chart','reviews','featured','icons','screenshots','permissions',
              'aso_popularity','aso_import','aso_report'])
         c=next(c for c in result['categories'] if c['kind']=='keywords')
         self.assertEqual((c['total'],c['summary']['paused'],c['summary']['error'],c['summary']['pending']),(3,1,1,1))

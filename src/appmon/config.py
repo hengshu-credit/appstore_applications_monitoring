@@ -18,6 +18,10 @@ def load(path="config.toml"):
     if not re.fullmatch(r"[a-z]{2}(?:[-_][A-Za-z]{2})?", cfg["language"]):
         raise ValueError("Invalid language")
     cfg.setdefault('google_rpc_batch_size', 20)
+    if cfg.get('raw_response_scope','all') not in ('all','groups'):
+        raise ValueError('Invalid raw_response_scope')
+    if cfg.get('media_scope','all') not in ('all','groups_and_current_charts'):
+        raise ValueError('Invalid media_scope')
     cfg.setdefault('collector_concurrency',4)
     cfg.setdefault('collection_batch_size',2000)
     for key,low,high in [('collector_concurrency',1,8),('collection_batch_size',50,2000)]:

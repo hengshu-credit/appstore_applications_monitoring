@@ -59,7 +59,8 @@ def ingest(cfg,db,value,data,origin='用户导入Apple格式响应'):
     stamp=datetime.combine(end,datetime.max.time(),tzinfo=timezone.utc).timestamp()
     result=import_signals(db,m|{'kind':'search_popularity','source':origin+' / '+genre,'source_url':DOC,'observed_at':stamp,
         'score_unit':f'Apple searchPopularity1to100; {period} {start}/{end}; rankInGenre','items':items})
-    raw=raw_save(cfg['data_dir'],dump({'request':payload,'response':{'result':{'rows':safe_rows}}}).encode())
+    from .storage_policy import archive_raw
+    raw=archive_raw(db,cfg,m['store'],[value.get('app_id')],dump({'request':payload,'response':{'result':{'rows':safe_rows}}}).encode())
     db.execute('''INSERT INTO keyword_source_fetches(run_id,provider,observed_at,raw_path,metadata)
         VALUES(%s,%s,%s,%s,%s)''',(result['id'],'apple_ads_platform' if origin=='Apple Ads官方接口' else 'aso_file',time.time(),raw,dump({'period':period,'start':str(start),'end':str(end),'genre':genre,'returned':len(rows),'requested':payload['pagination']['pageSize']})))
     return result|{'returned':len(rows),'possibly_truncated':len(rows)>=payload['pagination']['pageSize'],'period_start':str(start),'period_end':str(end)}

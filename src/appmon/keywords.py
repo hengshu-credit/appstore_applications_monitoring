@@ -91,7 +91,8 @@ def save_search(db, cfg, target, result=None, error=None, now=None):
     apps = ordered_apps(target["store"], result.apps) if result else []
     if len(apps) > target["depth"]:
         raise ValueError("Search exceeded requested depth")
-    raw_path = raw_save(cfg["data_dir"], result.raw) if result else None
+    from .storage_policy import archive_raw
+    raw_path = archive_raw(db,cfg,target['store'],[a['app_id'] for a in result.apps],result.raw) if result else None
     web_search=target['store']=='apple' and target['country'] not in APPLE_MARKETS
     with db:
         current = db.execute("SELECT * FROM keyword_targets WHERE id=%s AND token=%s FOR UPDATE",

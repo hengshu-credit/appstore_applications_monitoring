@@ -221,7 +221,7 @@ def requirements(path, method, params=None):
     if p == '/data-sources' or p.startswith('/data-sources/'):
         return ['data-sources:admin']  # explicit, non-delegable administrator capability
     action = 'read' if method in ('GET', 'HEAD') else 'write'
-    if p in ('/catalog', '/categories/counts') or p.startswith('/icons/'):
+    if p in ('/catalog', '/categories/counts') or p.startswith(('/icons/','/media/')):
         return []  # authenticated shared display support
     if p == '/openapi.json':
         return ['admin']

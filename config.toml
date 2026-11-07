@@ -9,7 +9,10 @@ lease_seconds = 600
 timeout_seconds = 30
 # Local proxy compatibility; TLS certificate verification remains enabled.
 tls_maximum_version = "1.2"
-min_free_gb = 2
+min_free_gb = 15
+raw_response_scope = "groups"
+media_scope = "groups_and_current_charts"
+archive_videos = false
 google_interval_seconds = 2.5
 apple_interval_seconds = 3.5
 # Shared across both stores and all workers; editable live in collection center.

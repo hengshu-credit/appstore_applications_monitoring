@@ -8,7 +8,7 @@ from .task_logs import emit
 
 log = logging.getLogger(__name__)
 KINDS = dict(details='应用详情',keywords='关键词排名',chart='分类榜单',reviews='用户评论',
-             featured='编辑推荐',permissions='声明权限',icons='应用图标',pool='全池详情')
+             featured='编辑推荐',permissions='声明权限',icons='应用图标',screenshots='应用截图',pool='全池详情')
 from .source_tasks import KINDS as SOURCE_KINDS
 KINDS.update(SOURCE_KINDS)
 SOURCES = {
@@ -34,6 +34,7 @@ SINKS = dict(details=('应用资料','listings / snapshots / app_metrics_daily',
              featured=('编辑推荐','observation_runs / observation_items','推荐条目'),
              permissions=('权限清单','app_permission_runs / app_permission_targets','权限声明'),
              icons=('图标缓存','app_icons + 图标文件','图标文件'),
+             screenshots=('图片素材','app_media_assets / app_media_refs','图片文件'),
              seed=('应用池','apps / imports','导入行'),
              discovery=('发现应用 ID','discovery_runs / apps / jobs','发现记录'),
              marketdata=('来源归档与经营指标','marketdata_artifacts / app_metric_facts','来源记录'),
@@ -43,7 +44,7 @@ SINKS = dict(details=('应用资料','listings / snapshots / app_metrics_daily',
 def source_for(kind, store):
     if kind in ('aso_popularity','aso_import') and store!='apple':return None
     if kind in SOURCE_KINDS:return 'ads' if kind=='aso_popularity' else 'aso_file'
-    if kind=='icons':return 'cdn'
+    if kind in ('icons','screenshots'):return 'cdn'
     if store=='google':return 'google'
     return {'details':'lookup','pool':'lookup','keywords':'search','chart':'rss','reviews':'rss','featured':'today'}.get(kind)
 
@@ -130,6 +131,10 @@ def results(db,store,since,now):
         MAX(l.created_at) last_at FROM collection_logs l JOIN app_icons i ON CAST(i.id AS CHAR)=l.target_key
         WHERE l.resource='icons' AND l.event IN ('ok','error') AND l.created_at BETWEEN %s AND %s"""+scope+' GROUP BY i.store',args).fetchall()
     for row in icons:output.append(dict(source='cdn',sink='icons',kind='icons',unit='图标采集结果',**row))
+    media=db.execute("""SELECT i.store,COUNT(*) attempts,SUM(l.event='error') errors,SUM(l.event='ok') records,
+        MAX(l.created_at) last_at FROM collection_logs l JOIN app_media_assets i ON CAST(i.id AS CHAR)=l.target_key
+        WHERE l.resource='media' AND l.event IN ('ok','error') AND l.created_at BETWEEN %s AND %s"""+scope+' GROUP BY i.store',args).fetchall()
+    for row in media:output.append(dict(source='cdn',sink='screenshots',kind='screenshots',unit='图片采集结果',**row))
     discoveries=db.execute("""SELECT SUBSTRING_INDEX(source,':',1) store,
         SUBSTRING_INDEX(SUBSTRING_INDEX(source,':',3),':',-1) kind,COUNT(*) attempts,
         SUM(error IS NOT NULL) errors,COALESCE(SUM(count),0) records,MAX(observed_at) last_at
@@ -202,7 +207,7 @@ def report(db,cfg,store='all',hours=24):
         node('q:'+kind,label,1,kind=kind,value=total,unit='共享目标',states=states,eligible=eligible,
              note='当前队列快照；同一目标可被多个计划复用',link='#collection?view=pipelines' if kind=='pool' else '#collection?kind='+kind)
         batch=cfg.get('apple_lookup_batch_size',50) if kind in ('details','pool') else cfg.get('google_rpc_batch_size',20)
-        if kind=='featured':batch=1
+        if kind in ('featured','screenshots'):batch=1
         if kind in SOURCE_KINDS or kind=='icons':batch=cfg.get('collection_batch_size',2000)
         direct_claims=max(0,claims.get(kind,0)-sum(v.get(kind,0) for v in mixed.values())) if kind in claims else None
         node('d:'+kind,'动态分配 · '+label,2,kind=kind,value=direct_claims,unit='已消费任务',eligible=eligible,

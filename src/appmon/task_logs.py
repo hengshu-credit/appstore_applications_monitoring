@@ -84,7 +84,7 @@ def target_state(db,resource,identifier):
         row=db.execute('''SELECT w.enabled,j.lease_until,j.due,j.failures,j.last_error FROM watchlist w
             LEFT JOIN jobs j USING(store,app_id,country,language) WHERE w.id=%s''',(int(identifier),)).fetchone()
     else:
-        table={'keywords':'keyword_targets','targets':'observation_targets','icons':'app_icons','permissions':'app_permission_targets','sources':'collection_source_tasks'}.get(resource)
+        table={'keywords':'keyword_targets','targets':'observation_targets','icons':'app_icons','media':'app_media_assets','permissions':'app_permission_targets','sources':'collection_source_tasks'}.get(resource)
         if table is None: raise ValueError('未知日志类型')
         row=db.execute(f'SELECT enabled,lease_until,due,failures,last_error FROM {table} WHERE id=%s',(int(identifier),)).fetchone()
     if not row: raise ValueError('任务不存在')

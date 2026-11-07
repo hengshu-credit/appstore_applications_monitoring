@@ -13,10 +13,12 @@ from .ingest import disk_check
 def claim(db,cfg,limit,client):
     from .app_icons import source_url
     now=time.time();token=uuid.uuid4().hex
+    from .storage_policy import media_predicate
+    scope=' AND '+media_predicate('app_icons') if cfg.get('media_scope','all')!='all' else ''
     with db:
         db.execute("INSERT INTO schedules VALUES('claim:icons',0) ON DUPLICATE KEY UPDATE name=schedules.name")
-        first=db.execute('''SELECT * FROM app_icons WHERE requested=1 AND enabled=1 AND due<=%s AND lease_until<=%s
-            ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED''',(now,now)).fetchone()
+        first=db.execute('''SELECT * FROM app_icons WHERE requested=1 AND enabled=1 AND due<=%s AND lease_until<=%s'''+scope+
+            ' ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED',(now,now)).fetchone()
         if not first:return []
         url=source_url(first['source_url'])
         if url:
@@ -30,7 +32,7 @@ def claim(db,cfg,limit,client):
         rows=[first]
         if capacity>1:
             rows+=list(db.execute('''SELECT * FROM app_icons WHERE requested=1 AND enabled=1 AND due<=%s AND lease_until<=%s
-                AND id<>%s AND '''+condition+' ORDER BY due,id LIMIT %s FOR UPDATE SKIP LOCKED',
+                AND id<>%s AND '''+condition+scope+' ORDER BY due,id LIMIT %s FOR UPDATE SKIP LOCKED',
                 (now,now,first['id'],*args,capacity-1)).fetchall())
         for row in rows:
             db.execute("UPDATE app_icons SET token=%s,lease_until=%s,status='running' WHERE id=%s",(token,now+max(600,cfg['lease_seconds']),row['id']))
@@ -42,8 +44,9 @@ def claim(db,cfg,limit,client):
     return rows
 
 
-def download(cfg,db,client,row,started):
+def download(cfg,db,client,row,started,max_bytes=None):
     from .app_icons import source_url, cached_path, media_type, MAX_BYTES
+    MAX_BYTES=max_bytes or MAX_BYTES
     url=source_url(row['source_url']);key=hashlib.sha256(url.encode()).hexdigest()
     with db.named_lock('icon-download:'+key,timeout=120):
         cached=db.execute('SELECT * FROM icon_downloads WHERE url_hash=%s',(key,)).fetchone()

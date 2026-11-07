@@ -41,6 +41,9 @@ class MySQLTestCase(unittest.TestCase):
         self.folder = Path(self.temp.name)
         self.cfg = load(Path(__file__).parents[1] / "config.toml")
         self.cfg.update(data_dir=self.folder, min_free_gb=0)
+        # Baseline fixtures do not inherit the deployment's opt-in archive scope.
+        # Restricted retention is exercised explicitly in test_storage_policy.
+        self.cfg.update(raw_response_scope='all',media_scope='all')
         self.cfg['mysql'] = self.options
         self.cfg['source_profiles'] = {
             'community': {'origin':'https://community.example','hosts':['community.example']},

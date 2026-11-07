@@ -42,6 +42,8 @@ def save(db, cfg, value):
 def admission(db, cfg, store):
     if store not in ('google','apple'):
         raise ValueError('未知商店')
+    from .storage_policy import storage_guard
+    if 'data_dir' in cfg and storage_guard(db,cfg):return None
     with db:
         # Always lock global first, so separate processes cannot admit a burst.
         keys = ('rate:global', 'rate:'+store)
@@ -87,6 +89,8 @@ def cooldown(db, cfg, store, retry_after):
 
 def blocked(db, cfg):
     """Avoid leasing a backlog while a global pause, long cooldown or budget blocks HTTP."""
+    from .storage_policy import storage_guard
+    if 'data_dir' in cfg and storage_guard(db,cfg):return True
     limits = settings(db,cfg)
     if limits['paused']:
         return True

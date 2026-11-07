@@ -29,7 +29,8 @@ def raw_save(folder, raw):
 def save_result(db, cfg, job, result=None, error=None, now=None):
     now = time.time() if now is None else now
     k = key(job)
-    raw_path = raw_save(cfg["data_dir"], result.raw) if result is not None else ""
+    from .storage_policy import archive_raw
+    raw_path = archive_raw(db,cfg,job['store'],[job['app_id']],result.raw) if result is not None else ""
     db.begin()
     try:
         current = db.execute("""SELECT * FROM jobs WHERE store=%s AND app_id=%s AND country=%s
@@ -56,6 +57,9 @@ def save_result(db, cfg, job, result=None, error=None, now=None):
                 record(db, job, result.payload, now, raw_path)
                 from .app_icons import remember
                 remember(db,job['store'],job['app_id'],job['country'],job['language'],result.payload.get('icon'),result.payload.get('name'))
+                if cfg.get('media_scope')=='groups_and_current_charts':
+                    from .app_media import remember as remember_media
+                    remember_media(db,cfg,job,result.payload)
                 new_payload = dump(result.payload)
                 new_digest = hashlib.sha256(new_payload.encode()).hexdigest()
                 state, misses, last_success = "available", 0, now

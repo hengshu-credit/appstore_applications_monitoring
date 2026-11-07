@@ -4,8 +4,8 @@ from .intelligence import hours, text
 from .task_logs import emit
 from .source_tasks import KINDS as SOURCE_KINDS
 
-TABLES = {'watchlist': 'watchlist', 'keywords': 'keyword_targets', 'targets': 'observation_targets', 'icons':'app_icons','permissions':'app_permission_targets','sources':'collection_source_tasks'}
-KINDS = ('details','keywords','chart','reviews','featured','icons','permissions',*SOURCE_KINDS)
+TABLES = {'watchlist': 'watchlist', 'keywords': 'keyword_targets', 'targets': 'observation_targets', 'icons':'app_icons','media':'app_media_assets','permissions':'app_permission_targets','sources':'collection_source_tasks'}
+KINDS = ('details','keywords','chart','reviews','featured','icons','screenshots','permissions',*SOURCE_KINDS)
 STATES = ('paused','running','error','pending','scheduled','done')
 UNION = '''SELECT 'watchlist' resource,w.id,'details' kind,w.store,w.country,w.language,w.app_id,
     COALESCE(a.name,w.app_id) label,'' category,'' collection,w.group_name,NULL depth,
@@ -31,7 +31,10 @@ UNION = '''SELECT 'watchlist' resource,w.id,'details' kind,w.store,w.country,w.l
     FROM app_permission_targets p LEFT JOIN apps a USING(store,app_id)
     UNION ALL
     SELECT 'sources',s.id,s.kind,s.store,s.country,s.language,s.app_id,s.label,'','','',NULL,
-    NULL,s.enabled,s.failures,s.last_error,s.due,s.lease_until,s.success_at FROM collection_source_tasks s'''
+    NULL,s.enabled,s.failures,s.last_error,s.due,s.lease_until,s.success_at FROM collection_source_tasks s
+    UNION ALL
+    SELECT 'media',m.id,'screenshots',m.store,'','','',m.label,'','','',NULL,m.refresh_hours,m.enabled,
+    m.failures,m.last_error,m.due,m.lease_until,m.checked_at FROM app_media_assets m'''
 
 
 def _task_union(kind='', light=False, search=False, refs=None):
@@ -52,9 +55,10 @@ def _task_union(kind='', light=False, search=False, refs=None):
             f"SELECT 'targets',t.id,t.kind,t.store,t.country,t.language,{ident('t')},{label},{category},t.enabled,t.failures,t.due,t.lease_until FROM observation_targets t",
             f"SELECT 'icons',i.id,'icons',i.store,i.country,i.language,{ident('i')},{icon_label},'',i.enabled,i.failures,i.due,i.lease_until FROM app_icons i WHERE i.requested=1",
             f"SELECT 'permissions',p.id,'permissions',p.store,p.country,'en',{ident('p')},{permission_name},'',p.enabled,p.failures,p.due,p.lease_until FROM app_permission_targets p{app_join}",
-            "SELECT 'sources',s.id,s.kind,s.store,s.country,s.language,s.app_id,s.label,'',s.enabled,s.failures,s.due,s.lease_until FROM collection_source_tasks s"]
+            "SELECT 'sources',s.id,s.kind,s.store,s.country,s.language,s.app_id,s.label,'',s.enabled,s.failures,s.due,s.lease_until FROM collection_source_tasks s",
+            "SELECT 'media',m.id,'screenshots',m.store,'','','',m.label,'',m.enabled,m.failures,m.due,m.lease_until FROM app_media_assets m"]
     selected=[];args=[]
-    for part,(resource,alias,kinds) in zip(parts,[('watchlist','w',('details',)),('keywords','t',('keywords',)),('targets','t',('chart','reviews','featured')),('icons','i',('icons',)),('permissions','p',('permissions',)),('sources','s',tuple(SOURCE_KINDS))]):
+    for part,(resource,alias,kinds) in zip(parts,[('watchlist','w',('details',)),('keywords','t',('keywords',)),('targets','t',('chart','reviews','featured')),('icons','i',('icons',)),('permissions','p',('permissions',)),('sources','s',tuple(SOURCE_KINDS)),('media','m',('screenshots',))]):
         if kind and kind not in kinds:continue
         if resource=='sources' and kind:
             part+=' WHERE s.kind=%s';args.append(kind)
@@ -86,7 +90,9 @@ def task_query(*, kind='', store='', country='', language='', state='', q='', li
     where = []
     for key, value in [('kind',kind),('store',store),('country',country.lower()),('language',language.lower())]:
         if value:
-            where.append(key+'=%s'); args.append(value)
+            if key in ('country','language'):
+                where.append(f"({key}=%s OR (resource='media' AND EXISTS(SELECT 1 FROM app_media_refs mr WHERE mr.asset_id=classified.id AND mr.{key}=%s)))");args.extend([value,value])
+            else:where.append(key+'=%s'); args.append(value)
     if q:
         where.append('(LOCATE(%s,label)>0 OR LOCATE(%s,CONVERT(app_id USING utf8mb4))>0 OR LOCATE(%s,CONVERT(category USING utf8mb4))>0)')
         args.extend([q,q,q])
@@ -148,7 +154,7 @@ def edit_task(db, resource, identifier, value):
             db.execute('''UPDATE jobs SET due=LEAST(due,%s),token=NULL,lease_until=0
                 WHERE store=%s AND app_id=%s AND country=%s AND language=%s''',
                        (time.time()+interval*3600, *[row[k] for k in ('store','app_id','country','language')]))
-        elif resource in ('icons','permissions'):
+        elif resource in ('icons','permissions','media'):
             db.execute(f'UPDATE {table} SET refresh_hours=%s,due=LEAST(due,%s),token=NULL,lease_until=0 WHERE id=%s',(interval,time.time()+interval*3600,identifier))
         else:
             depth = value.get('depth',row['depth'])
@@ -213,7 +219,8 @@ def control_tasks(db, value):
                     db.execute('''UPDATE jobs SET due=0 WHERE store=%s AND app_id=%s AND country=%s
                         AND language=%s AND lease_until<=%s''',(*keys,time.time()))
             elif action in ('pause','resume'):
-                db.execute(f'UPDATE {table} SET enabled=%s,token=NULL,lease_until=0 WHERE id=%s', (action=='resume',identifier))
+                db.execute(f'UPDATE {table} SET enabled=%s,token=NULL,lease_until=0'+
+                    (f',manual_paused={int(action=="pause")}' if resource=='media' else '')+' WHERE id=%s', (action=='resume',identifier))
             else:
                 db.execute(f'UPDATE {table} SET due=0'+(',failures=0,last_error=NULL' if resource=='sources' else '')+' WHERE id=%s AND lease_until<=%s', (identifier,time.time()))
             emit(db,resource,identifier,action,{'pause':'任务已暂停，当前租约已失效','resume':'任务已恢复，等待到期后领取','refresh':'已请求立即采集；由后台按租约和限速执行'}[action])
@@ -233,7 +240,8 @@ def _control_scope(db, query, args, action, interval):
             for resource, table in TABLES.items():
                 join = f"{table} t JOIN collection_selection s ON s.resource=%s AND s.id=t.id"
                 if action in ('pause','resume'):
-                    db.execute(f'UPDATE {join} SET t.enabled=%s'+('' if resource=='watchlist' else ',t.token=NULL,t.lease_until=0'),(resource,action=='resume'))
+                    db.execute(f'UPDATE {join} SET t.enabled=%s'+('' if resource=='watchlist' else ',t.token=NULL,t.lease_until=0')+
+                        (f',t.manual_paused={int(action=="pause")}' if resource=='media' else ''),(resource,action=='resume'))
                 elif action=='interval':
                     if resource=='sources':continue
                     db.execute(f'UPDATE {join} SET t.refresh_hours=%s'+('' if resource=='watchlist' else ',t.due=%s,t.token=NULL,t.lease_until=0'),

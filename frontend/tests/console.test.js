@@ -699,7 +699,7 @@ test("category cards drill into state and batch interval preserves scope", async
     await tick();
     assert.equal(
       window.document.querySelectorAll(".collection-category").length,
-      10,
+      11,
     );
     for (const kind of ["aso_popularity", "aso_import", "aso_report"])
       assert.ok(window.document.querySelector(`[data-category="${kind}"]`));

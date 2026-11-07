@@ -124,7 +124,9 @@ def save_observation(db, cfg, target, result=None, error=None, now=None):
                 raise ValueError("Invalid review")
         if len(result.items) > target["depth"]:
             raise ValueError("Observation exceeds configured depth")
-    raw = raw_save(cfg["data_dir"], result.raw) if result else None
+    from .storage_policy import archive_raw
+    raw = archive_raw(db,cfg,target['store'],[target.get('app_id')]+[i.get('app_id') for i in result.items]+
+        [a for i in result.items for a in i.get('app_ids',[])],result.raw) if result else None
     with db:
         current = db.execute("SELECT * FROM observation_targets WHERE id=%s AND token=%s FOR UPDATE",
                              (target["id"], target["token"])).fetchone()

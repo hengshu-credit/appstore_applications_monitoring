@@ -11,6 +11,7 @@ export const taskKinds = {
   reviews: "用户评论",
   featured: "编辑推荐",
   icons: "应用图标",
+  screenshots: "应用截图",
   permissions: "声明权限",
   aso_popularity: "ASO 关键词热度",
   aso_import: "ASO 热度导入",
@@ -148,7 +149,7 @@ export function createCollectionCenter(ctx) {
     }
     editor(
       "编辑采集任务",
-      `<p class="sub">${esc(taskKinds[row.kind])} · ${esc(row.label)} · ${esc(row.country.toUpperCase())} / ${esc(row.language)}</p><form id="edit-task-form" class="form-grid">${field("刷新周期（小时）", "refresh_hours", row.refresh_hours, "number", 'min="0.25" max="8760" step="0.25" required')}${row.resource === "watchlist" ? field("监控分组", "group_name", row.group_name, "text", "required") : ["icons", "permissions"].includes(row.resource) ? "" : field("采集结果上限", "depth", row.depth, "number", `min="1" max="${row.resource === "keywords" ? 200 : 500}" required`)}<p class="sub full">保留已有历史及启用状态。需要切换应用或市场时，请新建独立任务。</p><div class="full form-actions"><button type="submit">保存设置</button></div></form>`,
+      `<p class="sub">${esc(taskKinds[row.kind])} · ${esc(row.label)} · ${esc(row.country.toUpperCase())} / ${esc(row.language)}</p><form id="edit-task-form" class="form-grid">${field("刷新周期（小时）", "refresh_hours", row.refresh_hours, "number", 'min="0.25" max="8760" step="0.25" required')}${row.resource === "watchlist" ? field("监控分组", "group_name", row.group_name, "text", "required") : ["icons", "permissions", "media"].includes(row.resource) ? "" : field("采集结果上限", "depth", row.depth, "number", `min="1" max="${row.resource === "keywords" ? 200 : 500}" required`)}<p class="sub full">保留已有历史及启用状态。需要切换应用或市场时，请新建独立任务。</p><div class="full form-actions"><button type="submit">保存设置</button></div></form>`,
     );
     bindForm("#edit-task-form", async (v) => {
       await api(
@@ -157,7 +158,7 @@ export function createCollectionCenter(ctx) {
           refresh_hours: Number(v.refresh_hours),
           ...(row.resource === "watchlist"
             ? { group_name: v.group_name }
-            : ["icons", "permissions"].includes(row.resource)
+            : ["icons", "permissions", "media"].includes(row.resource)
               ? {}
               : { depth: Number(v.depth) }),
         },
@@ -179,7 +180,8 @@ export function createCollectionCenter(ctx) {
         Object.fromEntries(
           Object.entries(taskKinds).filter(
             ([k]) =>
-              !["icons", "permissions"].includes(k) && !k.startsWith("aso_"),
+              !["icons", "permissions", "screenshots"].includes(k) &&
+              !k.startsWith("aso_"),
           ),
         ),
       )
@@ -514,8 +516,12 @@ export function createCollectionCenter(ctx) {
                   `<span class="task-app-id" title="${esc(t.app_id)}">${esc(t.app_id || "—")}</span>`,
                   `<span class="task-kind">${icon(t.kind === "details" ? "apps" : t.kind === "chart" ? "charts" : t.kind)}${esc(taskKinds[t.kind])}</span>`,
                   `<span class="store-caption">${storeLogo(t.store)}${t.store === "apple" ? "App Store" : "Google Play"}</span>`,
-                  `<span class="market-caption"><img class="country-flag" src="/flags/${esc(t.country)}.svg" alt="">${esc(selectors.countryName(t.country))}</span>`,
-                  `${esc(selectors.languageName(t.language))} · ${esc(t.language)}`,
+                  t.resource === "media"
+                    ? "跨市场共享"
+                    : `<span class="market-caption"><img class="country-flag" src="/flags/${esc(t.country)}.svg" alt="">${esc(selectors.countryName(t.country))}</span>`,
+                  t.resource === "media"
+                    ? "—"
+                    : `${esc(selectors.languageName(t.language))} · ${esc(t.language)}`,
                   t.category
                     ? esc(selectors.categoryName(t.store, t.category))
                     : "—",
@@ -526,8 +532,8 @@ export function createCollectionCenter(ctx) {
                     ? num(t.depth) + " 条"
                     : t.kind === "permissions"
                       ? "权限声明"
-                      : t.kind === "icons"
-                        ? "图标缓存"
+                      : ["icons", "screenshots"].includes(t.kind)
+                        ? "图片缓存"
                         : t.resource === "sources"
                           ? "按提交范围"
                           : "单应用详情",
@@ -540,7 +546,7 @@ export function createCollectionCenter(ctx) {
                         : "尽快执行"
                       : "已暂停",
                   `<span class="badge ${t.task_state === "error" ? "warn" : t.task_state === "running" ? "good" : ""}">${esc(states[t.task_state])}</span>`,
-                  `<div class="task-actions"><button class="link" data-task-logs="${index}">日志${t.task_state === "running" ? " · 实时" : ""}</button><button class="link" data-edit-task="${index}">${t.resource === "sources" ? "详情" : "编辑"}</button><button class="link" data-task-action="${index}" data-action="${t.enabled ? "pause" : "resume"}">${t.enabled ? "暂停" : "恢复"}</button><button class="link" data-task-action="${index}" data-action="refresh" ${t.enabled ? "" : "disabled"}>${t.resource === "sources" ? "重新入队" : "立即采集"}</button></div>`,
+                  `<div class="task-actions">${t.resource === "media" && t.success_at ? `<a class="link" href="/api/media/${t.id}" target="_blank" rel="noopener">查看图片</a>` : ""}<button class="link" data-task-logs="${index}">日志${t.task_state === "running" ? " · 实时" : ""}</button><button class="link" data-edit-task="${index}">${t.resource === "sources" ? "详情" : "编辑"}</button><button class="link" data-task-action="${index}" data-action="${t.enabled ? "pause" : "resume"}">${t.enabled ? "暂停" : "恢复"}</button><button class="link" data-task-action="${index}" data-action="refresh" ${t.enabled ? "" : "disabled"}>${t.resource === "sources" ? "重新入队" : "立即采集"}</button></div>`,
                 ]),
               ).replace(
                 "data-table-wrap",
