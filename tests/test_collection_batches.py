@@ -88,11 +88,31 @@ class CollectionBatchTest(MySQLTestCase):
         add_targets(self.db,[dict(store='google',country='us',language='en',keyword=f'word {i}') for i in range(3)])
         self.db.execute('UPDATE keyword_targets SET enabled=0 WHERE id=1')
         self.db.execute('UPDATE keyword_targets SET failures=2 WHERE id=2')
+        source_states = [('aso_popularity','pending',1,0),('aso_import','paused',0,0),('aso_report','done',1,None)]
+        self.db.executemany('''INSERT INTO collection_source_tasks
+            (store,app_id,country,language,kind,label,payload,batch_key,source,request_id,created_at,enabled,due)
+            VALUES('apple','','us','en',%s,%s,'{}',%s,'test',%s,0,%s,%s)''',
+            [(kind,kind,'0'*64,kind,enabled,due) for kind,_,enabled,due in source_states])
         result=list_tasks(self.db,kind='keywords',state='error')
         self.assertEqual(result['total'],1)
-        self.assertEqual(len(result['categories']),7)
+        self.assertCountEqual([c['kind'] for c in result['categories']],
+            ['details','keywords','chart','reviews','featured','icons','permissions',
+             'aso_popularity','aso_import','aso_report'])
         c=next(c for c in result['categories'] if c['kind']=='keywords')
         self.assertEqual((c['total'],c['summary']['paused'],c['summary']['error'],c['summary']['pending']),(3,1,1,1))
+        for kind,state,_,_ in source_states:
+            with self.subTest(kind=kind):
+                category=next(c for c in result['categories'] if c['kind']==kind)
+                self.assertEqual(category['total'],1)
+                self.assertEqual(category['summary'],
+                    {'paused':0,'running':0,'error':0,'pending':0,'scheduled':0,'done':0}|{state:1})
+        completed=list_tasks(self.db,kind='aso_report',state='done',store='apple')
+        self.assertEqual(completed['total'],1)
+        self.assertEqual([(row['resource'],row['kind'],row['task_state']) for row in completed['items']],
+            [('sources','aso_report','done')])
+        google=list_tasks(self.db,store='google')
+        self.assertEqual(google['total'],3)
+        self.assertTrue(all(c['total']==0 for c in google['categories'] if c['kind'].startswith('aso_')))
         self.assertEqual(sum(c['total'] for c in list_tasks(self.db,country='th')['categories']),0)
 
     def test_bulk_interval_and_retry_are_set_based_and_keep_history_and_pause(self):

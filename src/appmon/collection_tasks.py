@@ -105,7 +105,7 @@ def list_tasks(db, *, page=1, limit=50, **filters):
     filtered, args = task_query(**filters,light=True)
     # Cards retain every category and state while the list is drilled down.
     # Aggregate each indexed resource before combining; avoid materializing every
-    # task label/history join just to render the seven summary cards.
+    # task label/history join just to render the category summary cards.
     count_sql=[];count_args=[]
     for kind in KINDS:
         overview,overview_args=task_query(**(filters|{'kind':kind,'state':''}),light=True)
