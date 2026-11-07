@@ -145,8 +145,8 @@ export function createGlobalCharts(ctx) {
       });
     const boardTitle = (c, b, label) =>
       b.unsupported
-        ? `<span tabindex="0" title="${esc(boardMeta(b))}" aria-label="${esc(label + "，" + boardMeta(b))}">${esc(label)}</span>`
-        : `<a class="chart-title-link" href="${esc(detailUrl(c, b))}" title="${esc(c.name + " " + b.definition.name + "：查看完整榜单 · " + boardMeta(b))}" aria-label="${esc(c.name + " " + b.definition.name + "：查看完整榜单，" + boardMeta(b))}">${esc(label)}<span aria-hidden="true">↗</span></a>`;
+        ? `<span class="chart-title-label" tabindex="0" title="${esc(boardMeta(b))}" aria-label="${esc(label + "，" + boardMeta(b))}">${esc(label)}</span>`
+        : `<a class="chart-title-link" href="${esc(detailUrl(c, b))}" title="${esc(c.name + " " + b.definition.name + "：查看完整榜单 · " + boardMeta(b))}" aria-label="${esc(c.name + " " + b.definition.name + "：查看完整榜单，" + boardMeta(b))}"><span class="chart-title-label">${esc(label)}</span><svg class="chart-title-arrow" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false"><path d="m6 3 5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>`;
     const storeName = (c) =>
       c.store === "apple" ? "App Store" : "Google Play";
     const boardState = (b) =>

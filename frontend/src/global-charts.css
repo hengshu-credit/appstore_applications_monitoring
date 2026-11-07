@@ -10,6 +10,44 @@
   grid-auto-columns: minmax(260px, 1fr);
   align-items: start;
 }
+.global-board-grid[data-layout="columns"] .global-chart {
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.global-board-grid[data-layout="columns"] .global-chart-summary {
+  min-height: 44px;
+  padding: 8px 12px 4px;
+  background: var(--soft);
+}
+.global-board-grid[data-layout="columns"] .global-chart-summary h3 {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 650;
+}
+.global-board-grid[data-layout="columns"] .chart-title-link {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 28px;
+}
+.global-board-grid[data-layout="columns"] .global-chart-head,
+.global-board-grid[data-layout="columns"] .global-ranked-app {
+  grid-template-columns: 42px minmax(0, 1fr);
+  padding-inline: 12px;
+}
+.global-board-grid[data-layout="columns"] .global-chart-head {
+  padding-block: 6px;
+  line-height: 18px;
+  font-weight: 500;
+}
+.global-board-grid[data-layout="columns"] .global-ranked-app {
+  padding-block: 8px;
+}
+.global-board-grid[data-layout="columns"] .global-ranked-app:last-child {
+  border-bottom: 0;
+}
 .global-country {
   min-width: 0;
 }
@@ -283,9 +321,16 @@
   color: var(--accent-text);
   text-decoration: underline;
 }
-.chart-title-link span {
+.global-board-grid[data-layout="columns"] .chart-title-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chart-title-arrow {
+  flex: none;
   color: var(--muted);
-  font-size: 12px;
 }
 .chart-detail-table table {
   min-width: 1550px;
