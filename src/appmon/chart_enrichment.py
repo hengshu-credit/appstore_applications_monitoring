@@ -68,7 +68,7 @@ def activate_once(db,resource,table,ids,started_at):
     # A new campaign can start previously paused work, but never overrides a
     # pause issued after the campaign began or repeatedly revives a shared task.
     db.execute(f'UPDATE {table} t SET enabled=1 WHERE id IN ('+','.join('%s' for _ in added)+''')
-        AND NOT EXISTS(SELECT 1 FROM collection_logs l WHERE l.resource=%s AND l.target_key=CAST(t.id AS CHAR)
+        AND NOT EXISTS(SELECT 1 FROM collection_logs l WHERE l.resource=%s AND l.target_key=CAST(t.id AS CHAR CHARACTER SET ascii)
             AND l.event='pause' AND l.created_at>=%s)''',(*added,resource,started_at))
     db.executemany('INSERT INTO chart_enrichment_tasks VALUES(%s,%s,%s)',[(resource,i,time.time()) for i in added])
     return len(added)

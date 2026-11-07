@@ -75,7 +75,8 @@ def main():
     cfg=load();db=connect(cfg,initialize=False)
     try:
         result=reconcile(db,cfg,args.apply,args.pool_service_stopped,args.quiescent)
-        Path(args.output).write_text(json.dumps(result,default=int,ensure_ascii=False,indent=2),encoding='utf-8')
+        output=Path(args.output);output.parent.mkdir(parents=True,exist_ok=True)
+        output.write_text(json.dumps(result,default=int,ensure_ascii=False,indent=2),encoding='utf-8')
         print(json.dumps(result,default=int,ensure_ascii=False))
     finally:
         db.close()

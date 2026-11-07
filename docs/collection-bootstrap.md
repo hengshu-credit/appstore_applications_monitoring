@@ -24,7 +24,7 @@ docker compose -f compose.yaml --profile console --profile keywords run --rm --n
 docker compose -f compose.yaml --profile console --profile keywords up -d web console keywords frontend
 ```
 
-PowerShell 可将脚本输入改为 `Get-Content scripts/reconcile_collection.py -Raw | docker compose ... run --rm --no-deps -T web python - ...`。整理报告的输出目录须事先存在。`--pool-service-stopped` 是明确停用全池流程的选项，正常接管不要附加。
+PowerShell 可将脚本输入改为 `Get-Content scripts/reconcile_collection.py -Raw | docker compose ... run --rm --no-deps -T web python - ...`。整理报告的输出目录会自动创建。`--pool-service-stopped` 是明确停用全池流程的选项，正常接管不要附加。
 
 完全空库需要先导入可用的历史基线。当前种子导入主要包含 ID、名称、分类，不能视作已有完整应用详情。全应用全球多市场首轮必须真实采集缺口；只有具备准确身份、来源、字段与时效证明的历史结果才可以复用。
 
