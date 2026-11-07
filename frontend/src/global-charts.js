@@ -196,7 +196,7 @@ export function createGlobalCharts(ctx) {
           `<section class="panel global-country" style="--chart-slots:${Math.max(1, ...c.boards.flatMap((b) => b.items.map((r) => Number(r.position))))}"><div class="panel-heading"><h2>${esc(c.name)} <span class="sub">${esc(c.country.toUpperCase())}${store === "all" ? " · " + storeName(c) : ""}</span></h2><span class="sub">${esc(c.language)}</span></div><div class="global-lists" role="region" aria-label="${esc(c.name)}排行榜" tabindex="0">${c.boards
             .map(
               (b) =>
-                `<section class="global-chart"><div class="global-chart-summary"><h3>${boardTitle(c, b, b.definition.name + (b.definition.mode === "derived" ? "（派生）" : ""))}</h3>${boardMeta(b)}</div>${applications(c, b)}${more(c, b)}</section>`,
+                `<section class="global-chart"><div class="global-chart-summary"><h3>${boardTitle(c, b, b.definition.name + (b.definition.mode === "derived" ? "（派生）" : ""))}</h3>${boardMeta(b)}</div>${b.items.length ? '<div class="global-chart-head" aria-hidden="true"><span>排名</span><span>应用</span></div>' : ""}${applications(c, b)}${more(c, b)}</section>`,
             )
             .join("")}</div></section>`,
       )
@@ -232,7 +232,7 @@ export function createGlobalCharts(ctx) {
               name: "layout",
               options: [
                 ["rows", "横向排列（每行一个榜单）"],
-                ["columns", "纵向排列（每国一列）"],
+                ["columns", "纵向排列（每列一个榜单）"],
               ],
             },
           ],

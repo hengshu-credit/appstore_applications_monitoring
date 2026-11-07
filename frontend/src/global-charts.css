@@ -4,20 +4,11 @@
   grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
-.global-board-grid[data-layout="columns"] {
+.global-board-grid[data-layout="columns"] .global-lists {
   grid-template-columns: none;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(300px, 1fr);
+  grid-auto-columns: minmax(260px, 1fr);
   align-items: start;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  padding-bottom: 8px;
-}
-.global-board-grid[data-layout="columns"] .global-lists {
-  grid-auto-flow: row;
-  grid-auto-columns: auto;
-  grid-template-columns: minmax(0, 1fr);
-  overflow-x: visible;
 }
 .global-country {
   min-width: 0;
@@ -77,6 +68,21 @@
 }
 .global-chart h3 {
   margin: 12px 0 4px;
+}
+.global-chart-head {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--line);
+  background: var(--soft);
+  color: var(--muted);
+  font-size: 12px;
+}
+.global-chart-head span:first-child {
+  text-align: center;
+}
+.global-board-grid[data-layout="rows"] .global-chart-head {
+  display: none;
 }
 .global-chart-apps {
   list-style: none;
