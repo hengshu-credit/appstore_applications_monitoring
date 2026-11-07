@@ -11,7 +11,8 @@ def focused(db,store,app_id):
 def media_predicate(alias='i'):
     return f'''(EXISTS(SELECT 1 FROM app_group_members g WHERE g.store={alias}.store AND g.app_id={alias}.app_id)
         OR EXISTS(SELECT 1 FROM observation_targets t JOIN observation_items o ON o.run_id=t.latest_success_id
-            WHERE t.kind='chart' AND t.store={alias}.store AND o.item_id={alias}.app_id AND o.position<=50))'''
+            WHERE t.kind='chart' AND t.latest_success_id IS NOT NULL
+                AND t.store={alias}.store AND o.item_id={alias}.app_id AND o.position<=50))'''
 
 
 def media_allowed(db,cfg,store,app_id):

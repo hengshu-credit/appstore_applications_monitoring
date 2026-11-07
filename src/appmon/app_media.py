@@ -49,7 +49,11 @@ def sync_existing(db,cfg,wait=0):
         incremental=enrichment_settings(db).get('enabled',False)
         desired='''SELECT store,app_id,country,language FROM app_group_members UNION
             SELECT t.store,o.item_id,t.country,t.language FROM observation_targets t
-            JOIN observation_items o ON o.run_id=t.latest_success_id WHERE t.kind='chart' AND o.position<=50 '''
+            JOIN observation_items o ON o.run_id=t.latest_success_id
+            WHERE t.kind='chart' AND t.latest_success_id IS NOT NULL AND o.position<=50 '''
+        # DISTINCT/UNION materializes the small eligible set once, rather than
+        # rechecking all current charts for every icon in the global app pool.
+        eligible='SELECT DISTINCT store,app_id FROM ('+desired+') media_markets'
         if incremental:desired='SELECT store,app_id,country,language FROM app_group_members'
         # Materialize only focus/latest-chart detail dependencies, not a global market product.
         with db:
@@ -59,11 +63,13 @@ def sync_existing(db,cfg,wait=0):
             db.execute('''INSERT INTO jobs(store,app_id,country,language)
                 SELECT store,app_id,country,language FROM ('''+desired+''') desired
                 ON DUPLICATE KEY UPDATE app_id=jobs.app_id''')
-            db.execute('UPDATE app_icons i SET requested=1 WHERE i.requested=0 AND '+media_predicate())
+            db.execute('UPDATE app_icons i JOIN ('+eligible+''') scope ON scope.store=i.store AND scope.app_id=i.app_id
+                SET i.requested=1 WHERE i.requested=0''')
         count=processed=0;last=None
         while True:
-            scope="EXISTS(SELECT 1 FROM app_group_members g WHERE g.store=l.store AND g.app_id=l.app_id)" if incremental else media_predicate('l')
-            rows=db.execute('SELECT l.* FROM listings l WHERE l.payload IS NOT NULL AND '+scope+
+            scope='SELECT DISTINCT store,app_id FROM app_group_members' if incremental else eligible
+            rows=db.execute('SELECT l.* FROM ('+scope+''') scope JOIN listings l
+                ON scope.store=l.store AND scope.app_id=l.app_id WHERE l.payload IS NOT NULL'''+
                 (' AND (l.store,l.app_id,l.country,l.language)>(%s,%s,%s,%s)' if last else '')+
                 ' ORDER BY l.store,l.app_id,l.country,l.language LIMIT 200',last).fetchall()
             if not rows:break
@@ -71,9 +77,12 @@ def sync_existing(db,cfg,wait=0):
                 for row in rows:count+=remember(db,cfg,row,json.loads(row['payload']))
             processed+=len(rows)
             last=tuple(rows[-1][k] for k in ('store','app_id','country','language'))
-        db.execute('UPDATE app_media_assets a SET enabled=0,token=NULL,lease_until=0 WHERE NOT '+active_predicate())
+        db.execute('''UPDATE app_media_assets a LEFT JOIN (SELECT DISTINCT r.asset_id FROM app_media_refs r
+            JOIN ('''+eligible+''') scope ON scope.store=r.store AND scope.app_id=r.app_id) active ON active.asset_id=a.id
+            SET a.enabled=0,a.token=NULL,a.lease_until=0 WHERE active.asset_id IS NULL AND (a.enabled=1 OR a.token IS NOT NULL)''')
         if cfg.get('media_scope','all')!='all':
-            db.execute('UPDATE app_icons i SET requested=0,token=NULL,lease_until=0 WHERE NOT '+media_predicate())
+            db.execute('UPDATE app_icons i LEFT JOIN ('+eligible+''') scope ON scope.store=i.store AND scope.app_id=i.app_id
+                SET i.requested=0,i.token=NULL,i.lease_until=0 WHERE scope.app_id IS NULL AND (i.requested=1 OR i.token IS NOT NULL)''')
         touch(db)
         return {'listings':processed,'image_references':count}
 

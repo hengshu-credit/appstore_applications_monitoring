@@ -44,6 +44,30 @@ class StoragePolicyTest(MySQLTestCase):
         self.assertEqual(self.db.execute("SELECT requested FROM app_icons WHERE app_id='200'").fetchone()['requested'],0)
         self.assertTrue(storage_policy.archive_raw(self.db,self.cfg,'apple',['100'],b'focus-response'))
 
+    def test_scope_sync_keeps_current_top50_all_markets_and_preserves_paused_assets(self):
+        self.db.execute("INSERT INTO observation_targets(kind,store,app_id,country,language,latest_success_id) VALUES('chart','apple','','us','en',10)")
+        target=self.db.cursor.lastrowid
+        for run,appid,rank in [(10,'200',1),(11,'300',50),(11,'400',51)]:
+            self.db.execute('INSERT INTO observation_items VALUES(%s,%s,%s,%s)',(run,appid,rank,json.dumps({'app_id':appid})))
+        app_media.remember(self.db,self.cfg,self.m|{'app_id':'200'},{'screenshots':['https://is1.mzstatic.com/old.png']})
+        self.db.execute('UPDATE observation_targets SET latest_success_id=11 WHERE id=%s',(target,))
+        for appid in ('100','200','300','400'):
+            for country in ('us','gb'):
+                app_icons.remember(self.db,'apple',appid,country,'en','https://is1.mzstatic.com/'+appid+'.png')
+        app_icons.remember(self.db,'google','300','us','en','https://play-lh.googleusercontent.com/other-store.png')
+        self.db.execute('UPDATE app_icons SET requested=1')
+        self.db.execute("UPDATE app_icons SET enabled=0 WHERE app_id='300' AND country='gb'")
+        app_media.remember(self.db,self.cfg,self.m|{'app_id':'300','country':'gb'},{'screenshots':['https://is1.mzstatic.com/current.png']})
+        self.db.execute("UPDATE app_media_assets SET manual_paused=1,enabled=0 WHERE source_url='https://is1.mzstatic.com/current.png'")
+        app_media.sync_existing(self.db,self.cfg)
+        rows=self.db.execute('SELECT store,app_id,country,requested,enabled FROM app_icons').fetchall()
+        for row in rows:
+            self.assertEqual(bool(row['requested']),row['store']=='apple' and row['app_id'] in ('100','300'))
+        self.assertEqual(next(r['enabled'] for r in rows if r['app_id']=='300' and r['country']=='gb'),0)
+        assets=self.db.execute('SELECT enabled,manual_paused FROM app_media_assets').fetchall()
+        self.assertEqual(len(assets),2);self.assertTrue(all(r['enabled']==0 for r in assets))
+        self.assertEqual(sum(r['manual_paused'] for r in assets),1)
+
     def test_focus_and_latest_chart_images_only_no_video_and_shared_url_once(self):
         self.db.execute("INSERT INTO observation_targets(kind,store,app_id,country,language) VALUES('chart','apple','','us','en')")
         target=self.db.cursor.lastrowid
