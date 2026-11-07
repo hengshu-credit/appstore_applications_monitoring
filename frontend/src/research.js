@@ -6,6 +6,7 @@ export function createResearchPages(ctx) {
   const {
     $,
     api,
+    appRows,
     esc,
     stamp,
     num,
@@ -47,7 +48,7 @@ export function createResearchPages(ctx) {
     keywords: "关键词",
     reviews: "评论",
     chart: "分类榜单",
-    featured: "精品推荐",
+    featured: "商店编辑推荐",
   };
   const coverageNames = {
     one_regional_listing: "单地区详情",
@@ -317,7 +318,7 @@ export function createResearchPages(ctx) {
     let activeDraft = null;
     const fields = data.checks.counters;
     $("#aso-workspace").innerHTML =
-      `<div class="callout">公开文案最近成功：${esc(stamp(data.last_success))} · 基准快照 ${data.snapshot?.id || "暂无"} · 未提供字段：${data.unavailable_fields.map((k) => esc(fieldNames[k] || k)).join("、") || "无"}</div><div class="research-grid"><section class="panel"><h2>文案编辑</h2><form id="aso-editor">${field("草稿名称", "draft_name", "文案优化草稿", "text", 'required maxlength="120"')}${fields.map((f) => `<label class="spacer">${esc(f.label)}<textarea data-aso-field="${f.field}" name="${f.field}" rows="${f.field === "description" ? 7 : 2}">${esc(data.metadata[f.field])}</textarea><span class="field-counter" data-counter="${f.field}"></span></label>`).join("")}<label class="spacer">本次修改说明<textarea name="note" rows="2" maxlength="4000"></textarea></label><div class="toolbar spacer"><button type="submit">保存本地草稿</button><button type="button" class="secondary" id="aso-check">核查文案</button><button type="button" class="secondary" id="aso-new">另存新草稿</button></div></form></section><section class="panel"><h2>商店文案预览</h2><div class="listing-preview">${appLink(m.store, m.app_id, data.metadata.name || m.app_id, data.creative?.icon, m.country, m.language)}<div><h3 id="preview-title"></h3><p id="preview-summary" class="sub"></p><span class="badge neutral">本地草稿 · 未发布</span></div></div><h3 class="spacer">核查词库</h3><label>每行一个关键词<textarea id="aso-words">${esc(data.keywords.map((w) => w.keyword).join("\n"))}</textarea></label><p class="sub">文本命中不代表被商店索引；排名来自当前已跟踪词库。</p><div id="aso-findings"></div><div id="aso-coverage"></div></section></div>${panel(
+      `${panel("应用明细", await appRows([{ ...m, metadata: data.metadata }], { scope: m }))}<div class="callout">公开文案最近成功：${esc(stamp(data.last_success))} · 基准快照 ${data.snapshot?.id || "暂无"} · 未提供字段：${data.unavailable_fields.map((k) => esc(fieldNames[k] || k)).join("、") || "无"}</div><div class="research-grid"><section class="panel"><h2>文案编辑</h2><form id="aso-editor">${field("草稿名称", "draft_name", "文案优化草稿", "text", 'required maxlength="120"')}${fields.map((f) => `<label class="spacer">${esc(f.label)}<textarea data-aso-field="${f.field}" name="${f.field}" rows="${f.field === "description" ? 7 : 2}">${esc(data.metadata[f.field])}</textarea><span class="field-counter" data-counter="${f.field}"></span></label>`).join("")}<label class="spacer">本次修改说明<textarea name="note" rows="2" maxlength="4000"></textarea></label><div class="toolbar spacer"><button type="submit">保存本地草稿</button><button type="button" class="secondary" id="aso-check">核查文案</button><button type="button" class="secondary" id="aso-new">另存新草稿</button></div></form></section><section class="panel"><h2>商店文案预览</h2><div class="listing-preview">${appLink(m.store, m.app_id, data.metadata.name || m.app_id, data.creative?.icon, m.country, m.language)}<div><h3 id="preview-title"></h3><p id="preview-summary" class="sub"></p><span class="badge neutral">本地草稿 · 未发布</span></div></div><h3 class="spacer">核查词库</h3><label>每行一个关键词<textarea id="aso-words">${esc(data.keywords.map((w) => w.keyword).join("\n"))}</textarea></label><p class="sub">文本命中不代表被商店索引；排名来自当前已跟踪词库。</p><div id="aso-findings"></div><div id="aso-coverage"></div></section></div>${panel(
         "草稿版本库",
         '<div id="aso-draft-list"></div>',
       )}<div id="aso-versions"></div>${panel("ASO报告词库", '<div id="aso-library"></div>')}`;
@@ -718,33 +719,19 @@ export function createResearchPages(ctx) {
         $("#set-detail").innerHTML =
           `<div class="callout">${esc(s.name)} · ${esc(marketCaption(s))} · 仅比较当前有效观察；空值为未观察或过期。</div>${panel(
             "资料对照",
-            table(
-              [
-                "应用 / 角色",
-                "开发者",
-                "版本",
-                "商店评分 / 评分数",
-                "售价",
-                "观察时间",
-              ],
-              r.apps.map((a, i) => [
-                appLink(
-                  a.store,
-                  a.app_id,
-                  a.payload?.name,
-                  a.payload?.icon,
-                  a.country,
-                  a.language,
-                ) +
-                  `<div class="sub">${s.members[i].role === "own" ? "自有应用" : "对照应用"}</div>`,
-                esc(a.payload?.developer),
-                esc(a.payload?.version),
-                num(a.payload?.rating) + " / " + num(a.payload?.ratings),
-                a.payload?.price == null
-                  ? "未知"
-                  : esc(a.payload.currency) + " " + num(a.payload.price),
-                stamp(a.listing?.last_success),
-              ]),
+            await appRows(
+              r.apps.map((a, i) => ({ ...a, _role: s.members[i].role })),
+              {
+                scope: s,
+                leadingColumns: [
+                  {
+                    key: "role",
+                    label: "角色",
+                    cell: (a) =>
+                      a._source._role === "own" ? "自有应用" : "对照应用",
+                  },
+                ],
+              },
             ),
           )}${panel(
             "关键词交集与缺口",
@@ -841,23 +828,7 @@ export function createResearchPages(ctx) {
           $("#developer-detail").innerHTML = panel(
             esc(dev.name),
             `<p class="sub">${esc(data.scope)}</p>` +
-              table(
-                ["应用", "市场", "版本", "状态", "最近成功"],
-                data.items.map((r) => [
-                  appLink(
-                    r.store,
-                    r.app_id,
-                    r.payload?.name,
-                    r.payload?.icon,
-                    r.country,
-                    r.language,
-                  ),
-                  esc(marketCaption(r)),
-                  esc(r.payload?.version),
-                  esc(stateNames[r.state] || r.state || "未知"),
-                  stamp(r.last_success),
-                ]),
-              ),
+              (await appRows(data.items)),
           );
         } catch (e) {
           toast(e.message);
@@ -876,27 +847,9 @@ export function createResearchPages(ctx) {
     $("#app-market-matrix").innerHTML = panel(
       "地区与版本矩阵",
       `<p class="sub">${esc(data.scope)}</p>` +
-        table(
-          ["市场", "版本", "地区状态", "售价", "累计评分", "最后成功", "详情"],
-          data.items.map((r) => [
-            esc(marketCaption(r)),
-            esc(r.payload?.version || "未知"),
-            esc(stateNames[r.state] || r.state || "未知"),
-            r.payload?.price == null
-              ? "未知"
-              : esc(r.payload.currency) + " " + num(r.payload.price),
-            num(r.payload?.rating),
-            stamp(r.last_success),
-            appLink(
-              r.store,
-              r.app_id,
-              "查看地区详情",
-              null,
-              r.country,
-              r.language,
-            ),
-          ]),
-        ),
+        (await appRows(data.items, {
+          scope: { ...market(store), store, app_id: appId },
+        })),
     );
   }
   function planForApps(ids) {

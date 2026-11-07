@@ -103,6 +103,8 @@ const newModules = (
     wrappedModule("global-charts.js", "createGlobalCharts"),
     wrappedModule("chart-detail.js", "createChartDetail"),
     wrappedModule("availability.js", "createAvailabilityPage"),
+    wrappedModule("app-detail-table.js", "createAppDetailTable"),
+    wrappedModule("app-detail-rows.js", "createAppDetailRows"),
     wrappedModule("app-groups.js", "createGroupWorkspace"),
     wrappedModule(
       "market-scope.js",
@@ -2781,6 +2783,148 @@ test("event dates request a complete server-filtered page and clear the date", a
       new URL(calls.at(-1).path, "http://local").searchParams.get("day"),
       null,
     );
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("shared app details retain exact markets, zero metrics and own-category rank semantics", async () => {
+  const item = {
+    store: "google",
+    app_id: "com.loan.example",
+    country: "th",
+    language: "en",
+    name: "Loan",
+  };
+  let requested;
+  const { window } = await setup((path, options) => {
+    if (path.startsWith("/api/apps?")) return { items: [item], next: null };
+    if (path === "/api/apps/detail-rows") {
+      requested = JSON.parse(options.body);
+      return {
+        items: [
+          {
+            ...item,
+            developer_id: "6942553452222258407",
+            category: "FINANCE",
+            rating: 0,
+            price: 0,
+            chart_positions: [
+              {
+                category: "FINANCE",
+                collection: "top-free",
+                sampled: true,
+                position: 4,
+              },
+              {
+                category: "",
+                collection: "top-paid",
+                sampled: true,
+                position: null,
+              },
+            ],
+          },
+        ],
+      };
+    }
+  });
+  try {
+    window.location.hash = "apps";
+    await tick();
+    assert.deepEqual(requested.targets, [
+      {
+        store: "google",
+        app_id: "com.loan.example",
+        country: "th",
+        language: "en",
+      },
+    ]);
+    const grid = window.document.querySelector(".group-member-table");
+    const text = grid.textContent;
+    for (const label of [
+      "通用榜单",
+      "分类榜单",
+      "权限采集",
+      "下载量",
+      "收入",
+      "关键词覆盖",
+    ])
+      assert.ok(text.includes(label));
+    assert.equal(
+      grid.querySelector('td[data-col="developer_id"]').textContent,
+      "6942553452222258407",
+    );
+    assert.equal(grid.querySelector('td[data-col="chart1"]').textContent, "");
+    assert.equal(grid.querySelector('td[data-col="chart3"]').textContent, "4");
+    assert.equal(
+      grid.querySelector('td[data-col="rating"]').textContent,
+      "0.00",
+    );
+    assert.equal(grid.querySelector("[data-app]").dataset.country, "th");
+    assert.ok(!window.document.querySelector("[data-adjust-row]"));
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("multi-store tracking selects independent official categories and carries scope into collection", async () => {
+  const { window, calls } = await setup((path) => {
+    if (path.startsWith("/api/charts/view?")) {
+      const params = new URL(path, "http://localhost").searchParams;
+      return {
+        definition: catalogFixture.charts[params.get("store")][0],
+        items: [],
+        target: null,
+        latest_success: null,
+      };
+    }
+  });
+  try {
+    const doc = window.document;
+    doc.querySelector("#global-store").value = "all";
+    window.location.hash = "charts";
+    await tick();
+    doc
+      .querySelector('[data-category-input="tracking-google-category"]')
+      .click();
+    await tick();
+    assert.equal(
+      doc.querySelector("#category-picker-title").textContent,
+      "Google Play 分类",
+    );
+    doc.querySelector('[data-select-category="FINANCE"]').click();
+    await tick();
+    doc
+      .querySelector('[data-category-input="tracking-apple-category"]')
+      .click();
+    await tick();
+    assert.equal(
+      doc.querySelector("#category-picker-title").textContent,
+      "App Store 分类",
+    );
+    doc.querySelector('[data-select-category="6015"]').click();
+    await tick();
+    const queries = calls
+      .filter((c) => c.path.startsWith("/api/charts/view?"))
+      .slice(-2)
+      .map((c) => new URL(c.path, "http://localhost").searchParams);
+    assert.deepEqual(
+      queries.map((q) => [q.get("store"), q.get("category")]),
+      [
+        ["google", "FINANCE"],
+        ["apple", "6015"],
+      ],
+    );
+    doc.querySelector('[data-chart-store="google"]').click();
+    await tick();
+    assert.equal(doc.querySelector("#discovery-category").value, "FINANCE");
+    const configure = doc.querySelector(
+      '#chart-view-form a[href*="new=chart"]',
+    );
+    assert.match(configure.getAttribute("href"), /category=FINANCE/);
+    window.location.hash = configure.getAttribute("href");
+    await tick();
+    assert.equal(doc.querySelector("#plan-category").value, "FINANCE");
   } finally {
     await window.happyDOM.close();
   }

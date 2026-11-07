@@ -3,6 +3,7 @@ import { filterBar } from "./filter-bar.js";
 export function createChartDetail(ctx) {
   const {
     api,
+    appRows,
     esc,
     stamp,
     num,
@@ -41,49 +42,25 @@ export function createChartDetail(ctx) {
     const update = (values) => {
       location.hash = "chart?" + query({ ...scope, ...values });
     };
-    const rows = d.items.map((r) => {
-      const p = r.metadata || {};
-      const price =
-        p.price == null || !Number.isFinite(Number(p.price))
-          ? "—"
-          : Number(p.price) === 0
-            ? "免费"
-            : `${num(p.price)} ${p.currency || ""}`;
-      return [
-        r.position,
-        appLink(
-          scope.store,
-          r.app_id,
-          r.name,
-          r.icon,
-          scope.country,
-          scope.language,
-        ),
-        clipped(r.developer),
-        clipped(
-          p.category_id || p.category
-            ? selectors.categoryName(scope.store, p.category_id || p.category)
-            : "—",
-        ),
-        clipped(price),
-        num(p.rating ?? r.rating),
-        num(p.ratings),
-        num(p.installs_reported),
-        clipped(p.version),
-        clipped(
-          p.updated == null
-            ? "—"
-            : typeof p.updated === "number"
-              ? stamp(p.updated)
-              : p.updated,
-        ),
-        clipped(
-          r.metadata_observed_at
-            ? (r.metadata_origin === "chart" ? "榜单：" : "详情：") +
-                stamp(r.metadata_observed_at)
-            : "仅榜单资料",
-        ),
-      ];
+    const rows = await appRows(d.items, {
+      scope,
+      leadingColumns: [
+        {
+          key: "position",
+          label: "名次",
+          cell: (r) => num(r._source.position),
+        },
+        {
+          key: "metadata_at",
+          label: "榜单资料观察时间",
+          cell: (r) =>
+            clipped(
+              r._source.metadata_observed_at
+                ? stamp(r._source.metadata_observed_at)
+                : "仅榜单资料",
+            ),
+        },
+      ],
     });
     const quality = {
       fresh: "有效观察",
@@ -120,7 +97,7 @@ export function createChartDetail(ctx) {
               ? '<button type="button" id="chart-detail-refresh" class="secondary">安排榜单刷新</button>'
               : "",
           },
-        )}${pagination({ id: "chart-detail-pages", offset: d.offset, limit: d.limit || scope.limit, total: d.total, hasMore: d.has_more, prevId: "chart-detail-prev", nextId: "chart-detail-next" })}<p class="sub">快照共 ${d.chart_count} 个应用，基榜返回 ${d.base_returned_count} 条。</p>${panel("榜单应用资料", `<div class="chart-detail-table">${`<details><summary>榜单来源与口径</summary><p>${esc(d.latest_success?.source || "暂无来源")} · ${esc(d.definition.note)} ${esc(d.reason)} ${esc(d.metadata_note)} ${esc(d.metadata_warning)}</p></details>` + table(["名次", "应用", "开发者", "分类", "售价", "评分", "评分数", "公开累计安装数（全球）", "版本", "商店更新", "资料观察时间"], rows)}</div>`)}<p class="sub">点击应用名称进入该市场的应用详情，可采集尚缺资料；这里只展示来源实际返回的榜单范围。</p>`,
+        )}${pagination({ id: "chart-detail-pages", offset: d.offset, limit: d.limit || scope.limit, total: d.total, hasMore: d.has_more, prevId: "chart-detail-prev", nextId: "chart-detail-next" })}<p class="sub">名次来自所选快照，应用指标展示当前市场明细。快照共 ${d.chart_count} 个应用，基榜返回 ${d.base_returned_count} 条。</p>${panel("榜单应用资料", `<div class="chart-app-details">${`<details><summary>榜单来源与口径</summary><p>${esc(d.latest_success?.source || "暂无来源")} · ${esc(d.definition.note)} ${esc(d.reason)} ${esc(d.metadata_note)} ${esc(d.metadata_warning)}</p></details>` + rows}</div>`)}<p class="sub">点击应用名称进入该市场的应用详情，可采集尚缺资料；这里只展示来源实际返回的榜单范围。</p>`,
         rev,
         [
           quality[d.quality] || "尚未采集",

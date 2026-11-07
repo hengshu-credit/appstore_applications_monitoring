@@ -17,6 +17,7 @@ export function createDiscoveryPages(ctx) {
   const {
     $,
     api,
+    appRows,
     esc,
     stamp,
     num,
@@ -105,13 +106,14 @@ export function createDiscoveryPages(ctx) {
     appQuery = "",
     signalId = "";
 
-  async function charts(rev) {
+  async function charts(rev, preset) {
     const m = single();
     if (!m) return;
     if (chartStore !== m.store) {
       chartsState.category = "";
       chartStore = m.store;
     }
+    if (preset) chartsState = { ...chartsState, ...preset };
     const s = chartsState,
       definitions = selectors.chartDefinitions(m.store);
     if (s.as_of && s.as_of > new Date().toLocaleDateString("sv-SE"))
@@ -203,6 +205,21 @@ export function createDiscoveryPages(ctx) {
             stamp(r.observed_at),
           ],
     );
+    const contextColumns = headers.flatMap((label, i) =>
+      [
+        "应用",
+        "开发者",
+        "分类",
+        "公开累计安装数（全球）",
+        "累计评分数",
+      ].includes(label)
+        ? []
+        : [{ key: "context" + i, label, cell: (r) => r._source._cells[i] }],
+    );
+    const applicationRows = await appRows(
+      rows.map((r, i) => ({ ...r, _cells: cells[i] })),
+      { scope: m, leadingColumns: contextColumns },
+    );
     const notes =
       s.mode === "store"
         ? `${d.definition.mode === "derived" ? "本站派生：" : "商店直接榜单："}${d.definition.note || ""}。${{ missing: "尚未采集", paused: "采集已暂停", failed: "最近采集失败，显示保留快照", stale: "快照已过期", insufficient_history: "缺少可比较历史", partial: "部分应用信息缺失", fresh: "有效快照", historical: "历史快照" }[d.quality] || ""}。当前快照：${stamp(d.latest_success?.observed_at)}；比较快照：${stamp(d.previous_success?.observed_at)}。${d.comparison_available ? "" : "暂无可比较快照。"}${d.reason || ""}`
@@ -250,8 +267,7 @@ export function createDiscoveryPages(ctx) {
               options: rows.map((r) => r.name || r.app_id),
             },
           ],
-          actions:
-            '<a class="button secondary" href="#collection">配置采集</a>',
+          actions: `<a class="button secondary" href="#collection?new=chart&collection=${encodeURIComponent(d.definition?.base_collection || s.collection)}&category=${encodeURIComponent(s.category)}">配置采集</a>`,
           after: `<details class="advanced-filters" ${s.mode === "growth" ? "open" : ""}><summary>增长指标与筛选</summary><div class="toolbar">${filterFields(
             "chart-growth",
             [
@@ -299,7 +315,7 @@ export function createDiscoveryPages(ctx) {
             ],
             s,
           )}</div></details>`,
-        })}<p class="callout">${esc(notes)}</p><div class="toolbar"><button id="discovery-select" class="secondary">选择前50项</button><button id="discovery-watch" class="secondary">加入重点监控</button><button id="discovery-csv" class="secondary">导出当前结果</button>${d.target ? '<button id="discovery-refresh" class="secondary">立即采集基榜</button>' : ""}<details><summary>显示列</summary>${headers.map((h, i) => `<label><input type="checkbox" data-show-column="${i}" checked>${esc(h)}</label>`).join("")}</details><span class="sub">显示 ${rows.length} 条${d.total != null ? ` / ${d.total} 条` : ""}；增长列表最多200条。未采集历史不补零。</span></div>${panel(s.mode === "store" ? esc(d.definition.name) : "增长发现", '<div id="discovery-results">' + table(headers, cells) + "</div>")}${
+        })}<p class="callout">${esc(notes)}</p><div class="toolbar"><button id="discovery-select" class="secondary">选择前50项</button><button id="discovery-watch" class="secondary">加入重点监控</button><button id="discovery-csv" class="secondary">导出当前结果</button>${d.target ? '<button id="discovery-refresh" class="secondary">立即采集基榜</button>' : ""}<details><summary>显示列</summary>${contextColumns.map((c) => `<label><input type="checkbox" data-show-column="${c.key}" checked>${esc(c.label)}</label>`).join("")}</details><span class="sub">显示 ${rows.length} 条${d.total != null ? ` / ${d.total} 条` : ""}；增长列表最多200条。未采集历史不补零。</span></div>${panel(s.mode === "store" ? esc(d.definition.name) : "增长发现", '<div id="discovery-results">' + applicationRows + "</div>")}${
           s.mode === "store"
             ? panel(
                 "离开已观察榜单范围",
@@ -328,7 +344,7 @@ export function createDiscoveryPages(ctx) {
       el.addEventListener("change", () => {
         document
           .querySelectorAll(
-            `#discovery-results tr > :nth-child(${Number(el.dataset.showColumn) + 1})`,
+            `#discovery-results [data-col="${el.dataset.showColumn}"]`,
           )
           .forEach((cell) => (cell.hidden = !el.checked));
       }),
@@ -533,17 +549,21 @@ export function createDiscoveryPages(ctx) {
         );
       content += panel(
         "应用关键词覆盖榜（当前词库）",
-        table(
-          ["应用", "覆盖词数", "Top 3", "Top 10", "Top 50", "Top 100"],
-          data.apps.map((r) => [
-            appLink(m.store, r.app_id, r.name),
-            r.covered,
-            r.top3,
-            r.top10,
-            r.top50,
-            r.top100,
-          ]),
-        ) + pager("apps", data.pages?.apps, data.apps),
+        (await appRows(data.apps, {
+          scope: m,
+          leadingColumns: [
+            {
+              key: "covered",
+              label: "当前词库覆盖",
+              cell: (r) => num(r._source.covered),
+            },
+            ...[3, 10, 50, 100].map((n) => ({
+              key: "top" + n,
+              label: "Top " + n,
+              cell: (r) => num(r._source["top" + n]),
+            })),
+          ],
+        })) + pager("apps", data.pages?.apps, data.apps),
       );
       content += panel(
         "市场关键词搜索排名",

@@ -284,7 +284,7 @@ export function createSelectors({
   ) {
     if (store === "all")
       return `<div class="category-field"><span>应用分类</span><input type="hidden" id="${id}" name="category" value=""><button type="button" class="picker-trigger secondary" disabled title="选择单个商店可筛选官方分类">全部分类（多商店）</button></div>`;
-    return `<div class="category-field"><span id="${id}-label">应用分类</span><input type="hidden" id="${id}" name="category" value="${pickerEscape(value)}"><button type="button" class="picker-trigger secondary category-trigger" data-category-input="${id}" data-category-purpose="${purpose}" aria-haspopup="dialog" aria-expanded="false" aria-labelledby="${id}-label ${id}-caption"><span id="${id}-caption">${pickerEscape(categoryName(store, value))}</span><span aria-hidden="true">⌄</span></button></div>`;
+    return `<div class="category-field"><span id="${id}-label">应用分类</span><input type="hidden" id="${id}" name="category" value="${pickerEscape(value)}"><button type="button" class="picker-trigger secondary category-trigger" data-category-input="${id}" data-category-store="${store}" data-category-purpose="${purpose}" aria-haspopup="dialog" aria-expanded="false" aria-labelledby="${id}-label ${id}-caption"><span id="${id}-caption">${pickerEscape(categoryName(store, value))}</span><span aria-hidden="true">⌄</span></button></div>`;
   }
   function renderCategories() {
     const state = categoryState;
@@ -326,19 +326,19 @@ export function createSelectors({
     try {
       await ready();
       const input = doc.getElementById(trigger.dataset.categoryInput);
+      const store = trigger.dataset.categoryStore || getMarket().store;
       categoryState = {
-        store: getMarket().store,
+        store,
         purpose: trigger.dataset.categoryPurpose,
         input,
         trigger,
         value: input.value,
         group:
-          catalog.categories[getMarket().store].find(
-            (c) => c.id === input.value,
-          )?.group || "apps",
+          catalog.categories[store].find((c) => c.id === input.value)?.group ||
+          "apps",
       };
       categoryDialog.querySelector("h2").textContent =
-        (getMarket().store === "apple" ? "App Store" : "Google Play") + " 分类";
+        (store === "apple" ? "App Store" : "Google Play") + " 分类";
       categoryDialog.querySelector("input").value = "";
       renderCategories();
       trigger.setAttribute("aria-expanded", "true");

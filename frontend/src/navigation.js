@@ -39,7 +39,11 @@ export const pageInfo = {
   apps: ["应用库", "market", "勾选应用可批量加入监控分组。"],
   globalcharts: ["全球排行榜", "countries", "选择国家并排比较各地榜单。"],
   charts: ["榜单追踪", "market", "按市场追踪榜单排名与历史快照。"],
-  featured: ["精品推荐", "market", "查看商店推荐记录。"],
+  featured: [
+    "商店编辑推荐",
+    "market",
+    "查看 App Store Today 推荐故事、关联应用及历史曝光记录。",
+  ],
   keywords: ["关键词研究", "market", "按市场查看关键词排名。"],
   aso: ["ASO 文案", "market", "编辑本地商店文案草稿。"],
   compare: ["竞品对比", "market", "对比同一市场的应用表现。"],

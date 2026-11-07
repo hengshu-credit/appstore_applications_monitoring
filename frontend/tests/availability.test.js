@@ -1,3 +1,4 @@
+import { createAppDetailTable } from "../src/app-detail-table.js";
 import { pagination, bindPagination } from "../src/pagination.js";
 import { filterBar, bindFilterBar } from "../src/filter-bar.js";
 import { test } from "node:test";
@@ -18,7 +19,7 @@ test("availability keeps classified watches in the header market and paginates r
     calls = [];
   let market = { store: "all", country: "th", language: "en" };
   doc.body.innerHTML = "<main></main>";
-  Object.assign(window,{pagination,bindPagination});
+  Object.assign(window, { pagination, bindPagination });
   window.filterBar = filterBar;
   window.bindFilterBar = bindFilterBar;
   window.eval(source + ";window.createPage=createAvailabilityPage;");
@@ -27,7 +28,17 @@ test("availability keeps classified watches in the header market and paginates r
       .replaceAll("&", "&amp;")
       .replaceAll("<", "&lt;")
       .replaceAll('"', "&quot;");
+  const detailTable = createAppDetailTable({
+    esc,
+    stamp: (v) => v || "-",
+    num: (v) => v,
+  });
   const page = window.createPage({
+    appRows: async (items, options) =>
+      detailTable(
+        { items: items.map((r, i) => ({ ...r, id: i + 1, _source: r })) },
+        { ...options, appCell: (r) => esc(r.name) },
+      ),
     api: async (path) => {
       calls.push(path);
       if (path.startsWith("/availability/watched?")) {
@@ -94,7 +105,11 @@ test("availability keeps classified watches in the header market and paginates r
     assert.match(panel.textContent, /2132/);
     assert.match(panel.textContent, /现金贷类APP/);
     assert.match(panel.textContent, /未验证/);
-    assert.equal(panel.querySelector("img"), null);
+    assert.equal(panel.querySelector('img[src="x"]'), null);
+    assert.equal(
+      panel.querySelector(".country-flag").getAttribute("src"),
+      "/flags/th.svg",
+    );
     assert.equal(panel.querySelector("[name=country]"), null);
     assert.ok(calls.some((p) => p.includes("country=th")));
     panel.querySelector("#watched-next").click();

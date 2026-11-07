@@ -2,6 +2,7 @@ import { filterBar, bindFilterBar } from "./filter-bar.js";
 export function createAppInsights(ctx) {
   const {
     api,
+    appRows,
     esc,
     stamp,
     num,
@@ -42,14 +43,24 @@ export function createAppInsights(ctx) {
             query: values.query,
           });
           if (!host.isConnected) return;
-          result.innerHTML = `<p class="sub">${esc(r.scope)} · ${esc(r.source)} · ${stamp(r.observed_at)} · ${esc(m.country.toUpperCase())}/${esc(m.language)}</p>${table(
-            ["应用", "ID", "应用库", "操作"],
-            r.items.map((a, i) => [
-              esc(a.name || a.app_id),
-              esc(a.app_id),
-              a.in_library ? "已入库" : "尚未入库",
-              `<button type="button" class="secondary" data-import="${i}">${a.in_library ? "加入监控并采集" : "入库并采集"}</button>`,
-            ]),
+          result.innerHTML = `<p class="sub">${esc(r.scope)} · ${esc(r.source)} · ${stamp(r.observed_at)} · ${esc(m.country.toUpperCase())}/${esc(m.language)}</p>${await appRows(
+            r.items.map((a, i) => ({ ...a, _resultIndex: i })),
+            {
+              scope: m,
+              trailingColumns: [
+                {
+                  key: "library",
+                  label: "应用库",
+                  cell: (a) => (a._source.in_library ? "已入库" : "尚未入库"),
+                },
+                {
+                  key: "import",
+                  label: "操作",
+                  cell: (a) =>
+                    `<button type="button" class="secondary" data-import="${a._source._resultIndex}">${a._source.in_library ? "加入监控并采集" : "入库并采集"}</button>`,
+                },
+              ],
+            },
           )}`;
           result.querySelectorAll("[data-import]").forEach((b) =>
             b.addEventListener("click", async () => {
@@ -111,7 +122,10 @@ export function createAppInsights(ctx) {
     ];
     return panel(
       "应用档案",
-      `<dl class="detail-facts">${rows.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v ?? "—")}</dd></div>`).join("")}</dl><p class="sub">商店日期与本系统观察日期分开记录；空值表示来源未返回。</p>`,
+      `${table(
+        ["项目", "内容"],
+        rows.map(([k, v]) => [esc(k), esc(v ?? "-")]),
+      )}<p class="sub">商店日期与本系统观察日期分开记录；空值表示来源未返回。</p>`,
     );
   }
   async function monitoring(m) {

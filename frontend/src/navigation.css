@@ -89,7 +89,7 @@
   gap: 10px;
   flex-wrap: wrap;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 20px;
 }
 #page-breadcrumbs a {
   color: var(--muted);

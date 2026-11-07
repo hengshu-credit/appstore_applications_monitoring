@@ -3,6 +3,7 @@ import { filterBar, bindFilterBar } from "./filter-bar.js";
 export function createAvailabilityPage(ctx) {
   const {
     api,
+    appRows,
     market,
     qs,
     mount,
@@ -59,34 +60,25 @@ export function createAvailabilityPage(ctx) {
         ],
       })}
       <p>共 ${num(data.total)} 条国家观察记录 · 当前 ${data.total ? data.offset + 1 : 0}–${data.offset + data.items.length}</p>
-      ${table(
-        [
-          "应用",
-          "商店 / 国家 / 语言",
-          "分类标记",
-          "观星复核状态",
-          "监控",
-          "最近检查",
+      ${await appRows(data.items, {
+        leadingColumns: [
+          {
+            key: "watch_group",
+            label: "分类标记",
+            cell: (r) => esc(r._source.group_name),
+          },
+          {
+            key: "watch_state",
+            label: "监控",
+            cell: (r) => (r._source.enabled ? "监控中" : "已暂停"),
+          },
+          {
+            key: "checked",
+            label: "最近检查",
+            cell: (r) => stamp(r._source.checked_at),
+          },
         ],
-        data.items.map((row) => [
-          appLink(
-            row.store,
-            row.app_id,
-            row.name,
-            null,
-            row.country,
-            row.language,
-          ),
-          `${row.store === "apple" ? "App Store" : "Google Play"} · ${esc(row.country.toUpperCase())} / ${esc(row.language)}`,
-          `<span class="badge">${esc(row.group_name)}</span>`,
-          esc(labels[row.state] || row.state || "未验证") +
-            (row.last_error
-              ? `<div class="sub">${esc(row.last_error)}</div>`
-              : ""),
-          row.enabled ? "监控中" : "已暂停",
-          stamp(row.checked_at),
-        ]),
-      )}
+      })}
       ${pagination({ id: "watched-pages", offset: data.offset, limit: data.limit, total: data.total, hasMore: data.has_more, prevId: "watched-prev", nextId: "watched-next" })}<a class="button secondary" href="#collection">管理采集与复核</a>`;
     bindFilterBar(
       anchor.querySelector("#watched-filter"),

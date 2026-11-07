@@ -193,7 +193,7 @@ export function createCollectionCenter(ctx) {
         .join("")}</fieldset>
       <label data-plan-field="apps">应用 ID（每行一个，最多 50 个）<textarea name="app_ids" placeholder="${m.store === "apple" ? "例如 310633997" : "例如 com.whatsapp"}">${esc(preset?.app_ids?.join("\n") || "")}</textarea></label>
       <label data-plan-field="keywords">关键词（每行一个，最多 100 个）<textarea name="keywords" placeholder="输入当前市场的关键词"></textarea></label>
-      <div data-plan-field="chart">${selectors.categoryField(m.store, "", "plan-category", "chart")}${select(
+      <div data-plan-field="chart">${selectors.categoryField(m.store, preset?.category || "", "plan-category", "chart")}${select(
         "榜单类型",
         "collection",
         selectors
@@ -317,6 +317,7 @@ export function createCollectionCenter(ctx) {
       preset = {
         kind: params.get("new"),
         collection: params.get("collection") || "top-free",
+        category: params.get("category") || "",
         app_ids: params.get("app") ? [params.get("app")] : [],
       };
       history.replaceState(

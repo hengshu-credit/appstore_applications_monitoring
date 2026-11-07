@@ -36,6 +36,7 @@ import { monitoringChart, bindMonitoringCharts } from "./monitoring-charts.js";
 import { createAppInsights } from "./app-insights.js";
 import { createAvailabilityPage } from "./availability.js";
 import { createGroupWorkspace } from "./app-groups.js";
+import { createAppDetailRows } from "./app-detail-rows.js";
 import "./app-groups.css";
 import { initTheme } from "./theme.js";
 import {
@@ -46,6 +47,7 @@ import {
 import "./navigation.css";
 import { initShellLayout } from "./shell-layout.js";
 import "./shell-layout.css";
+import "./table-surfaces.css";
 initTheme();
 initShellLayout();
 const $ = (s, root = document) => root.querySelector(s);
@@ -405,7 +407,21 @@ async function overview(rev) {
         $("#pool-caption").textContent = "精确统计暂不可用，请刷新重试";
     });
 }
+const appRows = createAppDetailRows({
+  api,
+  esc,
+  stamp,
+  num,
+  market,
+  appLink,
+  appIconMarkup,
+  countryName: (code) => selectors.countryName(code),
+  categoryName: (store, category) => selectors.categoryName(store, category),
+  chartName: (store, id) =>
+    selectors.chartDefinitions(store).find((c) => c.id === id)?.name || id,
+});
 const appInsights = createAppInsights({
+  appRows,
   api,
   esc,
   stamp,
@@ -535,32 +551,7 @@ async function applications(rev, filters = {}, page = 1, limit = 50) {
             filters,
           )}</div><p class="sub">仅筛选当前市场已观察到相应字段的记录。</p></details>`,
         },
-      )}<div class="bulk-toolbar"><button type="button" id="bulk-monitor" class="secondary" disabled>批量加入监控</button><button type="button" id="bulk-compare" class="secondary" disabled>保存竞品集合</button><span id="pool-selection-count" class="selection-count">选择当前页应用；监控最多50个，对比2–6个。</span></div>${table(
-        [
-          '<input id="pool-select-all" type="checkbox" aria-label="选择本页全部应用">',
-          "应用",
-          "商店 / 分类",
-          "状态",
-          "评分 / 评分数",
-          "最后成功",
-        ],
-        data.items.map((r) => [
-          `<input type="checkbox" data-pool-select="${esc(r.app_id)}" aria-label="选择 ${esc(r.payload?.name || r.name || r.app_id)}">`,
-          appLink(
-            r.store,
-            r.app_id,
-            r.payload?.name || r.name,
-            r.payload?.icon,
-          ),
-          esc(r.store) +
-            '<div class="sub">' +
-            esc(r.category_name || r.category || "未分类") +
-            "</div>",
-          badge(r.state),
-          `${num(r.payload?.rating)} / ${num(r.payload?.ratings)}`,
-          stamp(r.last_success),
-        ]),
-      )}${pagination({ id: "app-pages", offset: ((data.page || page) - 1) * limit, limit, hasMore: data.has_more ?? !!data.next, prevId: "prev-apps", nextId: "next-apps", sizes: [25, 50, 100, 200] })}</section></div>`,
+      )}<div class="bulk-toolbar"><button type="button" id="bulk-monitor" class="secondary" disabled>批量加入监控</button><button type="button" id="bulk-compare" class="secondary" disabled>保存竞品集合</button><span id="pool-selection-count" class="selection-count">选择当前页应用；监控最多50个，对比2–6个。</span></div>${await appRows(data.items, { leadingColumns: [{ key: "select", label: "选择", heading: '<input id="pool-select-all" type="checkbox" aria-label="选择本页全部应用">', cell: (r) => `<input type="checkbox" data-pool-select="${esc(r.app_id)}" aria-label="选择 ${esc(r.name || r.app_id)}">` }] })}${pagination({ id: "app-pages", offset: ((data.page || page) - 1) * limit, limit, hasMore: data.has_more ?? !!data.next, prevId: "prev-apps", nextId: "next-apps", sizes: [25, 50, 100, 200] })}</section></div>`,
       rev,
     )
   )
@@ -653,7 +644,7 @@ async function appDetail(store, id, rev = ++revision) {
   const p = data.listing?.payload || {};
   if (
     !mount(
-      `<div class="panel-heading"><div>${appLink(store, id, p.name || data.app.name, p.icon)}<p class="sub">${esc(store)} · ${esc(m.country.toUpperCase())} · ${esc(m.language)} · ${esc(p.developer || "开发者待采集")}</p></div><div class="actions"><button id="collect-app-now">立即采集全部公开信息</button><button id="quick-watch" class="secondary">管理采集配置</button><button class="secondary" id="open-aso-workbench">ASO 工作台</button></div></div><div id="app-collection-progress"></div><div class="cards">${metric("商店评分", p.rating, "来自最近一次商店观察")}${metric("评分数", p.ratings, "累计公开评分数量")}${metric("版本快照", data.snapshots.length, "显示最近最多100次变更")}${metric("历史命中过的关键词", data.keywords.coverage.length, "包含当前未命中词；有效覆盖见下方监控")}</div><div class="grid2">${panel("当前商店资料", `<h3>${esc(p.name || "等待采集")}</h3><p>版本 ${esc(p.version || "—")} · ${esc(data.app.category_name || p.category || "—")}</p><p>${esc(p.summary || "")}</p><details><summary>描述与版本说明</summary><div class="review-text">${esc(p.description || "暂无描述")}</div><h3 class="spacer">版本说明</h3><div class="review-text">${esc(p.release_notes || "暂无版本说明")}</div></details>${safeURL(p.url) ? `<a href="${safeURL(p.url)}" target="_blank" rel="noopener">查看商店原页 ↗</a>` : ""}`)}${panel("评分变化", chart([...data.snapshots].reverse().map((r) => ({ at: r.observed_at, value: r.payload?.rating }))))}</div>${appInsights.facts(p, data.app)}<div id="monitoring-trends"></div><div id="app-market-matrix"></div><div id="app-keyword-markets"></div>${panel("素材与版本历史", `<label>选择历史快照<select id="snapshot-choice">${data.snapshots.length ? "" : '<option value="">暂无已保存的快照</option>'}${data.snapshots.map((r, i) => `<option value="${i}">${esc(stamp(r.observed_at))} · ${esc(r.payload?.version || "")}</option>`).join("")}</select></label><div id="snapshot-view"></div>`)}${panel(
+      `<div class="panel-heading"><div>${appLink(store, id, p.name || data.app.name, p.icon)}<p class="sub">${esc(store)} · ${esc(m.country.toUpperCase())} · ${esc(m.language)} · ${esc(p.developer || "开发者待采集")}</p></div><div class="actions"><button id="collect-app-now">立即采集全部公开信息</button><button id="quick-watch" class="secondary">管理采集配置</button><button class="secondary" id="open-aso-workbench">ASO 工作台</button></div></div><div id="app-collection-progress"></div>${panel("应用明细", await appRows([{ ...data.app, ...p, store, app_id: id }], { scope: m }))}<div class="cards">${metric("商店评分", p.rating, "来自最近一次商店观察")}${metric("评分数", p.ratings, "累计公开评分数量")}${metric("版本快照", data.snapshots.length, "显示最近最多100次变更")}${metric("历史命中过的关键词", data.keywords.coverage.length, "包含当前未命中词；有效覆盖见下方监控")}</div><div class="grid2">${panel("当前商店资料", `<h3>${esc(p.name || "等待采集")}</h3><p>版本 ${esc(p.version || "—")} · ${esc(data.app.category_name || p.category || "—")}</p><p>${esc(p.summary || "")}</p><details><summary>描述与版本说明</summary><div class="review-text">${esc(p.description || "暂无描述")}</div><h3 class="spacer">版本说明</h3><div class="review-text">${esc(p.release_notes || "暂无版本说明")}</div></details>${safeURL(p.url) ? `<a href="${safeURL(p.url)}" target="_blank" rel="noopener">查看商店原页 ↗</a>` : ""}`)}${panel("评分变化", chart([...data.snapshots].reverse().map((r) => ({ at: r.observed_at, value: r.payload?.rating }))))}</div>${appInsights.facts(p, data.app)}<div id="monitoring-trends"></div><div id="app-market-matrix"></div><div id="app-keyword-markets"></div>${panel("素材与版本历史", `<label>选择历史快照<select id="snapshot-choice">${data.snapshots.length ? "" : '<option value="">暂无已保存的快照</option>'}${data.snapshots.map((r, i) => `<option value="${i}">${esc(stamp(r.observed_at))} · ${esc(r.payload?.version || "")}</option>`).join("")}</select></label><div id="snapshot-view"></div>`)}${panel(
         "关键词覆盖",
         table(
           ["关键词", "最近位置", "变化", "数据时间", "状态"],
@@ -730,6 +721,7 @@ async function appDetail(store, id, rev = ++revision) {
     );
   }
   const titles = {
+    应用明细: "profile",
     应用档案: "profile",
     素材与版本历史: "history",
     变更时间线: "history",
@@ -961,6 +953,7 @@ function collectionLink(kind) {
   return `<a class="button secondary" data-workspace-action href="#collection?new=${kind}">前往采集中心</a>`;
 }
 let chartFilters = { store: "", collection: "top-free", category: "" };
+const chartCategories = { google: "", apple: "" };
 async function chartPage(rev) {
   const m = market();
   if (m.store === "all") return multiCharts(rev);
@@ -980,18 +973,31 @@ async function chartPage(rev) {
     !mount(
       `${panel(
         "榜单筛选",
-        `${filterBar({ id: "chart-view-form", values: chartFilters, submit: "查看榜单", fields: [{ type: "select", name: "collection", label: "榜单", options: definitions.map((d) => [d.id, d.name + (d.mode === "derived" ? "（本站派生）" : "")]) }, { html: selectors.categoryField(m.store, chartFilters.category, "chart-view-category", "chart") }], actions: `<a class="button secondary" href="#collection?new=chart&collection=${encodeURIComponent(chartFilters.collection)}">配置采集</a>${data.target ? '<button id="refresh-current-chart" type="button">立即采集基榜</button>' : ""}` })}`,
+        `${filterBar({ id: "chart-view-form", values: chartFilters, submit: "查看榜单", fields: [{ type: "select", name: "collection", label: "榜单", options: definitions.map((d) => [d.id, d.name + (d.mode === "derived" ? "（本站派生）" : "")]) }, { html: selectors.categoryField(m.store, chartFilters.category, "chart-view-category", "chart") }], actions: `<a class="button secondary" href="#collection?new=chart&collection=${encodeURIComponent(spec.base_collection || chartFilters.collection)}&category=${encodeURIComponent(chartFilters.category)}">配置采集</a>${data.target ? '<button id="refresh-current-chart" type="button">立即采集基榜</button>' : ""}` })}`,
       )}<div class="callout">${spec.mode === "derived" ? "本站派生榜 · " : "商店直接榜单 · "}${esc(spec.note)}${data.reason ? "<p>" + esc(data.reason) + "</p>" : ""}</div>${panel(
         esc(spec.name),
-        `<p class="sub">${esc(m.country.toUpperCase())} / ${esc(m.language)} · ${esc(selectors.categoryName(m.store, chartFilters.category))} · 观察于 ${stamp(data.latest_success?.observed_at)} · ${esc(data.latest_success?.source || "尚未采集")} · 本次返回 ${data.items.length} 条</p>${table(
-          ["位置", "应用", "开发者", "基榜位置", "排名变化"],
-          data.items.map((r) => [
-            r.position,
-            appLink(m.store, r.app_id, r.name, r.icon, m.country, m.language),
-            esc(r.developer || "—"),
-            r.base_position,
-            move(r.change),
-          ]),
+        `<p class="sub">${esc(m.country.toUpperCase())} / ${esc(m.language)} · ${esc(selectors.categoryName(m.store, chartFilters.category))} · 观察于 ${stamp(data.latest_success?.observed_at)} · ${esc(data.latest_success?.source || "尚未采集")} · 本次返回 ${data.items.length} 条</p>${await appRows(
+          data.items,
+          {
+            scope: m,
+            leadingColumns: [
+              {
+                key: "position",
+                label: "位置",
+                cell: (r) => num(r._source.position),
+              },
+              {
+                key: "base",
+                label: "基榜位置",
+                cell: (r) => num(r._source.base_position),
+              },
+              {
+                key: "change",
+                label: "排名变化",
+                cell: (r) => move(r._source.change),
+              },
+            ],
+          },
         )}${!data.latest_success ? '<p class="sub">当前市场尚无此基榜快照，请通过采集中心创建任务。</p>' : ""}`,
       )}`,
       rev,
@@ -1034,6 +1040,19 @@ async function chartPage(rev) {
 }
 async function multiCharts(rev) {
   const stores = ["google", "apple"];
+  const categoryField = (store) =>
+    selectors
+      .categoryField(
+        store,
+        chartCategories[store],
+        `tracking-${store}-category`,
+        "chart",
+      )
+      .replace('name="category"', `name="${store}_category"`)
+      .replace(
+        ">应用分类<",
+        `>${store === "google" ? "Google Play" : "App Store"} 分类<`,
+      );
   const results = await Promise.all(
     stores.map(async (store) => {
       const m = market(store),
@@ -1041,7 +1060,10 @@ async function multiCharts(rev) {
       try {
         return {
           m,
-          data: await api("/charts/view?" + qs({ ...m, collection: id })),
+          data: await api(
+            "/charts/view?" +
+              qs({ ...m, collection: id, category: chartCategories[store] }),
+          ),
         };
       } catch (error) {
         return { m, error: error.message };
@@ -1050,47 +1072,69 @@ async function multiCharts(rev) {
   );
   if (
     !mount(
-      `${filterBar({ id: "multi-chart-form", values: chartFilters, submit: "查看榜单", fields: [{ type: "select", name: "collection", label: "榜单", options: selectors.chartDefinitions("google").map((d) => [d.id, d.name]) }], actions: '<span class="sub">分类榜请切换到对应商店。</span>' })}<div class="multi-store-grid">${results
-        .map(({ m, data, error }) =>
-          panel(
-            `<span class="store-caption">${storeLogo(m.store)} ${m.store === "apple" ? "App Store" : "Google Play"}</span>`,
-            error
-              ? `<p class="errorbox">${esc(error)}</p>`
-              : `<p class="sub">${esc(m.country.toUpperCase())} / ${esc(m.language)} · ${esc(data.definition.name)} · ${data.definition.mode === "derived" ? "本站派生" : "商店直接榜单"}</p><p class="sub">${esc(data.definition.note)} · ${stamp(data.latest_success?.observed_at)}</p>${data.reason ? `<p class="callout">${esc(data.reason)}</p>` : ""}${table(
-                  ["排名", "应用", "变化"],
-                  data.items.map((r) => [
-                    r.position,
-                    appLink(
-                      m.store,
-                      r.app_id,
-                      r.name,
-                      r.icon,
-                      m.country,
-                      m.language,
-                    ),
-                    move(r.change),
-                  ]),
-                )}<button class="secondary" data-chart-store="${m.store}">管理此商店榜单</button>`,
+      `${filterBar({ id: "multi-chart-form", values: chartFilters, submit: "查看榜单", fields: [{ type: "select", name: "collection", label: "榜单", options: selectors.chartDefinitions("google").map((d) => [d.id, d.name]) }, ...stores.map((store) => ({ html: categoryField(store) }))] })}<div class="multi-store-grid">${(
+        await Promise.all(
+          results.map(async ({ m, data, error }) =>
+            panel(
+              `<span class="store-caption">${storeLogo(m.store)} ${m.store === "apple" ? "App Store" : "Google Play"}</span>`,
+              error
+                ? `<p class="errorbox">${esc(error)}</p>`
+                : `<p class="sub">${esc(m.country.toUpperCase())} / ${esc(m.language)} · ${esc(selectors.categoryName(m.store, chartCategories[m.store]))} · ${esc(data.definition.name)} · ${data.definition.mode === "derived" ? "本站派生" : "商店直接榜单"}</p><p class="sub">${esc(data.definition.note)} · ${stamp(data.latest_success?.observed_at)}</p>${data.reason ? `<p class="callout">${esc(data.reason)}</p>` : ""}${await appRows(
+                    data.items,
+                    {
+                      scope: m,
+                      leadingColumns: [
+                        {
+                          key: "position",
+                          label: "排名",
+                          cell: (r) => num(r._source.position),
+                        },
+                        {
+                          key: "change",
+                          label: "变化",
+                          cell: (r) => move(r._source.change),
+                        },
+                      ],
+                    },
+                  )}<button class="secondary" data-chart-store="${m.store}">管理此商店榜单</button>`,
+            ),
           ),
         )
-        .join("")}</div>`,
+      ).join("")}</div>`,
       rev,
     )
   )
     return;
   bindForm("#multi-chart-form", async (v) => {
     chartFilters = { store: "all", collection: v.collection, category: "" };
+    for (const store of stores) {
+      chartCategories[store] = v[store + "_category"] || "";
+      if (
+        selectors.chartDefinitions(store).find((d) => d.id === v.collection)
+          ?.category_supported === false
+      )
+        chartCategories[store] = "";
+    }
     await multiCharts(++revision);
   });
-  document.querySelectorAll("[data-chart-store]").forEach(
-    (b) =>
-      (b.onclick = () => {
-        $("#global-store").value = b.dataset.chartStore;
-        $("#global-store").dispatchEvent(
-          new Event("change", { bubbles: true }),
-        );
-      }),
-  );
+  for (const store of stores)
+    $(`#tracking-${store}-category`).addEventListener("change", () =>
+      $("#multi-chart-form").requestSubmit(),
+    );
+  document.querySelectorAll("[data-chart-store]").forEach((button) => {
+    button.onclick = async () => {
+      $("#global-store").value = button.dataset.chartStore;
+      saveMarket();
+      try {
+        await discoveryPages.charts(++revision, {
+          collection: chartFilters.collection,
+          category: chartCategories[button.dataset.chartStore],
+        });
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+  });
 }
 let detailFilters = {},
   detailOffset = 0,
@@ -1147,20 +1191,21 @@ async function watchlist(rev) {
               { name: "q", label: "应用名称 / ID", source: "app", wide: true },
             ],
           }) +
-            table(
-              ["应用", "市场 / 分组", "状态", "周期 / 下次采集", "管理"],
-              data.items.map((r) => [
-                appLink(r.store, r.app_id, r.name, null, r.country, r.language),
-                `${esc(r.country)} / ${esc(r.language)}<div class="sub">${esc(r.group_name)}</div>`,
-                badge(r.state) +
-                  `<div class="sub">${r.enabled ? "监控中" : "已暂停"}</div>`,
-                r.refresh_hours +
-                  'h<div class="sub">' +
-                  stamp(r.due) +
-                  "</div>",
-                '<a href="#collection">管理任务</a>',
-              ]),
-            ) +
+            (await appRows(data.items, {
+              trailingColumns: [
+                {
+                  key: "schedule",
+                  label: "周期 / 下次采集",
+                  cell: (r) =>
+                    `${r._source.refresh_hours}h<div class="sub">${stamp(r._source.due)}</div>`,
+                },
+                {
+                  key: "manage",
+                  label: "管理",
+                  cell: () => '<a href="#collection">管理任务</a>',
+                },
+              ],
+            })) +
             pagination({
               id: "detail-task-pages",
               offset: data.offset,
@@ -1191,13 +1236,19 @@ async function watchlist(rev) {
 async function observations(rev, kind) {
   const rows = await api("/targets?kind=" + kind);
   mount(
-    collectionLink(kind) +
+    (kind === "featured"
+      ? panel(
+          "App Store Today 编辑推荐",
+          '<p>记录各地区 App Store Today 页出现的推荐故事与关联应用，用于查看推荐曝光和历史变化。卡片顺序是页面展示位置，不是下载或收入排名。</p><p class="sub">仅支持 App Store；Google Play 暂无同类采集来源。先配置推荐采集，再点击下方目标查看日期快照。</p>',
+        )
+      : "") +
+      collectionLink(kind) +
       panel(
         "采集结果",
         table(
           ["目标", "市场", "范围 / 周期", "最近状态", "管理"],
           rows.map((r) => [
-            `<button class="link" data-target="${r.id}">${esc(r.app_id || r.collection || "Apple Today")}</button><div class="sub">${esc(selectors.categoryName(r.store, r.category))}</div>`,
+            `<button class="link" data-target="${r.id}">${esc(r.app_id || r.collection || "App Store Today 推荐快照")}</button><div class="sub">${esc(selectors.categoryName(r.store, r.category))}</div>`,
             `${esc(r.store)} · ${esc(r.country)} / ${esc(r.language)}`,
             `${r.depth} 条 · ${r.refresh_hours}h`,
             r.failures
@@ -1227,7 +1278,7 @@ async function targetDetail(id, runId, rev = ++revision) {
   saveMarket();
   $("#page-title").textContent =
     t.kind === "featured"
-      ? "推荐历史"
+      ? "商店编辑推荐历史"
       : t.kind === "reviews"
         ? "评论采集历史"
         : "榜单历史";
@@ -1245,7 +1296,7 @@ async function targetDetail(id, runId, rev = ++revision) {
         )
       : t.kind === "featured"
         ? table(
-            ["卡片顺序", "标题 / 故事", "关联应用"],
+            ["页面卡片顺序", "推荐故事 / 专题", "关联应用"],
             report.items.map((r) => [
               r.position,
               `<strong>${esc(typeof r.name === "string" ? r.name : JSON.stringify(r.name))}</strong>${safeURL(r.url) ? `<div><a href="${safeURL(r.url)}" target="_blank" rel="noopener">查看故事 ↗</a></div>` : ""}`,
@@ -1254,15 +1305,21 @@ async function targetDetail(id, runId, rev = ++revision) {
                 .join(""),
             ]),
           )
-        : table(
-            ["排名", "应用", "开发者", "变化"],
-            report.items.map((r) => [
-              r.position,
-              appLink(t.store, r.app_id, r.name, r.icon),
-              esc(r.developer),
-              move(r.change),
-            ]),
-          );
+        : await appRows(report.items, {
+            scope: t,
+            leadingColumns: [
+              {
+                key: "position",
+                label: "快照排名",
+                cell: (r) => num(r._source.position),
+              },
+              {
+                key: "change",
+                label: "变化",
+                cell: (r) => move(r._source.change),
+              },
+            ],
+          });
   if (
     !mount(
       panel(
@@ -1270,7 +1327,22 @@ async function targetDetail(id, runId, rev = ++revision) {
         evidence(report) +
           `<select id="run-choice" aria-label="历史时间点"><option value="">最新成功观察</option>${report.history.map((r) => `<option value="${r.id}" ${r.id === runId ? "selected" : ""}>${esc(stamp(r.observed_at))} · ${r.outcome} · ${r.returned_count ?? "—"} 条</option>`).join("")}</select>`,
       ) +
-        panel(t.kind === "featured" ? "推荐卡片" : "观察记录", rows) +
+        panel(t.kind === "featured" ? "推荐故事快照" : "观察记录", rows) +
+        (t.kind === "featured"
+          ? panel(
+              "推荐关联应用明细",
+              await appRows(
+                [
+                  ...new Map(
+                    report.items
+                      .flatMap((card) => card.apps || [])
+                      .map((a) => [a.app_id, a]),
+                  ).values(),
+                ],
+                { scope: t },
+              ),
+            )
+          : "") +
         (t.kind === "chart"
           ? panel(
               "本次离开观察范围",
@@ -1343,15 +1415,29 @@ async function keywordDetail(id, rev = ++revision) {
       `${panel(
         "搜索排名",
         evidence(r) +
-          table(
-            ["位置", "应用", "变化", "历史"],
-            r.ranks.map((a) => [
-              a.position,
-              appLink(r.target.store, a.app_id, a.name),
-              move(a.change),
-              `<button class="link" data-rank-history="${id}" data-rank-app="${esc(a.app_id)}">查看曲线</button>`,
-            ]),
-          ),
+          (await appRows(r.ranks, {
+            scope: r.target,
+            leadingColumns: [
+              {
+                key: "position",
+                label: "位置",
+                cell: (a) => num(a._source.position),
+              },
+              {
+                key: "change",
+                label: "变化",
+                cell: (a) => move(a._source.change),
+              },
+            ],
+            trailingColumns: [
+              {
+                key: "history",
+                label: "历史",
+                cell: (a) =>
+                  `<button class="link" data-rank-history="${id}" data-rank-app="${esc(a.app_id)}">查看曲线</button>`,
+              },
+            ],
+          })),
       )}<div id="rank-history"></div>`,
       rev,
       `${r.target.store} · ${r.target.country.toUpperCase()} / ${r.target.language}`,
@@ -1643,6 +1729,7 @@ async function exportPage(rev) {
 }
 
 const researchPages = createResearchPages({
+  appRows,
   $,
   api,
   esc,
@@ -1673,6 +1760,7 @@ const researchPages = createResearchPages({
   },
 });
 const availabilityPage = createAvailabilityPage({
+  appRows,
   api,
   market,
   qs,
@@ -1690,6 +1778,7 @@ const availabilityPage = createAvailabilityPage({
   nextRevision: () => ++revision,
 });
 const discoveryPages = createDiscoveryPages({
+  appRows,
   $,
   api,
   esc,
@@ -1718,6 +1807,7 @@ const discoveryPages = createDiscoveryPages({
 });
 const routes = {
   chart: createChartDetail({
+    appRows,
     api,
     esc,
     stamp,

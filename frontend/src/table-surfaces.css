@@ -1,0 +1,31 @@
+/* Shared table surface only: preserve each page's widths, spacing and type. */
+:root {
+  --table-tint: color-mix(in srgb, var(--accent) 32%, var(--accent-text));
+  --table-rule: color-mix(in srgb, var(--table-tint) 55%, var(--line));
+  --table-head: color-mix(in srgb, var(--table-tint) 13%, var(--surface));
+  --table-row: color-mix(in srgb, var(--table-tint) 2%, var(--surface));
+  --table-stripe: color-mix(in srgb, var(--table-tint) 5%, var(--surface));
+}
+table:not(.group-member-table) {
+  border-block: 2px solid var(--table-rule);
+  border-inline: 0;
+}
+table:not(.group-member-table) :is(th, td) {
+  border: 0;
+}
+table:not(.group-member-table) thead th {
+  background: var(--table-head);
+  border-bottom: 1px solid var(--table-rule);
+}
+table:not(.group-member-table) tbody tr {
+  background: var(--table-row);
+}
+table:not(.group-member-table) tbody tr:nth-child(even) {
+  background: var(--table-stripe);
+}
+table:not(.group-member-table) tbody td {
+  background: inherit;
+}
+table:not(.group-member-table) tbody tr:hover {
+  background: color-mix(in srgb, var(--table-tint) 12%, var(--surface));
+}

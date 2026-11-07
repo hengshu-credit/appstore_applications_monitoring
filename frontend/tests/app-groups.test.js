@@ -1,4 +1,5 @@
 import { pagination, bindPagination } from "../src/pagination.js";
+import { createAppDetailTable } from "../src/app-detail-table.js";
 import { filterBar, bindFilterBar } from "../src/filter-bar.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -86,6 +87,7 @@ function setup(handler = () => undefined, write = true, overrides = {}) {
   Object.assign(window, { pagination, bindPagination });
   window.filterBar = filterBar;
   window.bindFilterBar = bindFilterBar;
+  window.createAppDetailTable = createAppDetailTable;
   window.eval(source + ";window.createGroupWorkspace=createGroupWorkspace;");
   const esc = (value) =>
     String(value ?? "")

@@ -179,6 +179,11 @@ def create_app(cfg):
             after_store=after_store,after_id=after_id,after_google=after_google,after_apple=after_apple,google_done=google_done,apple_done=apple_done,
             min_rating=min_rating,min_ratings=min_ratings,pricing=pricing,updated_since=updated_since,released_since=released_since)
 
+    @api.post('/apps/detail-rows')
+    def app_detail_rows(value:dict=Body(...),db=DB):
+        from . import app_details
+        return app_details.rows(db,cfg,value.get('targets'),value.get('days',30))
+
     @api.post('/discovery/search')
     def search_store(value:dict=Body(...),db=DB):
         return app_discovery.search(db,cfg,value)

@@ -291,7 +291,7 @@ def rankings(db, identifier, store='all', country='', now=None):
     return {r['id']:r for r in keyword},{r['id']:r for r in chart},*sampled
 
 
-def member_rank_details(db, identifier, page, now, cfg):
+def member_rank_details(db, identifier, page, now, cfg, source=None):
     if not page:
         return
     members = {row['id']: row for row in page}
@@ -299,12 +299,16 @@ def member_rank_details(db, identifier, page, now, cfg):
         row['top_keywords'] = []
         row['chart_positions'] = []
     where = 'm.group_id=%s AND m.id IN (' + ','.join('%s' for _ in page) + ')'
+    relation = 'app_group_members'
     args = (identifier, *members)
+    if source is not None:
+        relation, args = source
+        where = '1=1'
     identity = db.execute(f'''SELECT m.id,JSON_OBJECT('developer',l.payload->'$.developer','developer_id',l.payload->'$.developer_id','icon',l.payload->'$.icon',
         'category',l.payload->'$.category','category_id',l.payload->'$.category_id','genre_ids',l.payload->'$.genre_ids',
         'price',l.payload->'$.price','currency',l.payload->'$.currency','has_iap',l.payload->'$.has_iap',
         'languages',l.payload->'$.languages','updated',l.payload->'$.updated','version',l.payload->'$.version') metadata,
-        r.observed_at review_sample_at FROM app_group_members m LEFT JOIN listings l USING(store,app_id,country,language)
+        r.observed_at review_sample_at FROM {relation} m LEFT JOIN listings l USING(store,app_id,country,language)
         LEFT JOIN observation_targets t ON t.kind='reviews' AND t.store=m.store AND t.app_id=m.app_id AND t.country=m.country
         AND t.language=m.language AND t.category='' AND t.collection=''
         LEFT JOIN observation_runs r ON r.id=t.latest_success_id AND r.outcome='ok' WHERE {where}''',args).fetchall()
@@ -320,7 +324,7 @@ def member_rank_details(db, identifier, page, now, cfg):
         member.update(developer_refs.identity(member,member,refs))
         member['yesterday_reviews'] = 0 if (item['review_sample_at'] or 0)>=midnight.timestamp() else None
     # Published dates may carry a storefront offset. Narrow the SQL range, then compare in UTC.
-    dates = db.execute(f'''SELECT m.id,v.published_at FROM app_group_members m JOIN reviews v USING(store,app_id,country,language)
+    dates = db.execute(f'''SELECT m.id,v.published_at FROM {relation} m JOIN reviews v USING(store,app_id,country,language)
         WHERE {where} AND v.published_at >= %s AND v.published_at < %s''',
         (*args,(yesterday-timedelta(days=1)).date().isoformat(),(midnight+timedelta(days=1)).date().isoformat())).fetchall()
     for item in dates:
@@ -334,7 +338,7 @@ def member_rank_details(db, identifier, page, now, cfg):
     keywords = db.execute(f'''SELECT member_id,keyword,position FROM (
         SELECT m.id member_id,t.keyword,k.position,ROW_NUMBER() OVER (
             PARTITION BY m.id ORDER BY k.position,t.keyword,t.id) seq
-        FROM app_group_members m JOIN keyword_targets t USING(store,country,language)
+        FROM {relation} m JOIN keyword_targets t USING(store,country,language)
         JOIN keyword_runs r ON r.id=t.latest_success_id
         JOIN keyword_ranks k ON k.run_id=r.id AND k.app_id=m.app_id
         WHERE {where} AND t.enabled=1 AND t.failures=0 AND r.outcome='ok'
@@ -346,7 +350,7 @@ def member_rank_details(db, identifier, page, now, cfg):
     category_scope = "t.category IN ('','APPLICATION')" + ''.join(' OR (m.id=%s AND t.category=%s)' for _ in category_args)
     charts = db.execute(f'''SELECT m.id member_id,t.collection,t.category,k.position,
         (t.enabled=1 AND t.failures=0 AND r.outcome='ok' AND r.observed_at+t.refresh_hours*3600>%s) fresh
-        FROM app_group_members m JOIN observation_targets t USING(store,country,language)
+        FROM {relation} m JOIN observation_targets t USING(store,country,language)
         LEFT JOIN observation_runs r ON r.id=t.latest_success_id
         LEFT JOIN observation_items k ON k.run_id=r.id AND k.item_id=m.app_id
         WHERE {where} AND t.kind='chart' AND ({category_scope})
@@ -384,6 +388,10 @@ def page_metric_facts(db, identifier, page, days, now):
             WHERE g.group_id=%s AND g.store=f.store AND g.app_id=f.app_id AND g.country=f.country)
         GROUP BY f.store,f.app_id,f.country,f.metric,f.currency,f.is_estimate''',
         (start,start,start,start,identifier,*(r['id'] for r in page),previous,end,identifier)).fetchall()
+    assign_metric_facts(page,rows,days)
+
+
+def assign_metric_facts(page,rows,days):
     by_market = defaultdict(list)
     distributions = defaultdict(dict)
     for fact in rows:
