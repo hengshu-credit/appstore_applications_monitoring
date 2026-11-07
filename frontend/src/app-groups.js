@@ -525,7 +525,7 @@ export function createGroupWorkspace(ctx) {
   function developerCaption(row) {
     const name = row.developer;
     const id = row.developer_id;
-    const caption = name || "开发者名称待采集";
+    const caption = name || "-";
     const hints = [];
     if (name)
       hints.push(
@@ -548,7 +548,7 @@ export function createGroupWorkspace(ctx) {
     const columns = [];
     const add = (key, label, section, cell) =>
       columns.push({ key, label, section, cell });
-    const number = (v) => (v == null ? "—" : num(v));
+    const number = (v) => (v == null ? "-" : num(v));
     const permissionKeys = [
       ...new Set([
         ...corePermissions,
@@ -575,7 +575,7 @@ export function createGroupWorkspace(ctx) {
         `<div class="member-identity">${appIconMarkup(r.store, r.app_id, r.name, r.icon, r.country, r.language)}<div><button class="link member-app-name" data-group-member="${r.id}" title="${esc(r.app_id)}">${esc(r.name || r.app_id)}</button>${developerCaption(r)}</div></div>`,
     );
     add("category", "类别", "", (r) =>
-      esc(r.category ? categoryName(r.store, r.category) : "未分类"),
+      esc(r.category ? categoryName(r.store, r.category) : "-"),
     );
     add(
       "country",
@@ -593,7 +593,7 @@ export function createGroupWorkspace(ctx) {
       "详情采集",
       "状态监控",
       (r) =>
-        `<span title="${esc(r.last_error || stamp(r.last_success))}">${esc(detailTaskNames[r.details_state] || "—")}</span>`,
+        `<span title="${esc(r.last_error || stamp(r.last_success))}">${esc(detailTaskNames[r.details_state] || "-")}</span>`,
     );
     add(
       "permission_state",
@@ -617,7 +617,7 @@ export function createGroupWorkspace(ctx) {
               : value
                 ? "已声明"
                 : "未声明";
-        return `<span class="permission-mark" data-permission="${esc(name)}" data-value="${value}" title="${esc(permissionGroupName(name))} · ${label}${manual ? " · 明细修正" : ""}" aria-label="${label}">${value == null ? "—" : value ? "✓" : "×"}</span>`;
+        return `<span class="permission-mark" data-permission="${esc(name)}" data-value="${value}" title="${esc(permissionGroupName(name))} · ${label}${manual ? " · 明细修正" : ""}" aria-label="${label}">${value == null ? "-" : value ? "✓" : "×"}</span>`;
       }),
     );
     const metricKey = (f) =>
@@ -645,7 +645,8 @@ export function createGroupWorkspace(ctx) {
           (r.metrics || []).find((item) => metricKey(item) === key);
         add("fact" + index, label, name, (r) => {
           const item = fact(r);
-          if (!item) return "—";
+          if (!item)
+            return `<span title="${name === "下载量" ? "暂无国家/日期下载数据，公开累计安装数另列" : "暂无授权收入数据"}">-</span>`;
           const change = item.change_pct;
           const growth =
             change == null
@@ -674,13 +675,13 @@ export function createGroupWorkspace(ctx) {
         if (name === "下载量" && index === 0)
           add("installs", "累计安装下限", name, (r) =>
             r.installs == null
-              ? "—"
+              ? "-"
               : `<span title="全球累计安装下限">${num(r.installs)}+</span>`,
           );
       });
     add("rating", "评分", "评分", (r) =>
       r.rating == null
-        ? "—"
+        ? "-"
         : `<span class="member-score">${Number(r.rating).toFixed(2)}</span>`,
     );
     add("ratings", "评分数", "评分", (r) => number(r.ratings));
@@ -700,7 +701,7 @@ export function createGroupWorkspace(ctx) {
       "关键词覆盖",
       "关键词",
       (r) =>
-        `<span title="${esc(wordLabel(r.top_keywords))}">${number(r.keyword_count)}</span>`,
+        `<span title="${esc(wordLabel(r.top_keywords) || (r.keyword_count == null ? "当前市场暂无有效关键词采样" : "当前有效采样未命中本应用"))}">${number(r.keyword_count)}</span>`,
     );
     add(
       "top3_count",
@@ -709,8 +710,6 @@ export function createGroupWorkspace(ctx) {
       (r) =>
         `<span title="${esc(wordLabel(r.top_keywords?.filter((item) => item.position <= 3)) || "有效样本中排名前三的关键词数")}">${number(r.keyword_top3_count)}</span>`,
     );
-    const boardKey = (store, collection, category) =>
-      JSON.stringify([category ? store : "", collection, category || ""]);
     const boardOrder = [
       "top-free",
       "top-paid",
@@ -720,35 +719,26 @@ export function createGroupWorkspace(ctx) {
       "new-grossing",
       "new-paid",
     ];
-    const boardPriority = (collection) => {
-      const index = boardOrder.indexOf(collection);
-      return index < 0 ? boardOrder.length : index;
-    };
-    const boards = new Map(
-      ["top-free", "top-paid", "top-grossing"].map((id) => [
-        boardKey("", id, ""),
-        {
-          store: "",
-          category: "",
-          collection: id,
-          label: chartName("google", id),
-        },
-      ]),
-    );
+    const boardKey = (collection, category) =>
+      JSON.stringify([Boolean(category), collection]);
+    const boards = new Map();
+    for (const category of [false, true])
+      for (const collection of boardOrder.slice(0, 3))
+        boards.set(boardKey(collection, category), { collection, category });
     const positions = new Map();
     for (const row of data.items) {
       const ranks = new Map();
       positions.set(row.id, ranks);
       for (const chart of row.chart_positions || []) {
-        const key = boardKey(row.store, chart.collection, chart.category);
-        const label = chartName(row.store, chart.collection);
+        const category =
+          chart.category === "APPLICATION" && row.store === "google"
+            ? ""
+            : chart.category;
+        if (category && category !== row.category) continue;
+        const key = boardKey(chart.collection, category);
         boards.set(key, {
-          store: row.store,
-          category: chart.category || "",
           collection: chart.collection,
-          label: chart.category
-            ? `${categoryName(row.store, chart.category)} · ${label}`
-            : label,
+          category: Boolean(category),
         });
         ranks.set(key, chart);
       }
@@ -756,38 +746,45 @@ export function createGroupWorkspace(ctx) {
     [...boards]
       .sort(
         ([, a], [, b]) =>
-          Number(Boolean(a.category)) - Number(Boolean(b.category)) ||
-          (a.category
-            ? String(categoryName(a.store, a.category)).localeCompare(
-                String(categoryName(b.store, b.category)),
-                "zh-CN",
-              ) ||
-              a.store.localeCompare(b.store) ||
-              a.category.localeCompare(b.category)
-            : 0) ||
-          boardPriority(a.collection) - boardPriority(b.collection) ||
-          a.collection.localeCompare(b.collection),
+          Number(a.category) - Number(b.category) ||
+          (boardOrder.indexOf(a.collection) < 0
+            ? 99
+            : boardOrder.indexOf(a.collection)) -
+            (boardOrder.indexOf(b.collection) < 0
+              ? 99
+              : boardOrder.indexOf(b.collection)),
       )
-      .forEach(([key, { label }], index) =>
-        add("chart" + index, label, "榜单", (r) => {
-          const item = positions.get(r.id).get(key);
-          if (!item?.sampled) return '<span title="暂无有效榜单采样">—</span>';
-          return item.position == null
-            ? "<small>未入榜</small>"
-            : `<b class="member-rank">#${num(item.position)}</b>`;
-        }),
+      .forEach(([key, board], index) =>
+        add(
+          "chart" + index,
+          chartName("google", board.collection),
+          board.category ? "分类榜单" : "通用榜单",
+          (r) => {
+            const item = positions.get(r.id).get(key);
+            const scope = board.category
+              ? r.category
+                ? categoryName(r.store, r.category)
+                : "类别未知"
+              : "全市场";
+            if (!item?.sampled)
+              return `<span title="${esc(scope)} · 暂无有效采样">-</span>`;
+            return item.position == null
+              ? ""
+              : `<b class="member-rank" title="${esc(scope)}">${num(item.position)}</b>`;
+          },
+        ),
       );
     add(
       "developer_id",
       "开发者 ID",
       "商店资料",
       (r) =>
-        `<span title="${esc(developerSources[r.developer_id_source] || "暂无已采集 ID")}">${esc(r.developer_id || "未采集")}</span>`,
+        `<span title="${esc(developerSources[r.developer_id_source] || "暂无已采集 ID")}">${esc(r.developer_id || "-")}</span>`,
     );
     add("app_id", "App ID", "商店资料", (r) => esc(r.app_id));
     add("price", "价格", "商店资料", (r) =>
       r.price == null
-        ? "—"
+        ? "-"
         : Number(r.price) === 0
           ? "免费"
           : esc(decimalText(r.price) + " " + (r.currency || "")),
@@ -795,12 +792,12 @@ export function createGroupWorkspace(ctx) {
     add("languages", "支持语言", "商店资料", (r) =>
       Array.isArray(r.languages)
         ? `<span title="${esc(r.languages.join(" / "))}">${num(r.languages.length)}</span>`
-        : "—",
+        : "-",
     );
     add("iap", "内购", "商店资料", (r) =>
-      r.has_iap == null ? "—" : r.has_iap ? "有" : "无",
+      r.has_iap == null ? "-" : r.has_iap ? "有" : "无",
     );
-    add("version", "版本", "商店资料", (r) => esc(r.version || "—"));
+    add("version", "版本", "商店资料", (r) => esc(r.version || "-"));
     add("updated", "商店更新", "商店资料", (r) =>
       r.updated
         ? esc(
@@ -808,12 +805,13 @@ export function createGroupWorkspace(ctx) {
               ? stamp(r.updated)
               : String(r.updated).slice(0, 10),
           )
-        : "—",
+        : "-",
     );
     const groupOrder = [
       "状态监控",
       "商店资料",
-      "榜单",
+      "通用榜单",
+      "分类榜单",
       "排行榜",
       "权限采集",
       "下载量",
@@ -881,7 +879,7 @@ export function createGroupWorkspace(ctx) {
           `<tr data-member-row="${r.id}">${columns.map((c) => `<td data-col="${c.key}" headers="${headersFor.get(c.key)}">${c.cell(r)}</td>`).join("")}</tr>`,
       )
       .join("");
-    return `<div class="group-table-tools"><span class="member-permission-key">✓ 已声明　× 未声明　— 暂无数据或不适用</span><div class="actions"><span id="group-selection-count" aria-live="polite"></span>${writable ? '<button id="group-import-metrics" class="secondary small">导入指标</button><button id="group-remove" class="secondary small" disabled>移出本组</button>' : ""}</div></div><div class="group-member-scroll" role="region" aria-label="应用全指标明细" tabindex="0"><table class="group-member-table">${colgroups}<thead><tr>${headings}</tr><tr>${subheads}</tr></thead><tbody>${rows || `<tr><td colspan="${columns.length}" class="empty">没有匹配的应用</td></tr>`}</tbody></table></div><div class="group-table-footer"><span>共 ${num(data.total)} 条 · ${data.total ? data.offset + 1 : 0}–${data.offset + data.items.length}</span><div class="actions">${pagination({ id: "group-pages", offset, limit: data.limit, total: data.total, hasMore: data.has_more, prevId: "group-prev", nextId: "group-next", sizes: [25, 50, 100, 200] })}</div></div>`;
+    return `<div class="group-table-tools"><span class="member-permission-key">✓ 已声明　× 未声明　- 暂无数据或不适用</span><div class="actions"><span id="group-selection-count" aria-live="polite"></span>${writable ? '<button id="group-import-metrics" class="secondary small">导入指标</button><button id="group-remove" class="secondary small" disabled>移出本组</button>' : ""}</div></div><div class="group-member-scroll" role="region" aria-label="应用全指标明细" tabindex="0"><table class="group-member-table">${colgroups}<thead><tr>${headings}</tr><tr>${subheads}</tr></thead><tbody>${rows || `<tr><td colspan="${columns.length}" class="empty">没有匹配的应用</td></tr>`}</tbody></table></div><div class="group-table-footer"><span>共 ${num(data.total)} 条 · ${data.total ? data.offset + 1 : 0}–${data.offset + data.items.length}</span><div class="actions">${pagination({ id: "group-pages", offset, limit: data.limit, total: data.total, hasMore: data.has_more, prevId: "group-prev", nextId: "group-next", sizes: [25, 50, 100, 200] })}</div></div>`;
   }
   function bindCrosshair(grid) {
     const columns = new Map();

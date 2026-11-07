@@ -198,7 +198,7 @@ export function createGlobalCharts(ctx) {
     const cards = data.countries
       .map(
         (c) =>
-          `<section class="panel global-country" style="--chart-slots:${Math.max(1, ...c.boards.flatMap((b) => b.items.map((r) => Number(r.position))))}"><div class="panel-heading"><h2>${esc(c.name)} <span class="sub">${esc(c.country.toUpperCase())}${store === "all" ? " · " + storeName(c) : ""}</span></h2><span class="sub">${esc(c.language)}</span></div><div class="global-lists" role="region" aria-label="${esc(c.name)}排行榜" tabindex="0">${c.boards
+          `<section class="panel global-country" style="--chart-slots:${Math.max(1, ...c.boards.flatMap((b) => b.items.map((r) => Number(r.position))))}"><div class="panel-heading"><h2 class="global-country-title"><img class="country-flag" src="/flags/${esc(c.country)}.svg" alt="">${esc(c.name)}${store === "all" ? `<span class="sub">${storeName(c)}</span>` : ""}</h2><span class="sub">${esc(selectors.languageName(c.language))} <small>${esc(c.language)}</small></span></div><div class="global-lists" role="region" aria-label="${esc(c.name)}排行榜" tabindex="0">${c.boards
             .map(
               (b) =>
                 `<section class="global-chart"><div class="global-chart-summary" title="${esc(boardMeta(b))}"><h3>${boardTitle(c, b, b.definition.name + (b.definition.mode === "derived" ? "（派生）" : ""))}</h3>${boardState(b) ? `<span class="global-chart-status" data-error="${Boolean(b.last_error)}">${esc(boardState(b))}</span>` : ""}</div><div class="global-chart-head" aria-hidden="true"><span>排名</span><span>应用</span></div>${applications(c, b)}</section>`,
@@ -214,7 +214,7 @@ export function createGlobalCharts(ctx) {
           submit: "查看各国榜单",
           fields: [
             {
-              html: `<div class="country-field"><span id="global-countries-label">国家 / 地区</span><button type="button" id="global-countries-trigger" class="picker-trigger secondary" aria-haspopup="dialog" aria-expanded="false" aria-labelledby="global-countries-label global-countries-caption"><span id="global-countries-caption">已选 ${selected.size} 个地区</span><span aria-hidden="true">⌄</span></button></div><div class="chart-type-field"><span id="global-types-label">榜单类型</span><button type="button" id="global-types-trigger" class="picker-trigger secondary" aria-expanded="false" aria-controls="global-types-options" aria-labelledby="global-types-label global-types-caption"><span id="global-types-caption">已选 ${types.size} 种榜单</span><span aria-hidden="true">⌄</span></button><div id="global-types-options" class="filter-popover" role="group" aria-label="榜单类型" hidden>${definitions.map((d) => `<label class="check-label"><input type="checkbox" name="collection" value="${d.id}" ${types.has(d.id) ? "checked" : ""}>${esc(d.name)}</label>`).join("")}</div></div>`,
+              html: `<div class="country-field"><span id="global-countries-label">国家 / 地区</span><button type="button" id="global-countries-trigger" class="picker-trigger secondary" aria-haspopup="dialog" aria-expanded="false" aria-labelledby="global-countries-label global-countries-caption"><span id="global-countries-caption">已选 ${selected.size} 个地区</span><span aria-hidden="true">⌄</span></button></div><div class="chart-type-field"><span id="global-types-label">榜单类型</span><button type="button" id="global-types-trigger" class="picker-trigger secondary" aria-expanded="false" aria-controls="global-types-options" aria-labelledby="global-types-label global-types-caption"><span id="global-types-caption">已选 ${types.size} 种榜单</span><span aria-hidden="true">⌄</span></button><div id="global-types-options" class="filter-popover" role="group" aria-label="榜单类型" hidden>${definitions.map((d) => `<label class="check-label" title="${esc(d.note || d.name)}"><input type="checkbox" name="collection" value="${d.id}" ${types.has(d.id) ? "checked" : ""}>${esc(d.name)}</label>`).join("")}</div></div>`,
             },
             {
               html: selectors.categoryField(
@@ -236,13 +236,13 @@ export function createGlobalCharts(ctx) {
               label: "布局",
               name: "layout",
               options: [
-                ["rows", "横向排列（每行一个榜单）"],
-                ["columns", "纵向排列（每列一个榜单）"],
+                ["rows", "横向排列"],
+                ["columns", "纵向排列"],
               ],
             },
           ],
           actions:
-            '<button type="button" id="global-configure" class="secondary">配置所选范围采集</button>',
+            '<button type="button" id="global-configure" class="secondary">配置所选范围采集</button><a class="button secondary" href="#collection">查看采集进度</a>',
         })}<div id="global-plan-preview"></div>${pagination({
           id: "global-pages",
           unit: "国",
@@ -252,7 +252,7 @@ export function createGlobalCharts(ctx) {
           hasMore: data.has_more,
           prevId: "global-prev",
           nextId: "global-next",
-        })}<a class="button secondary" href="#collection">查看采集进度</a><div id="global-rankings"><div class="global-board-grid" data-layout="${filters.layout}" style="--chart-display-depth:${Number(filters.depth)}" role="region" aria-label="各国排行榜" tabindex="0">${cards}</div></div>`,
+        })}<div id="global-rankings"><div class="global-board-grid" data-layout="${filters.layout}" style="--chart-display-depth:${Number(filters.depth)};--chart-count:${types.size}" role="region" aria-label="各国排行榜" tabindex="0">${cards}</div></div>`,
         rev,
         `各国独立排名 · 本页有效 ${data.fresh_boards}/${data.requested_boards} 榜，已观察 ${data.observed_boards} 榜`,
       )

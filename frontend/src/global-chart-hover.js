@@ -36,12 +36,15 @@ export function bindGlobalChartHover({
     tip.style.left = `${Math.max(8, Math.min(r.left, win.innerWidth - width - 8))}px`;
     tip.style.top = `${Math.max(8, r.bottom + height + 8 < win.innerHeight ? r.bottom + 8 : r.top - height - 8)}px`;
   };
-  const clear = () => {
+  const dismiss = () => {
     generation++;
     win.clearTimeout(timer);
     active?.element.removeAttribute("aria-describedby");
-    active = null;
     tip.hidden = true;
+  };
+  const clear = () => {
+    dismiss();
+    active = null;
     cells.forEach((cell) =>
       cell
         .closest(".global-ranked-app, tr")
@@ -50,7 +53,11 @@ export function bindGlobalChartHover({
   };
   const show = (cell) => {
     const app = identity(cell);
-    if (!app || (same(app, active) && active.element === app.element)) return;
+    if (
+      !app ||
+      (same(app, active) && active.element === app.element && !tip.hidden)
+    )
+      return;
     clear();
     active = app;
     const version = generation;
@@ -112,25 +119,25 @@ export function bindGlobalChartHover({
       !cell.contains(event.relatedTarget) &&
       !tip.contains(event.relatedTarget)
     )
-      clear();
+      dismiss();
   });
   root.addEventListener("focusin", (event) =>
     show(event.target.closest(".appcell")),
   );
   root.addEventListener("focusout", (event) => {
     if (!event.target.closest(".appcell")?.contains(event.relatedTarget))
-      clear();
+      dismiss();
   });
   root.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") clear();
+    if (event.key === "Escape") dismiss();
   });
   tip.addEventListener("mouseleave", (event) => {
-    if (!event.relatedTarget?.closest?.(".appcell")) clear();
+    if (!event.relatedTarget?.closest?.(".appcell")) dismiss();
   });
   root.addEventListener(
     "scroll",
     (event) => {
-      if (!tip.contains(event.target)) clear();
+      if (!tip.contains(event.target)) dismiss();
     },
     true,
   );

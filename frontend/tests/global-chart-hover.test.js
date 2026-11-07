@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { Window } from "happy-dom";
 import { bindGlobalChartHover } from "../src/global-chart-hover.js";
 
-test("hover and keyboard link exact store IDs, cache summaries, ignore late responses and clear on Escape", async () => {
+test("hover and keyboard link exact store IDs, cache summaries, ignore late responses and keep selection on Escape", async () => {
   const win = new Window();
   const doc = win.document;
   doc.body.innerHTML =
@@ -50,7 +50,7 @@ test("hover and keyboard link exact store IDs, cache summaries, ignore late resp
     resolve(data);
     await tick();
     assert.equal(doc.querySelector("[role=tooltip]").hidden, true);
-    assert.equal(doc.querySelectorAll(".same-ranked-app").length, 0);
+    assert.equal(doc.querySelectorAll(".same-ranked-app").length, 2);
     buttons[1].focus();
     await tick();
     assert.equal(calls, 1);
@@ -75,7 +75,7 @@ test("hover and keyboard link exact store IDs, cache summaries, ignore late resp
   }
 });
 
-test("ranked app cells highlight matching store IDs and clear on scroll in horizontal lists", async () => {
+test("ranked app cells highlight matching store IDs and hide the tooltip on scroll while retaining selection", async () => {
   const win = new Window();
   const doc = win.document;
   doc.body.innerHTML =
@@ -110,7 +110,7 @@ test("ranked app cells highlight matching store IDs and clear on scroll in horiz
       false,
     );
     doc.querySelector("ol").dispatchEvent(new win.Event("scroll"));
-    assert.equal(doc.querySelectorAll(".same-ranked-app").length, 0);
+    assert.equal(doc.querySelectorAll(".same-ranked-app").length, 2);
     assert.equal(doc.querySelector('[role="tooltip"]').hidden, true);
   } finally {
     await win.happyDOM.close();

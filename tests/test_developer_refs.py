@@ -10,6 +10,11 @@ from test_monitor import MySQLTestCase
 
 
 class DeveloperReferenceTest(MySQLTestCase):
+    def test_numeric_ids_remain_exact_text(self):
+        key=dict(store='google',app_id='com.credicuotas.wallet',country='ar',language='es')
+        result=developer_refs.identity(key,{'developer_id':6942553452222258407},({},{}))
+        self.assertEqual(result['developer_id'],'6942553452222258407')
+
     def test_legacy_sources_fill_name_and_id_without_collecting_or_claiming_a_listing(self):
         raw = Path(self.cfg['data_dir']) / 'raw'
         original = raw / 'watchlist-sample' / 'as-data.js'

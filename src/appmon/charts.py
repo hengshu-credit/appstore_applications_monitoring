@@ -8,8 +8,8 @@ from datetime import datetime, timezone
 
 DEFINITIONS = [
     ('top-free','免费榜','top-free'),('top-paid','付费榜','top-paid'),('top-grossing','畅销榜','top-grossing'),
-    ('trending','人气飙升榜','top-free'),('new-free','最新免费榜','top-free'),
-    ('new-grossing','最新畅销榜','top-grossing'),('new-paid','最新付费榜','top-paid'),
+    ('trending','人气飙升榜','top-free'),('new-free','新应用免费榜','top-free'),
+    ('new-grossing','新应用畅销榜','top-grossing'),('new-paid','新应用付费榜','top-paid'),
 ]
 
 
@@ -18,7 +18,7 @@ def capabilities(store):
     result=[]
     for identifier,label,base in DEFINITIONS:
         direct=identifier!='new-grossing' and not (store=='apple' and identifier=='trending')
-        note=('商店公开榜单，按返回顺序记录' if direct else
+        note=(('商店新应用榜，与普通总榜不同；不是同一榜单的最新快照' if identifier.startswith('new-') else '商店公开总榜，按返回顺序记录') if direct else
               '本站派生：同一免费榜相邻两次有效快照，按正向排名升幅排序；不是商店官方人气榜' if identifier=='trending' else
               '本站派生：从基榜已返回应用中筛选相对于该次观察近30天发布的应用，保留基榜顺序；不代表全商店新应用')
         result.append({'id':identifier,'name':label,'mode':'direct' if direct else 'derived',

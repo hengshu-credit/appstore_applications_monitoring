@@ -342,12 +342,15 @@ def member_rank_details(db, identifier, page, now, cfg):
         ) ranked WHERE seq<=3 ORDER BY member_id,seq''', (*args, now)).fetchall()
     for item in keywords:
         members[item['member_id']]['top_keywords'].append({'keyword':item['keyword'], 'position':item['position']})
+    category_args = [(row['id'],row['category']) for row in page if row.get('category')]
+    category_scope = "t.category IN ('','APPLICATION')" + ''.join(' OR (m.id=%s AND t.category=%s)' for _ in category_args)
     charts = db.execute(f'''SELECT m.id member_id,t.collection,t.category,k.position,
         (t.enabled=1 AND t.failures=0 AND r.outcome='ok' AND r.observed_at+t.refresh_hours*3600>%s) fresh
         FROM app_group_members m JOIN observation_targets t USING(store,country,language)
         LEFT JOIN observation_runs r ON r.id=t.latest_success_id
         LEFT JOIN observation_items k ON k.run_id=r.id AND k.item_id=m.app_id
-        WHERE {where} AND t.kind='chart' ORDER BY t.collection,t.category''', (now, *args)).fetchall()
+        WHERE {where} AND t.kind='chart' AND ({category_scope})
+        ORDER BY t.collection,r.observed_at,t.category''', (now, *args,*(v for pair in category_args for v in pair))).fetchall()
     for item in charts:
         members[item['member_id']]['chart_positions'].append({
             'collection':item['collection'], 'category':item['category'], 'sampled':bool(item['fresh']),

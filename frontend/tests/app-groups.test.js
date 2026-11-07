@@ -127,7 +127,7 @@ function setup(handler = () => undefined, write = true, overrides = {}) {
     table: (heads, rows) =>
       `<table>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</table>`,
     metric: (title, v, n) =>
-      `<article>${title}<strong>${v ?? "—"}</strong><small>${n}</small></article>`,
+      `<article>${title}<strong>${v ?? "-"}</strong><small>${n}</small></article>`,
     chart: () => "<svg></svg>",
     stamp: (v) => (v ? "time" : "尚未采集"),
     num: (v) => (v == null ? "—" : Number(v).toLocaleString()),
@@ -372,6 +372,7 @@ test("unified rows show permissions rankings money and ratings without mixing mi
         permission_groups: ["Camera", "SMS", "<img src=x>"],
         permission_error: "<script>problem</script>",
         developer: "Developer <test>",
+        developer_id: "6942553452222258407",
         top_keywords: [
           { keyword: "loan <test>", position: 3 },
           { keyword: "finance", position: 8 },
@@ -445,7 +446,8 @@ test("unified rows show permissions rankings money and ratings without mixing mi
         "应用信息",
         "状态监控",
         "商店资料",
-        "榜单",
+        "通用榜单",
+        "分类榜单",
         "权限采集",
         "下载量",
         "收入",
@@ -473,13 +475,14 @@ test("unified rows show permissions rankings money and ratings without mixing mi
       cell("top3_count").querySelector("span").title,
       "loan <test> #3",
     );
+    assert.equal(cell("developer_id").textContent, "6942553452222258407");
     assert.equal(cell("price").textContent, "免费");
     assert.equal(cell("iap").textContent, "无");
     assert.equal(cell("yesterday_reviews").textContent, "0");
     assert.equal(cell("languages").textContent, "2");
-    assert.equal(cell("chart0").textContent, "#12");
-    assert.equal(cell("chart1").textContent, "未入榜");
-    assert.equal(cell("chart2").textContent, "—");
+    assert.equal(cell("chart0").textContent, "12");
+    assert.equal(cell("chart1").textContent, "");
+    assert.equal(cell("chart2").textContent, "-");
     assert.equal(cell("rating").textContent, "0.00");
     assert.equal(cell("ratings").textContent, "123");
     assert.equal(cell("installs").textContent, "1,000+");
@@ -519,7 +522,7 @@ test("unified rows show permissions rankings money and ratings without mixing mi
   }
 });
 
-test("chart columns keep market charts first and each category together across stores and response orders", async () => {
+test("chart columns use general and own-category ranks without unrelated categories", async () => {
   let reverse = false;
   const ranks = [
     { collection: "top-free", category: "SOCIAL", sampled: true, position: 3 },
@@ -602,13 +605,9 @@ test("chart columns keep market charts first and each category together across s
           "付费榜",
           "畅销榜",
           "最新免费榜",
-          "社交 · 免费榜",
-          "社交 · 免费榜",
-          "社交 · 付费榜",
-          "社交 · 畅销榜",
-          "游戏 · 免费榜",
-          "游戏 · 付费榜",
-          "游戏 · 畅销榜",
+          "免费榜",
+          "付费榜",
+          "畅销榜",
         ],
       );
       const values = (id) =>
@@ -617,21 +616,15 @@ test("chart columns keep market charts first and each category together across s
             `[data-member-row="${id}"] td[data-col^="chart"]`,
           ),
         ].map((td) => td.textContent);
-      assert.deepEqual(values(11), [
-        "—",
-        "—",
-        "—",
-        "#20",
-        "—",
-        "#3",
-        "未入榜",
-        "—",
-        "#9",
-        "#7",
-        "#8",
-      ]);
-      assert.equal(values(12)[4], "#11");
-      assert.equal(values(12)[5], "—");
+      assert.deepEqual(values(11), ["-", "-", "-", "20", "3", "", "-"]);
+      assert.equal(values(12)[4], "11");
+      assert.equal(values(12)[5], "-");
+      assert.ok(!grid.textContent.includes("游戏 ·"));
+      assert.equal(
+        grid.querySelector('[data-member-row="11"] [data-col="chart4"] b')
+          .title,
+        "社交",
+      );
       assert.equal(
         grid.querySelector('th[data-col="category"]').textContent,
         "类别",
@@ -644,7 +637,7 @@ test("chart columns keep market charts first and each category together across s
       assert.equal(
         grid.querySelector('[data-member-row="13"] [data-col="category"]')
           .textContent,
-        "未分类",
+        "-",
       );
     };
     await inspect();
@@ -690,7 +683,7 @@ test("inline corrections keep the market row and permission unknowns distinct an
     assert.equal(row().querySelector('[data-col="source"]'), null);
     assert.equal(
       row().querySelector('[data-permission="Camera"]').textContent,
-      "—",
+      "-",
     );
     assert.equal(c.doc.querySelector("[data-column-view]"), null);
     assert.equal(row().querySelectorAll("td[hidden]").length, 0);
@@ -722,7 +715,7 @@ test("inline corrections keep the market row and permission unknowns distinct an
     );
     assert.equal(
       row().querySelector('[data-permission="Location"]').textContent,
-      "—",
+      "-",
     );
     row().querySelector("[data-adjust-row]").click();
     row().querySelector("[data-edit-status]").value = "";
@@ -733,7 +726,7 @@ test("inline corrections keep the market row and permission unknowns distinct an
     assert.equal(row().querySelector('[data-col="source"]'), null);
     assert.equal(
       row().querySelector('[data-permission="Camera"]').textContent,
-      "—",
+      "-",
     );
     assert.deepEqual(c.errors, ["本行调整已保存", "本行调整已保存"]);
   } finally {

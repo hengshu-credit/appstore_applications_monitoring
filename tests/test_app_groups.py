@@ -84,7 +84,7 @@ class GroupDashboardTest(MySQLTestCase):
                 VALUES(%s,%s,'ok','google','v1',50,20,'first_response')''',(target,now-age)).lastrowid
             self.db.execute("INSERT INTO keyword_ranks VALUES(%s,'com.loan.example',%s,'Loan')",(run,pos))
             self.db.execute('UPDATE keyword_targets SET latest_success_id=%s WHERE id=%s',(run,target))
-        for board,category,pos,age in [('top-free','',12,0),('top-free','FINANCE',4,0),('top-paid','',None,0),('top-grossing','',1,90000)]:
+        for board,category,pos,age in [('top-free','',12,0),('top-free','FINANCE',4,0),('top-free','TOOLS',1,0),('top-paid','',None,0),('top-grossing','',1,90000)]:
             target = add_observation_target(self.db,market|dict(kind='chart',collection=board,category=category))['id']
             run = self.db.execute('''INSERT INTO observation_runs(target_id,observed_at,outcome,source,parser_version,coverage,returned_count)
                 VALUES(%s,%s,'ok','google','v1','returned_chart_range',20)''',(target,now-age)).lastrowid

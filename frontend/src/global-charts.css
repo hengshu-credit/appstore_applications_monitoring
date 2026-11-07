@@ -6,7 +6,7 @@
 }
 .global-board-grid[data-layout="columns"] {
   display: block;
-  column-width: 620px;
+  column-width: calc(var(--chart-count, 3) * 190px + 34px);
   column-gap: 16px;
 }
 .global-board-grid[data-layout="columns"] > .global-country {
@@ -17,10 +17,26 @@
   vertical-align: top;
 }
 .global-board-grid[data-layout="columns"] .global-lists {
-  grid-template-columns: none;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(260px, 1fr);
+  grid-template-columns: repeat(var(--chart-count, 3), minmax(0, 1fr));
+  grid-auto-flow: row;
   align-items: start;
+  overflow: visible;
+}
+.global-country-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.global-country-title .country-flag {
+  width: 22px;
+  height: 16px;
+  object-fit: cover;
+  flex: none;
+}
+@media (max-width: 680px) {
+  .global-board-grid[data-layout="columns"] .global-lists {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  }
 }
 .global-board-grid[data-layout="columns"] .global-chart {
   border: 1px solid var(--line);

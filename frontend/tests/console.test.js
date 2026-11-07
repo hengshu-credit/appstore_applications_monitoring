@@ -1807,8 +1807,8 @@ test("global rankings show countries and multiple chart kinds together and previ
         o.textContent,
       ]),
       [
-        ["rows", "横向排列（每行一个榜单）"],
-        ["columns", "纵向排列（每列一个榜单）"],
+        ["rows", "横向排列"],
+        ["columns", "纵向排列"],
       ],
     );
     const countryNodes = [...grid.querySelectorAll(".global-country")];
