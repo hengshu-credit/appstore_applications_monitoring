@@ -190,7 +190,8 @@ def monitoring_overview(db):
         row['language_name'] = PREFERENCES['languages'].get(row['language'],
             PREFERENCES['languages'].get(row['language'].split('-')[0], row['language']))
         country_monitored[row['country']] = country_monitored.get(row['country'],0) + row['monitored_words']
-    rows.sort(key=lambda row: (-country_monitored[row['country']],row['country'],-row['monitored_words'],row['language']))
+    # PyMySQL returns an empty tuple when there are no rows.
+    rows=sorted(rows,key=lambda row: (-country_monitored[row['country']],row['country'],-row['monitored_words'],row['language']))
     totals = {key: sum(row[key] for row in rows) for key in (*keys, 'paused_words')}
     totals.update(languages=len({r['language'] for r in rows}),
         countries=len({r['country'] for r in rows}),

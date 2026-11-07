@@ -39,6 +39,8 @@ class ChartEnrichmentTest(MySQLTestCase):
         reviews=self.db.execute("SELECT app_id,depth FROM observation_targets WHERE kind='reviews'").fetchall()
         self.assertEqual({r['app_id'] for r in reviews},{'com.first','com.fifty'});self.assertTrue(all(r['depth']==500 for r in reviews))
         self.assertEqual(enrichment.sync(self.db,self.cfg),{'runs':0,'apps':0})
+        self.assertIsInstance(enrichment.report(self.db)['followups']['app_appearances'],int)
+        json.dumps(enrichment.report(self.db))
         from appmon.collection_lineage import report
         graph=report(self.db,self.cfg,'google')
         self.assertIn('top50',{node['id'] for node in graph['nodes']})

@@ -34,34 +34,46 @@ def serve(cfg, host, port):
     uvicorn.run(create_app(cfg), host=host, port=port, proxy_headers=False)
 
 
-def worker(cfg, db):
+def maintenance_once(cfg, db):
+    from .app_groups import ensure_verification_jobs
+    from .availability import record_daily
+    from .collection import work_plans
+    ensure_verification_jobs(db)
+    work_plans(db,100)
+    from .chart_enrichment import sync as sync_chart_apps
+    sync_chart_apps(db,cfg,20)
+    if cfg.get('media_scope')=='groups_and_current_charts':
+        from .db import reserve
+        scheduled=db.execute("SELECT next_at FROM schedules WHERE name='media-scope-sync'").fetchone()
+        if not scheduled or scheduled['next_at']<=time.time():
+            from .app_media import sync_existing
+            sync_existing(db,cfg)
+            reserve(db,'media-scope-sync',300)
+    evaluate(db)
+    work_export(cfg,db)
+    record_daily(db)
+    db.execute("INSERT INTO schedules VALUES('console-heartbeat',%s) AS incoming ON DUPLICATE KEY UPDATE next_at=incoming.next_at",(time.time(),))
+
+
+def worker(cfg):
     from threading import Thread
+    from .db import connect
     from .dispatcher import worker as collect_worker
     Thread(target=collect_worker,args=(cfg,'console'),daemon=True,name='collection-dispatcher').start()
     Thread(target=marketdata_worker,args=(cfg,),daemon=True,name='marketdata').start()
     Thread(target=developer_reference_worker,args=(cfg,),daemon=True,name='developer-references').start()
     while True:
+        db=None
         try:
-            from .app_groups import ensure_verification_jobs
-            from .availability import record_daily
-            from .collection import work_plans
-            ensure_verification_jobs(db)
-            work_plans(db,100)
-            from .chart_enrichment import sync as sync_chart_apps
-            sync_chart_apps(db,cfg,20)
-            if cfg.get('media_scope')=='groups_and_current_charts':
-                from .db import reserve
-                scheduled=db.execute("SELECT next_at FROM schedules WHERE name='media-scope-sync'").fetchone()
-                if not scheduled or scheduled['next_at']<=time.time():
-                    from .app_media import sync_existing
-                    sync_existing(db,cfg)
-                    reserve(db,'media-scope-sync',300)
-            evaluate(db)
-            work_export(cfg,db)
-            record_daily(db)
-            db.execute("INSERT INTO schedules VALUES('console-heartbeat',%s) AS incoming ON DUPLICATE KEY UPDATE next_at=incoming.next_at",(time.time(),))
+            # A broken connection must not poison every later maintenance cycle.
+            # Completed per-chart transactions remain committed and resumable.
+            db=connect(cfg,initialize=False)
+            maintenance_once(cfg,db)
         except Exception as exc:
-            log.error("Console maintenance failed: %s",type(exc).__name__)
+            code=exc.args[0] if exc.args and isinstance(exc.args[0],int) else '-'
+            log.error("Console maintenance failed: %s code=%s",type(exc).__name__,code)
+        finally:
+            if db is not None:db.close()
         time.sleep(10)
 
 

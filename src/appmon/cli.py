@@ -97,7 +97,9 @@ def main():
             if args.limit <= 0:
                 parser.error("limit must be positive")
             if args.action == "daemon":
-                worker(cfg, db)
+                db.close()
+                db=None
+                worker(cfg)
                 return 0
             result = run_once(cfg, db, args.limit)
         elif args.command == 'marketdata':
@@ -170,7 +172,7 @@ def main():
         if args.command == "discover" and any("error" in r for r in result):
             return 2
     finally:
-        db.close()
+        if db is not None:db.close()
     return 0
 
 

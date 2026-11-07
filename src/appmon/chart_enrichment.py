@@ -159,6 +159,9 @@ def sync(db,cfg,limit=20):
 def report(db):
     value=settings(db)
     value['followups']=db.execute('SELECT COUNT(*) runs,COALESCE(SUM(app_count),0) app_appearances FROM chart_enrichment_runs').fetchone()
+    value['followups']={k:int(v or 0) for k,v in value['followups'].items()}
     value['app_markets']=db.execute('SELECT COUNT(*) n FROM chart_enrichment_apps').fetchone()['n']
     value['chart_states']=db.execute("SELECT store,enabled,COUNT(*) targets,SUM(latest_success_id IS NOT NULL) observed,SUM(failures>0) errors FROM observation_targets WHERE kind='chart' GROUP BY store,enabled").fetchall()
+    for row in value['chart_states']:
+        for key in ('targets','observed','errors'):row[key]=int(row[key] or 0)
     return value

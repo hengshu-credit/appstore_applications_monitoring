@@ -151,7 +151,8 @@ def _worker_loop(cfg, role, stop):
             if result['processed']:
                 log.info('Collection batch %s %s',worker_id,result)
         except Exception as exc:
-            log.error('Collection batch failed: %s',type(exc).__name__)
+            code=exc.args[0] if exc.args and isinstance(exc.args[0],int) else '-'
+            log.error('Collection batch failed: %s code=%s',type(exc).__name__,code)
         finally:
             if db is not None:
                 db.close()
