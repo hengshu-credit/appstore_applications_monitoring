@@ -4,6 +4,18 @@
   grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
+.global-board-grid[data-layout="columns"] {
+  display: block;
+  column-width: 620px;
+  column-gap: 16px;
+}
+.global-board-grid[data-layout="columns"] > .global-country {
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 16px;
+  break-inside: avoid;
+  vertical-align: top;
+}
 .global-board-grid[data-layout="columns"] .global-lists {
   grid-template-columns: none;
   grid-auto-flow: column;
@@ -42,11 +54,19 @@
   line-height: 18px;
   font-weight: 500;
 }
+.global-board-grid[data-layout="columns"] .global-chart-head span:last-child {
+  text-align: center;
+}
 .global-board-grid[data-layout="columns"] .global-ranked-app {
   padding-block: 8px;
 }
 .global-board-grid[data-layout="columns"] .global-ranked-app:last-child {
   border-bottom: 0;
+}
+.global-board-grid[data-layout="columns"] .global-chart-empty {
+  min-height: calc(var(--chart-display-depth, 20) * 64px);
+  justify-content: flex-start;
+  padding-top: 24px;
 }
 .global-country {
   min-width: 0;
