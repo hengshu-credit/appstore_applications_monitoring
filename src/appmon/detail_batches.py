@@ -3,7 +3,7 @@ import time
 from .db import claim_details
 from .ingest import disk_check
 from .stores import FetchError,CollectionDeferred
-from .task_logs import Execution, BatchProgress
+from .task_logs import Execution, BatchProgress,start_batch
 from .collection_batch import persist_batch
 
 
@@ -51,8 +51,7 @@ def work_details(cfg, db, limit, client, *, watchlist=False, managed=False, max_
                 raise CollectionDeferred('批次内任务已暂停或租约已替换，等待重新组批',1)
         client.progress,client.request_guard = progress,guard
         try:
-            for job, task_log in zip(jobs,logs):
-                task_log.write('started',f"开始采集：{job['store']} / {job['app_id']} / {job['country']}；本批 {len(jobs)} 个应用")
+            start_batch(logs,[f"开始采集：{job['store']} / {job['app_id']} / {job['country']}；本批 {len(jobs)} 个应用" for job in jobs])
             try:
                 guard()
                 from .collection_batch import can_batch

@@ -4,7 +4,7 @@ import uuid
 from .collection_limits import blocked
 from .ingest import disk_check
 from .stores import FetchError,CollectionDeferred
-from .task_logs import Execution, BatchProgress
+from .task_logs import Execution, BatchProgress,start_batch
 from .collection_batch import can_batch, retry_condition, NETWORK_ERRORS, persist_batch
 
 
@@ -85,8 +85,7 @@ def work_targets(cfg, db, limit, client, *, table, resource, single, multiple, s
         progress=BatchProgress(logs)
         client.request_guard,client.progress=guard,progress
         try:
-            for row,task_log in zip(rows,logs):
-                task_log.write('started',f"开始采集：{row['store']} / {row['country']} / {row['language']}；本批 {len(rows)} 个目标")
+            start_batch(logs,[f"开始采集：{row['store']} / {row['country']} / {row['language']}；本批 {len(rows)} 个目标" for row in rows])
             try:
                 guard()
                 batched=len(rows)>1 or rows[0]['store']=='google' and (table=='app_permission_targets' or can_batch(rows[0]))

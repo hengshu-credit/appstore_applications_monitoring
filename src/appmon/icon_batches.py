@@ -6,7 +6,7 @@ import uuid
 from .stores import Client, FetchError, CollectionDeferred
 from .collection_batch import can_batch, retry_condition, NETWORK_ERRORS, persist_batch
 from .collection_limits import blocked
-from .task_logs import Execution, BatchProgress
+from .task_logs import Execution, BatchProgress,start_batch
 from .ingest import disk_check
 
 
@@ -106,8 +106,7 @@ def work(cfg,db,limit=5,client=None,max_requests=None):
             client.request_guard,client.progress=guard,progress
             client.lineage_batch_key=rows[0]['token'];client.lineage_tasks=len(rows)
             try:
-                with db:
-                    for log in logs:log.write('started',f'批量{"补齐图标地址" if metadata else "下载相同图标"}；{len(rows)} 个任务')
+                start_batch(logs,[f'批量{"补齐图标地址" if metadata else "下载相同图标"}；{len(rows)} 个任务']*len(logs))
                 try:
                     guard();requests+=1
                     if metadata:
