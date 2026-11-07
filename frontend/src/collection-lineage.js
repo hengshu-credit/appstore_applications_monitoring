@@ -81,7 +81,7 @@ export function createCollectionLineage(ctx) {
     const metric = (label, value) =>
       `<span>${label} <b>${num(value)}</b></span>`;
     const queues = data.nodes.filter((n) => n.stage === 1 && n.kind);
-    host.innerHTML = `<div class="lineage-canvas"><details class="lineage-filters"><summary>筛选与定位</summary><div class="lineage-toolbar"><label>观察窗口<select data-lineage-hours>${[
+    host.innerHTML = `<div class="lineage-canvas"><div class="lineage-canvas-tools" role="toolbar" aria-label="血缘图筛选与画布操作"><div class="lineage-toolbar" role="group" aria-label="筛选与定位"><label>观察窗口<select data-lineage-hours>${[
       [1, "近 1 小时"],
       [24, "近 24 小时"],
       [168, "近 7 天"],
@@ -101,7 +101,9 @@ export function createCollectionLineage(ctx) {
         ([v, n]) =>
           `<option value="${v}" ${direction === v ? "selected" : ""}>${n}</option>`,
       )
-      .join("")}</select></label></div></details>
+      .join(
+        "",
+      )}</select></label></div><button class="secondary" data-lineage-refresh>刷新</button><div class="lineage-zoom"><button class="secondary" data-zoom="out" aria-label="缩小血缘图">−</button><output data-zoom-label>100%</output><button class="secondary" data-zoom="in" aria-label="放大血缘图">＋</button><button class="secondary" data-zoom="fit">适配全图</button><button class="secondary" data-zoom="reset" title="恢复初始缩放和位置">恢复初始</button></div><button class="secondary" data-lineage-clear>全部关系</button><button class="secondary" data-lineage-flow aria-pressed="true">暂停流动</button></div>
       <div class="lineage-caption"><div class="lineage-summary"><span>${data.store === "all" ? "全部商店" : data.store === "apple" ? "App Store" : "Google Play"} · 全部国家 / 语言</span>${metric(
         "共享任务",
         queues.reduce((n, q) => n + q.value, 0),
@@ -110,7 +112,7 @@ export function createCollectionLineage(ctx) {
         queues.reduce((n, q) => n + q.eligible, 0),
       )}${metric("活跃消费者", data.workers.length)}<span>${data.paused ? "请求已全局暂停" : "共享限速已启用"}</span><span>快照 ${esc(stamp(data.at))}</span></div>
       <details class="lineage-notes"><summary>统计说明 · 拖动画布平移，Ctrl / ⌘ + 滚轮缩放</summary>${data.notes.map((note) => `<p>${esc(note)}</p>`).join("")}<p>请求统计起点 ${data.http_since ? esc(stamp(data.http_since)) : "首次采集请求后建立"} · 队列快照缓存最多 60 秒</p></details></div>
-      <div class="lineage-canvas-tools" role="toolbar" aria-label="画布操作"><button class="secondary" data-lineage-refresh>刷新</button><div class="lineage-zoom"><button class="secondary" data-zoom="out" aria-label="缩小血缘图">−</button><output data-zoom-label>100%</output><button class="secondary" data-zoom="in" aria-label="放大血缘图">＋</button><button class="secondary" data-zoom="fit">适配全图</button><button class="secondary" data-zoom="reset" title="恢复初始缩放和位置">恢复初始</button></div><button class="secondary" data-lineage-clear>全部关系</button><button class="secondary" data-lineage-flow aria-pressed="true">暂停流动</button></div><div class="lineage-viewport" tabindex="0" aria-label="采集血缘画布，可拖动、滚轮或方向键平移"><div class="lineage-world is-flowing"><svg class="lineage-edges" width="${width}" height="${height}" aria-hidden="true"><defs><marker id="lineage-arrow" viewBox="0 0 6 6" refX="5" refY="3" markerUnits="userSpaceOnUse" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 6 3 L 0 6 z"/></marker></defs>${data.edges
+      <div class="lineage-viewport" tabindex="0" aria-label="采集血缘画布，可拖动、滚轮或方向键平移"><div class="lineage-world is-flowing"><svg class="lineage-edges" width="${width}" height="${height}" aria-hidden="true"><defs><marker id="lineage-arrow" viewBox="0 0 6 6" refX="5" refY="3" markerUnits="userSpaceOnUse" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 6 3 L 0 6 z"/></marker></defs>${data.edges
         .map((edge, index) => {
           const a = positions.get(edge.source),
             b = positions.get(edge.target);
@@ -274,7 +276,7 @@ export function createCollectionLineage(ctx) {
       const neighbors = data.edges.filter(
         (e) => e.source === node.id || e.target === node.id,
       );
-      panel.innerHTML = `<div class="lineage-inspector-heading"><h3>${esc(node.label)}</h3><button class="secondary" data-lineage-close aria-label="关闭节点详情">×</button></div><p>${esc(node.note || "")}</p><dl>${details
+      panel.innerHTML = `<div class="lineage-inspector-heading"><h3>${esc(node.label)}</h3><button type="button" class="lineage-inspector-close" data-lineage-close aria-label="关闭节点详情" title="关闭节点详情"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div><p>${esc(node.note || "")}</p><dl>${details
         .filter(([, v]) => v != null)
         .map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`)
         .join("")}</dl>${

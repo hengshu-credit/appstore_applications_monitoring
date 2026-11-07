@@ -40,7 +40,6 @@ body:has(#collection-lineage) .workspace-intro {
   border: 1px solid var(--line);
   background: var(--surface);
 }
-.lineage-filters,
 .lineage-caption,
 .lineage-canvas-tools,
 .lineage-inspector {
@@ -51,14 +50,6 @@ body:has(#collection-lineage) .workspace-intro {
   box-shadow: 0 3px 16px var(--shadow);
   backdrop-filter: blur(8px);
 }
-.lineage-filters {
-  top: 64px;
-  left: 12px;
-  max-width: calc(100% - 24px);
-  padding: 8px 12px;
-  font-size: 12px;
-}
-.lineage-filters summary,
 .lineage-notes summary {
   cursor: pointer;
   color: var(--ink);
@@ -66,18 +57,27 @@ body:has(#collection-lineage) .workspace-intro {
 .lineage-toolbar {
   display: flex;
   gap: 12px;
-  align-items: end;
-  flex-wrap: wrap;
-  margin: 12px 0 0;
+  align-items: center;
+  padding-right: 12px;
+  margin-right: 4px;
+  border-right: 1px solid var(--line);
 }
 .lineage-toolbar input {
-  width: 190px;
+  width: 180px;
   max-width: 100%;
 }
 .lineage-toolbar label {
   font-size: 12px;
-  display: grid;
-  gap: 4px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+.lineage-toolbar label:first-child > :is(select, .select-control) {
+  width: 110px;
+}
+.lineage-toolbar label:last-child > :is(select, .select-control) {
+  width: 84px;
 }
 .lineage-zoom {
   display: flex;
@@ -222,7 +222,7 @@ body:has(#collection-lineage) .workspace-intro {
   opacity: 0.32;
 }
 .lineage-inspector {
-  top: 64px;
+  top: 76px;
   right: 12px;
   width: 300px;
   max-width: calc(100% - 24px);
@@ -238,19 +238,39 @@ body:has(#collection-lineage) .workspace-intro {
 .lineage-inspector-heading {
   display: flex;
   justify-content: space-between;
-  align-items: start;
+  align-items: center;
   gap: 12px;
 }
-.lineage-inspector-heading button {
+.lineage-inspector-close {
   flex: none;
-  min-height: 28px !important;
-  height: 28px !important;
-  width: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px !important;
+  height: 32px !important;
+  width: 32px;
   padding: 0;
-  font-size: 18px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+}
+.lineage-inspector-close:hover,
+.lineage-inspector-close:focus-visible {
+  border-color: var(--line);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  filter: none;
+}
+.lineage-inspector-close svg {
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
 }
 .lineage-inspector h3 {
-  margin-top: 0;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
   font-size: 16px;
 }
 .lineage-inspector h4 {
@@ -319,8 +339,9 @@ body:has(#collection-lineage) .workspace-intro {
   top: 12px;
   left: 50%;
   transform: translateX(-50%);
+  width: max-content;
   max-width: calc(100% - 24px);
-  padding: 4px;
+  padding: 6px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -330,10 +351,14 @@ body:has(#collection-lineage) .workspace-intro {
   z-index: 4;
 }
 .lineage-canvas-tools > *,
-.lineage-canvas-tools button {
+.lineage-canvas-tools button,
+.lineage-canvas-tools input,
+.lineage-canvas-tools select {
   flex-shrink: 0;
 }
-.lineage-canvas-tools button {
+.lineage-canvas-tools button,
+.lineage-canvas-tools input,
+.lineage-canvas-tools select {
   min-height: 32px !important;
   height: 32px !important;
   padding: 0 9px;
