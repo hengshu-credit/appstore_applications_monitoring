@@ -146,12 +146,18 @@ class CollectionDepthPersistenceTest(MySQLTestCase):
     def test_page_failure_preserves_the_previous_complete_review_snapshot(self):
         target=dict(kind='reviews',store='google',country='us',language='en',app_id='com.example.app',depth=100)
         identifier=add_observation_target(self.db,target)['id'];client=ObservationClient(self.cfg,self.db)
-        with patch.object(client,'rpc',return_value=response([['UsvDTd','',None,'0']],[[review_rows(0,100),[None,'more']]])):
+        # Single eligible Google targets now use the same batch transport as
+        # multiple targets. Mock HTTP at their shared boundary, never live Play.
+        with patch.object(client,'request',return_value=response([['UsvDTd','',None,'0']],[[review_rows(0,100),[None,'more']]])) as http:
             self.assertEqual(work_observations(self.cfg,self.db,1,client)['ok'],1)
+            self.assertEqual(http.call_count,1)
         success=self.db.execute('SELECT latest_success_id FROM observation_targets').fetchone()['latest_success_id']
         self.db.execute('UPDATE observation_targets SET due=0')
-        with patch.object(client,'rpc',side_effect=[response([['UsvDTd','',None,'0']],[[review_rows(100,130),[None,'next']]]),FetchError('HTTP 503',900)]):
+        with patch.object(client,'request',side_effect=[response([['UsvDTd','',None,'0']],[[review_rows(100,130),[None,'next']]]),FetchError('HTTP 503',900)]) as http:
             self.assertEqual(work_observations(self.cfg,self.db,1,client)['error'],1)
+            self.assertEqual(http.call_count,2)
+            calls=json.loads(http.call_args_list[1].kwargs['data']['f.req'])[0]
+            self.assertEqual(json.loads(calls[0][1])[2][2],[70,None,'next'])
         self.assertEqual(self.db.execute('SELECT latest_success_id FROM observation_targets').fetchone()['latest_success_id'],success)
         self.assertEqual(self.db.execute('SELECT count(*) n FROM reviews').fetchone()['n'],100)
         self.assertEqual(self.db.execute("SELECT count(*) n FROM observation_runs WHERE outcome='error'").fetchone()['n'],1)

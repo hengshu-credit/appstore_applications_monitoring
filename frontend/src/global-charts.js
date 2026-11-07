@@ -26,7 +26,7 @@ export function createGlobalCharts(ctx) {
       category: "",
       as_of: "",
       depth: "10",
-      layout: "countries",
+      layout: "rows",
     },
     offset = 0,
     lastStore = "";
@@ -35,6 +35,8 @@ export function createGlobalCharts(ctx) {
       Object.entries(o).filter(([, v]) => v !== "" && v != null),
     ).toString();
   const defaults = { ...filters };
+  const normalizeLayout = (value) =>
+    value === "columns" || value === "compare" ? "columns" : "rows";
   const validDate = (value) =>
     !value ||
     (/^\d{4}-\d{2}-\d{2}$/.test(value) &&
@@ -84,9 +86,7 @@ export function createGlobalCharts(ctx) {
           as_of:
             typeof v.as_of === "string" && validDate(v.as_of) ? v.as_of : "",
           depth: ["10", "20", "50"].includes(v.depth) ? v.depth : "10",
-          layout: ["countries", "compare"].includes(v.layout)
-            ? v.layout
-            : "countries",
+          layout: normalizeLayout(v.layout),
         };
       }
     } catch {}
@@ -173,7 +173,7 @@ export function createGlobalCharts(ctx) {
     const cards = data.countries
       .map(
         (c) =>
-          `<section class="panel global-country"><div class="panel-heading"><h2>${esc(c.name)} <span class="sub">${esc(c.country.toUpperCase())}${store === "all" ? " · " + storeName(c) : ""}</span></h2><span class="sub">${esc(c.language)}</span></div><div class="global-lists" role="region" aria-label="${esc(c.name)}排行榜，横向滚动" tabindex="0">${c.boards
+          `<section class="panel global-country"><div class="panel-heading"><h2>${esc(c.name)} <span class="sub">${esc(c.country.toUpperCase())}${store === "all" ? " · " + storeName(c) : ""}</span></h2><span class="sub">${esc(c.language)}</span></div><div class="global-lists" role="region" aria-label="${esc(c.name)}排行榜" tabindex="0">${c.boards
             .map(
               (b) =>
                 `<section class="global-chart"><h3>${boardTitle(c, b, b.definition.name + (b.definition.mode === "derived" ? "（派生）" : ""))}</h3>${boardMeta(b)}${table(
@@ -193,34 +193,6 @@ export function createGlobalCharts(ctx) {
             )
             .join("")}</div></section>`,
       )
-      .join("");
-    const comparisons = [...types]
-      .map((kind) => {
-        const definition = definitions.find((d) => d.id === kind);
-        return panel(
-          esc(definition?.name || kind),
-          `<div class="global-compare-scroll"><div class="global-compare-grid">${data.countries
-            .map((c) => {
-              const board = c.boards.find((b) => b.collection === kind);
-              if (!board) return "";
-              return `<section class="global-chart"><h3>${boardTitle(c, board, `${c.name} (${c.country.toUpperCase()})${store === "all" ? " · " + storeName(c) : ""}`)}</h3>${boardMeta(board)}${table(
-                ["名次", "应用"],
-                board.items.map((r) => [
-                  r.position,
-                  appLink(
-                    c.store || store,
-                    r.app_id,
-                    r.name,
-                    r.icon,
-                    c.country,
-                    c.language,
-                  ),
-                ]),
-              )}${more(c, board)}</section>`;
-            })
-            .join("")}</div></div>`,
-        );
-      })
       .join("");
     if (
       !mount(
@@ -252,8 +224,8 @@ export function createGlobalCharts(ctx) {
               label: "布局",
               name: "layout",
               options: [
-                ["countries", "按国家分组"],
-                ["compare", "按榜种横向对比"],
+                ["rows", "按行显示（每国一行）"],
+                ["columns", "按列显示（每国一列）"],
               ],
             },
           ],
@@ -268,7 +240,7 @@ export function createGlobalCharts(ctx) {
           hasMore: data.has_more,
           prevId: "global-prev",
           nextId: "global-next",
-        })}<a class="button secondary" href="#collection">查看采集进度</a><div id="global-rankings">${filters.layout === "compare" ? comparisons : `<div class="global-board-grid">${cards}</div>`}</div>`,
+        })}<a class="button secondary" href="#collection">查看采集进度</a><div id="global-rankings"><div class="global-board-grid" data-layout="${filters.layout}" role="region" aria-label="各国排行榜" tabindex="0">${cards}</div></div>`,
         rev,
         `各国独立排名 · 本页有效 ${data.fresh_boards}/${data.requested_boards} 榜，已观察 ${data.observed_boards} 榜`,
       )
@@ -333,6 +305,15 @@ export function createGlobalCharts(ctx) {
     };
     $("#global-chart-form").addEventListener("change", invalidatePreview);
     $("#global-chart-form").addEventListener("input", invalidatePreview);
+    $("#global-chart-form").elements.layout.addEventListener(
+      "change",
+      (event) => {
+        filters.layout = normalizeLayout(event.target.value);
+        $("#global-rankings .global-board-grid").dataset.layout =
+          filters.layout;
+        persist(store);
+      },
+    );
     const countryTrigger = $("#global-countries-trigger");
     countryTrigger.onclick = () =>
       selectors

@@ -1,7 +1,23 @@
 .global-board-grid {
   display: grid;
+  max-width: 100%;
   grid-template-columns: minmax(0, 1fr);
   gap: 16px;
+}
+.global-board-grid[data-layout="columns"] {
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(300px, 1fr);
+  align-items: start;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding-bottom: 8px;
+}
+.global-board-grid[data-layout="columns"] .global-lists {
+  grid-auto-flow: row;
+  grid-auto-columns: auto;
+  grid-template-columns: minmax(0, 1fr);
+  overflow-x: visible;
 }
 .global-country {
   min-width: 0;
@@ -50,7 +66,8 @@
   overscroll-behavior-x: contain;
   padding-bottom: 8px;
 }
-.global-lists:focus-visible {
+.global-lists:focus-visible,
+.global-board-grid:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -242,17 +259,4 @@
 }
 .filter-popover[hidden] {
   display: none;
-}
-.global-compare-scroll {
-  max-width: 100%;
-  overflow-x: auto;
-}
-.global-compare-grid {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(240px, 1fr);
-  gap: 14px;
-}
-.global-compare-grid .global-chart {
-  min-width: 240px;
 }

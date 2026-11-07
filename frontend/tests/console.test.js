@@ -1588,6 +1588,49 @@ test("global rankings show countries and multiple chart kinds together and previ
         '[data-app="com.example.app"][data-country="jp"][data-language="ja"]',
       ),
     );
+    const layoutForm = window.document.querySelector("#global-chart-form");
+    const grid = window.document.querySelector(".global-board-grid");
+    assert.equal(grid.dataset.layout, "rows");
+    assert.deepEqual(
+      [...layoutForm.elements.layout.options].map((o) => [
+        o.value,
+        o.textContent,
+      ]),
+      [
+        ["rows", "按行显示（每国一行）"],
+        ["columns", "按列显示（每国一列）"],
+      ],
+    );
+    const countryNodes = [...grid.querySelectorAll(".global-country")];
+    const originalLinks = [...grid.querySelectorAll(".chart-title-link")].map(
+      (el) => el.href,
+    );
+    layoutForm.elements.depth.value = "20";
+    layoutForm.elements.layout.value = "columns";
+    layoutForm.elements.layout.dispatchEvent(
+      new window.Event("change", { bubbles: true }),
+    );
+    assert.equal(grid.dataset.layout, "columns");
+    assert.equal(layoutForm.elements.depth.value, "20");
+    assert.deepEqual(
+      [...grid.querySelectorAll(".global-country")],
+      countryNodes,
+    );
+    assert.deepEqual(
+      [...grid.querySelectorAll(".chart-title-link")].map((el) => el.href),
+      originalLinks,
+    );
+    assert.equal(
+      JSON.parse(window.localStorage.getItem("appmon-global-chart-filters"))
+        .google.layout,
+      "columns",
+    );
+    layoutForm.elements.layout.value = "rows";
+    layoutForm.elements.layout.dispatchEvent(
+      new window.Event("change", { bubbles: true }),
+    );
+    assert.equal(grid.dataset.layout, "rows");
+    assert.equal(window.document.querySelectorAll(".global-chart").length, 4);
     window.document.querySelector("#global-configure").click();
     await tick();
     assert.equal(plan.countries, "us,jp");
@@ -1975,6 +2018,66 @@ const emptyGlobalBoard = () => ({
   countries: [],
   note: "暂无观察",
   available_countries: [{ code: "us", name: "美国", english: "United States" }],
+});
+
+test("global row and column layouts migrate old preferences and persist per store through refresh and reset", async () => {
+  const { window, calls } = await setup((path) =>
+    path.startsWith("/api/charts/global?") ? emptyGlobalBoard() : undefined,
+  );
+  try {
+    window.localStorage.setItem(
+      "appmon-global-chart-filters",
+      JSON.stringify({
+        google: { layout: "compare" },
+        apple: { layout: "countries" },
+      }),
+    );
+    window.location.hash = "globalcharts";
+    await tick();
+    const layout = () =>
+      window.document.querySelector(".global-board-grid").dataset.layout;
+    assert.equal(layout(), "columns");
+    const count = () =>
+      calls.filter((c) => c.path.startsWith("/api/charts/global?")).length;
+    const before = count();
+    const select = window.document.querySelector('[name="layout"]');
+    select.value = "rows";
+    select.dispatchEvent(new window.Event("change", { bubbles: true }));
+    select.value = "columns";
+    select.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await tick();
+    assert.equal(
+      count(),
+      before,
+      "orientation changes reuse the displayed observations",
+    );
+    window.document.querySelector("#refresh-page").click();
+    await tick();
+    assert.equal(layout(), "columns");
+    const switchStore = async (store) => {
+      window.document.querySelector("#global-store").value = store;
+      window.document
+        .querySelector("#global-store")
+        .dispatchEvent(new window.Event("change"));
+      await tick();
+    };
+    await switchStore("apple");
+    assert.equal(layout(), "rows");
+    await switchStore("google");
+    assert.equal(layout(), "columns");
+    window.document
+      .querySelector('#global-chart-form [data-filter-reset-button]')
+      .click();
+    await tick();
+    assert.equal(layout(), "rows");
+    assert.equal(
+      JSON.parse(window.localStorage.getItem("appmon-global-chart-filters"))
+        .google.layout,
+      "rows",
+    );
+  } finally {
+    await window.happyDOM.close();
+  }
 });
 test("global filters recover invalid saved values and reject future dates without poisoning refresh", async () => {
   const { window, calls } = await setup((path) =>
