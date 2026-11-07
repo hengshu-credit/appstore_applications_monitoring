@@ -6,37 +6,42 @@ import uuid
 from .stores import Client, FetchError, CollectionDeferred
 from .collection_batch import can_batch, retry_condition, NETWORK_ERRORS, write_batch
 from .collection_limits import blocked
-from .task_logs import Execution
+from .task_logs import Execution, BatchProgress
 from .ingest import disk_check
 
 
 def claim(db,cfg,limit,client):
     from .app_icons import source_url
     now=time.time();token=uuid.uuid4().hex
-    from .storage_policy import media_predicate
-    scope=' AND '+media_predicate('app_icons') if cfg.get('media_scope','all')!='all' else ''
+    from .storage_policy import media_scope_apps
+    source='app_icons i'
+    if cfg.get('media_scope','all')!='all':
+        source+=' JOIN ('+media_scope_apps()+') scope ON scope.store=i.store AND scope.app_id=i.app_id'
+    ready='i.requested=1 AND i.enabled=1 AND i.due<=%s AND i.lease_until<=%s'
+    # Resolve scope outside the locking transaction. A slow membership scan
+    # must never hold icon locks needed by detail writes or Top50 expansion.
+    first=db.execute('SELECT i.* FROM '+source+' WHERE '+ready+' ORDER BY i.due,i.id LIMIT 1',(now,now)).fetchone()
+    if not first:return []
+    url=source_url(first['source_url'])
+    if url:
+        condition='i.source_url=%s AND i.store=%s';args=[first['source_url'],first['store']];capacity=limit
+    else:
+        condition="(i.source_url IS NULL OR i.source_url='' OR (i.id=%s AND i.source_url<=>%s)) AND i.store=%s AND i.country=%s AND i.language=%s AND (i.id=%s OR "+retry_condition('i.')+")"
+        args=[first['id'],first['source_url'],first['store'],first['country'],first['language'],first['id'],NETWORK_ERRORS]
+        capacity=min(limit,cfg.get('apple_lookup_batch_size',50) if first['store']=='apple' else cfg.get('google_rpc_batch_size',20))
+        if not can_batch(first) or not callable(getattr(client,'fetch_many',None)):capacity=1
+    ids=[first['id']]
+    if capacity>1:
+        ids += [r['id'] for r in db.execute('SELECT i.id FROM '+source+' WHERE '+ready+' AND i.id<>%s AND '+condition+
+            ' ORDER BY i.due,i.id LIMIT %s',(now,now,first['id'],*args,capacity-1)).fetchall()]
     with db:
-        db.execute("INSERT INTO schedules VALUES('claim:icons',0) ON DUPLICATE KEY UPDATE name=schedules.name")
-        first=db.execute('''SELECT * FROM app_icons WHERE requested=1 AND enabled=1 AND due<=%s AND lease_until<=%s'''+scope+
-            ' ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED',(now,now)).fetchone()
-        if not first:return []
-        url=source_url(first['source_url'])
-        if url:
-            condition='source_url=%s AND store=%s';args=[first['source_url'],first['store']]
-            capacity=limit
-        else:
-            condition="(source_url IS NULL OR source_url='') AND store=%s AND country=%s AND language=%s AND "+retry_condition()
-            args=[first['store'],first['country'],first['language'],NETWORK_ERRORS]
-            capacity=min(limit,cfg.get('apple_lookup_batch_size',50) if first['store']=='apple' else cfg.get('google_rpc_batch_size',20))
-            if not can_batch(first) or not callable(getattr(client,'fetch_many',None)):capacity=1
-        rows=[first]
-        if capacity>1:
-            rows+=list(db.execute('''SELECT * FROM app_icons WHERE requested=1 AND enabled=1 AND due<=%s AND lease_until<=%s
-                AND id<>%s AND '''+condition+scope+' ORDER BY due,id LIMIT %s FOR UPDATE SKIP LOCKED',
-                (now,now,first['id'],*args,capacity-1)).fetchall())
-        for row in rows:
-            db.execute("UPDATE app_icons SET token=%s,lease_until=%s,status='running' WHERE id=%s",(token,now+max(600,cfg['lease_seconds']),row['id']))
-            row['token']=token
+        rows=list(db.execute('SELECT i.* FROM app_icons i WHERE i.id IN ('+','.join('%s' for _ in ids)+') AND '+ready+
+            ' AND '+condition+' ORDER BY i.id FOR UPDATE SKIP LOCKED',(*ids,time.time(),time.time(),*args)).fetchall())
+        if not rows:return []
+        selected=[r['id'] for r in rows]
+        db.execute("UPDATE app_icons SET token=%s,lease_until=%s,status='running' WHERE id IN ("+','.join('%s' for _ in selected)+')',
+            (token,time.time()+max(600,cfg['lease_seconds']),*selected))
+        for row in rows:row['token']=token
         from .collection_batch import touch
         touch(db)
     from .collection_lineage import record_dispatch
@@ -44,13 +49,18 @@ def claim(db,cfg,limit,client):
     return rows
 
 
-def download(cfg,db,client,row,started,max_bytes=None):
+def download(cfg,db,client,row,started,max_bytes=None,max_age_seconds=None,force=False):
     from .app_icons import source_url, cached_path, media_type, MAX_BYTES
     MAX_BYTES=max_bytes or MAX_BYTES
     url=source_url(row['source_url']);key=hashlib.sha256(url.encode()).hexdigest()
     with db.named_lock('icon-download:'+key,timeout=120):
         cached=db.execute('SELECT * FROM icon_downloads WHERE url_hash=%s',(key,)).fetchone()
-        if cached and cached['source_url']==url and cached['fetched_at']>=started and cached_path(cfg,cached):
+        age=max(0,max_age_seconds if max_age_seconds is not None else row.get('refresh_hours',0)*3600)
+        force=force or (row.get('checked_at') is not None and row.get('due',0)<=0)
+        required=max(started if force else started-age,time.time()-age)
+        path=cached_path(cfg,cached) if cached and cached['source_url']==url and cached['fetched_at']>=required else None
+        if path and path.stat().st_size<=MAX_BYTES:
+            if getattr(client,'progress',None):client.progress('cache_hit','复用有效期内的共享图片；保留原获取时间')
             return cached
         with client.request(row['store'],'GET',url,stream=True,allow_redirects=False) as response:
             if response.status_code!=200:raise FetchError('图标下载失败')
@@ -92,9 +102,7 @@ def work(cfg,db,limit=5,client=None,max_requests=None):
                 active=db.execute('SELECT COUNT(*) n FROM app_icons WHERE token=%s AND enabled=1 AND lease_until>%s',
                     (rows[0]['token'],time.time())).fetchone()['n']
                 if active==0 or metadata and active!=len(rows):raise CollectionDeferred('图标批次已暂停或租约失效，等待重新组批',1)
-            def progress(event,message):
-                with db:
-                    for log in logs:log.write(event,message)
+            progress=BatchProgress(logs)
             client.request_guard,client.progress=guard,progress
             client.lineage_batch_key=rows[0]['token'];client.lineage_tasks=len(rows)
             try:
@@ -107,7 +115,9 @@ def work(cfg,db,limit=5,client=None,max_requests=None):
                         results=client.fetch_many(rows) if batch else [client.fetch(rows[0])]
                         if len(results)!=len(rows):raise FetchError('图标详情批次结果数量异常')
                     else:
-                        result=download(cfg,db,client,rows[0],started)
+                        result=download(cfg,db,client,rows[0],started,
+                            max_age_seconds=min(r['refresh_hours']*3600 for r in rows),
+                            force=any(r.get('checked_at') is not None and r['due']<=0 for r in rows))
                         results=[result]*len(rows)
                 except (FetchError,ValueError,OSError,RuntimeError) as exc:results=[exc]*len(rows)
                 with write_batch(db) as writer:

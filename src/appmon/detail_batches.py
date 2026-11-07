@@ -3,7 +3,7 @@ import time
 from .db import claim_details
 from .ingest import disk_check
 from .stores import FetchError,CollectionDeferred
-from .task_logs import Execution
+from .task_logs import Execution, BatchProgress
 from .collection_batch import write_batch
 
 
@@ -33,9 +33,7 @@ def work_details(cfg, db, limit, client, *, watchlist=False, managed=False, max_
         client.lineage_batch_key=jobs[0]['token']
         client.lineage_tasks=len(jobs)
         old_progress, old_guard = getattr(client,'progress',None),getattr(client,'request_guard',None)
-        def progress(event,message):
-            for task_log in logs:
-                task_log.write(event,message)
+        progress=BatchProgress(logs)
         def guard():
             if old_guard:
                 old_guard()

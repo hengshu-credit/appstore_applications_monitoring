@@ -8,6 +8,14 @@ def focused(db,store,app_id):
     return bool(app_id and db.execute('SELECT 1 FROM app_group_members WHERE store=%s AND app_id=%s LIMIT 1',(store,app_id)).fetchone())
 
 
+def media_scope_apps():
+    """One materialized identity set; never correlate every queued icon to every chart."""
+    return '''SELECT store,app_id FROM app_group_members UNION
+        SELECT t.store,o.item_id app_id FROM observation_targets t
+        JOIN observation_items o ON o.run_id=t.latest_success_id
+        WHERE t.kind='chart' AND t.latest_success_id IS NOT NULL AND o.position<=50'''
+
+
 def media_predicate(alias='i'):
     return f'''(EXISTS(SELECT 1 FROM app_group_members g WHERE g.store={alias}.store AND g.app_id={alias}.app_id)
         OR EXISTS(SELECT 1 FROM observation_targets t JOIN observation_items o ON o.run_id=t.latest_success_id

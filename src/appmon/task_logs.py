@@ -40,6 +40,26 @@ class Execution:
                    diagnostics(error,duration_seconds=round(elapsed,2)) if error else None)
 
 
+class BatchProgress:
+    """One progress row per displayed task, with bounded wait sampling."""
+    def __init__(self, logs, wait_interval=30):
+        self.logs=list({(log.resource,str(log.identifier)):log for log in logs}.values())
+        self.wait_interval=wait_interval
+        self.last_wait=None
+        self.wait_checks=0
+
+    def __call__(self,event,message):
+        if event=='rate_wait':
+            self.wait_checks+=1
+            now=time.monotonic()
+            if self.last_wait is not None and now-self.last_wait<self.wait_interval:return
+            self.last_wait=now
+        if not self.logs:return
+        with self.logs[0].db:
+            for log in self.logs:
+                log.write(event,message,details={'wait_checks':self.wait_checks} if event=='rate_wait' else None)
+
+
 @contextmanager
 def execution(db, client, resource, identifier, label):
     log = Execution(db,resource,identifier)

@@ -93,9 +93,13 @@ def work(cfg,db,client):
     from .task_logs import Execution
     if blocked(db,cfg):return {'processed':0}
     now=time.time();token=uuid.uuid4().hex
+    # Scope joins are nonlocking; only the chosen asset is locked and rechecked.
+    candidate=db.execute('SELECT a.id FROM app_media_assets a WHERE a.enabled=1 AND a.due<=%s AND a.lease_until<=%s AND '+active_predicate()+
+        ' ORDER BY a.due,a.id LIMIT 1',(now,now)).fetchone()
+    if not candidate:return {'processed':0}
     with db:
-        row=db.execute('SELECT a.* FROM app_media_assets a WHERE a.enabled=1 AND a.due<=%s AND a.lease_until<=%s AND '+active_predicate()+
-            ' ORDER BY a.due,a.id LIMIT 1 FOR UPDATE SKIP LOCKED',(now,now)).fetchone()
+        row=db.execute('SELECT * FROM app_media_assets WHERE id=%s AND enabled=1 AND due<=%s AND lease_until<=%s FOR UPDATE SKIP LOCKED',
+            (candidate['id'],now,now)).fetchone()
         if not row:return {'processed':0}
         db.execute('UPDATE app_media_assets SET token=%s,lease_until=%s WHERE id=%s',(token,now+600,row['id']))
     row['token']=token;log=Execution(db,'media',row['id']);log.write('started','开始下载共享图片：'+row['label'])

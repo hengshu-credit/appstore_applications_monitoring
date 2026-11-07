@@ -4,7 +4,7 @@ import uuid
 from .collection_limits import blocked
 from .ingest import disk_check
 from .stores import FetchError,CollectionDeferred
-from .task_logs import Execution
+from .task_logs import Execution, BatchProgress
 from .collection_batch import can_batch, retry_condition, NETWORK_ERRORS, write_batch
 
 
@@ -82,9 +82,7 @@ def work_targets(cfg, db, limit, client, *, table, resource, single, multiple, s
                               ','.join('%s' for _ in rows)+')',(rows[0]['token'],time.time(),*[r['id'] for r in rows])).fetchone()['n']
             if active!=len(rows):
                 raise CollectionDeferred('批次任务已暂停或租约已替换，等待重新组批',1)
-        def progress(event,message):
-            for task_log in logs:
-                task_log.write(event,message)
+        progress=BatchProgress(logs)
         client.request_guard,client.progress=guard,progress
         try:
             for row,task_log in zip(rows,logs):
