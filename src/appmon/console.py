@@ -47,6 +47,8 @@ def worker(cfg, db):
             from .collection import work_plans
             ensure_verification_jobs(db)
             work_plans(db,100)
+            from .chart_enrichment import sync as sync_chart_apps
+            sync_chart_apps(db,cfg,20)
             if cfg.get('media_scope')=='groups_and_current_charts':
                 from .db import reserve
                 scheduled=db.execute("SELECT next_at FROM schedules WHERE name='media-scope-sync'").fetchone()

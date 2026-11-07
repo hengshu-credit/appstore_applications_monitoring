@@ -21,7 +21,7 @@ TABLES = {
         lease_until DOUBLE NOT NULL DEFAULT 0, token CHAR(32) CHARACTER SET ascii,
         failures INT NOT NULL DEFAULT 0, last_error TEXT,
         PRIMARY KEY(store,app_id,country,language), INDEX jobs_due(due,lease_until),
-        INDEX jobs_market_due(store,country,language,due,lease_until)''',
+        INDEX jobs_market_due(store,country,language,due,lease_until),INDEX jobs_retry(failures,due,lease_until)''',
     'listings': f'''{APP_KEY}, {REGION}, state VARCHAR(32) NOT NULL, checked_at DOUBLE NOT NULL,
         last_success DOUBLE, misses INT NOT NULL DEFAULT 0, payload LONGTEXT, digest CHAR(64),
         PRIMARY KEY(store,app_id,country,language)''',
@@ -48,7 +48,7 @@ TABLES = {
         failures INT NOT NULL DEFAULT 0, last_error TEXT,
         latest_attempt_id BIGINT, latest_success_id BIGINT, previous_success_id BIGINT,
         UNIQUE KEY keyword_identity(store,country,language,keyword),
-        INDEX keyword_due(enabled,due,lease_until)''',
+        INDEX keyword_due(enabled,due,lease_until),INDEX target_retry(enabled,failures,due,lease_until)''',
     'keyword_runs': '''id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
         target_id BIGINT NOT NULL, observed_at DOUBLE NOT NULL,
         outcome VARCHAR(16) NOT NULL, source VARCHAR(64) NOT NULL,
@@ -144,6 +144,11 @@ def connect(cfg, *, initialize=True, allow_migration=False):
                                        ('collection_logs','log_source_time','resource,created_at'),
                                        ('requests','request_observed','observed_at'),
                                        ('app_icons','icon_source_queue','requested,enabled,source_url(191),due,lease_until'),
+                                       ('jobs','jobs_retry','failures,due,lease_until'),
+                                       ('keyword_targets','target_retry','enabled,failures,due,lease_until'),
+                                       ('observation_targets','target_retry','enabled,failures,due,lease_until'),
+                                       ('observation_targets','observation_latest','kind,latest_success_id,store'),
+                                       ('app_permission_targets','target_retry','enabled,failures,due,lease_until'),
                                        ('keyword_runs','keyword_observed','observed_at'),
                                        ('observation_runs','observation_observed','observed_at'),
                                        ('app_permission_runs','permission_observed','observed_at'),
@@ -253,16 +258,31 @@ def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=Fa
         # Serialize the short claim phase, not HTTP. Different queue indexes can
         # otherwise deadlock when parallel batches update indexed lease values.
         db.execute("INSERT INTO schedules VALUES('claim:details',0) ON DUPLICATE KEY UPDATE name=schedules.name")
-        first = db.execute(f'SELECT {columns} FROM {source} WHERE {where} ORDER BY j.due LIMIT 1 FOR UPDATE SKIP LOCKED',args).fetchone()
+        from .collection_batch import claim_mode
+        mode=claim_mode(db,'claim:details');retry=mode=='retry'
+        first=None
+        if retry:
+            retry_source=source.replace('jobs j','jobs j FORCE INDEX (jobs_retry)')
+            first=db.execute(f'SELECT {columns} FROM {retry_source} WHERE {where} AND j.failures>0 ORDER BY j.due LIMIT 1 FOR UPDATE SKIP LOCKED',args).fetchone()
+        elif mode=='scheduled':
+            first=db.execute(f'SELECT {columns} FROM {source} WHERE {where} AND j.failures=0 AND j.due>0 ORDER BY j.due LIMIT 1 FOR UPDATE SKIP LOCKED',args).fetchone()
+        if not first:
+            retry=False;mode='fresh'
+            first = db.execute(f'SELECT {columns} FROM {source} WHERE {where} ORDER BY j.due LIMIT 1 FOR UPDATE SKIP LOCKED',args).fetchone()
         if not first:
             return []
         jobs = [first]
         batch_limit=min(limit,apple_limit if first['store']=='apple' else google_limit)
         if can_batch(first) and batch_limit>1:
-            jobs += list(db.execute(f'''SELECT {columns} FROM {source} WHERE {where}
-                AND j.store=%s AND j.country=%s AND j.language=%s AND j.app_id<>%s AND {retry_condition('j.')}
-                ORDER BY j.due LIMIT %s FOR UPDATE SKIP LOCKED''',
-                (*args,first['store'],first['country'],first['language'],first['app_id'],NETWORK_ERRORS,batch_limit-1)).fetchall())
+            extras=[' AND j.failures>0',' AND j.failures=0'] if retry else [' AND j.failures=0 AND j.due>0',' AND j.due<=0'] if mode=='scheduled' else ['']
+            for extra in extras:
+                remaining=batch_limit-len(jobs)
+                if not remaining:break
+                fill_source=source.replace('jobs j','jobs j FORCE INDEX (jobs_retry)') if extra==' AND j.failures>0' else source
+                jobs += list(db.execute(f'''SELECT {columns} FROM {fill_source} WHERE {where}
+                    AND j.store=%s AND j.country=%s AND j.language=%s AND j.app_id<>%s AND {retry_condition('j.')}'''+extra+'''
+                    ORDER BY j.due LIMIT %s FOR UPDATE SKIP LOCKED''',
+                    (*args,first['store'],first['country'],first['language'],first['app_id'],NETWORK_ERRORS,remaining)).fetchall())
         token = uuid.uuid4().hex
         db.execute('UPDATE jobs SET token=%s,lease_until=%s WHERE store=%s AND country=%s AND language=%s AND app_id IN ('+
                    ','.join('%s' for _ in jobs)+')',

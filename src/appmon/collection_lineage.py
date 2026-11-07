@@ -191,6 +191,12 @@ def report(db,cfg,store='all',hours=24):
         a.kind,COUNT(*) n FROM collection_plans p JOIN JSON_TABLE(p.actions,'$[*]' COLUMNS(kind VARCHAR(24) PATH '$.kind',store VARCHAR(16) PATH '$.value.store')) a
         WHERE p.created_at BETWEEN %s AND %s"""+('' if store=='all' else ' AND a.store=%s')+' GROUP BY origin,a.kind',event_args).fetchall()
     submitted={(r['origin'],r['kind']):r['n'] for r in submissions}
+    top50=db.execute("""SELECT target_key,SUM(JSON_EXTRACT(details,'$.tasks')) tasks FROM collection_logs
+        WHERE resource='top50_intake' AND created_at BETWEEN %s AND %s"""+event_scope+' GROUP BY target_key',event_args).fetchall()
+    if top50:
+        node('top50','全球榜单 Top50 联动',0,value=sum(int(r['tasks']) for r in top50),unit='已提交任务',
+             note='全国家总榜与分类榜；新榜单前50名自动关联资料、评论、权限、应用名关键词和图片，视频仅保留来源',link='#collection?kind=chart')
+        for row in top50:edge('top50','q:'+row['target_key'],row['target_key'],int(row['tasks']),'次任务提交')
     direct=db.execute("""SELECT kind,COUNT(*) n FROM collection_source_tasks WHERE source!='collection-plan'
         AND created_at BETWEEN %s AND %s"""+('' if store=='all' else ' AND store=%s')+' GROUP BY kind',event_args).fetchall()
     for row in direct:submitted['platform',row['kind']]=submitted.get(('platform',row['kind']),0)+row['n']

@@ -2,6 +2,12 @@
 from .db import APP_KEY, REGION
 
 TABLES = {
+    'chart_enrichment_runs':'''run_id BIGINT PRIMARY KEY,target_id BIGINT NOT NULL,app_count INT NOT NULL,
+        keyword_count INT NOT NULL,created_at DOUBLE NOT NULL,INDEX enrichment_target(target_id,run_id)''',
+    'chart_enrichment_apps':f'''{APP_KEY},{REGION},last_run_id BIGINT NOT NULL,first_seen DOUBLE NOT NULL,last_seen DOUBLE NOT NULL,
+        PRIMARY KEY(store,app_id,country,language)''',
+    'chart_enrichment_tasks':'''resource VARCHAR(24) NOT NULL,target_id BIGINT NOT NULL,created_at DOUBLE NOT NULL,
+        PRIMARY KEY(resource,target_id)''',
     'availability_daily': '''store VARCHAR(16) CHARACTER SET ascii NOT NULL,
         country CHAR(2) CHARACTER SET ascii NOT NULL, language VARCHAR(16) CHARACTER SET ascii NOT NULL,
         day BIGINT NOT NULL, observed_at DOUBLE NOT NULL, counts LONGTEXT NOT NULL,
@@ -49,7 +55,8 @@ TABLES = {
         failures INT NOT NULL DEFAULT 0, last_error TEXT, latest_attempt_id BIGINT,
         latest_success_id BIGINT, previous_success_id BIGINT,
         UNIQUE KEY observation_identity(kind,store,app_id,country,language,collection,category),
-        INDEX observation_due(enabled,due,lease_until)''',
+        INDEX observation_due(enabled,due,lease_until),INDEX target_retry(enabled,failures,due,lease_until),
+        INDEX observation_latest(kind,latest_success_id,store)''',
     'observation_runs': '''id BIGINT AUTO_INCREMENT PRIMARY KEY, target_id BIGINT NOT NULL,
         observed_at DOUBLE NOT NULL, outcome VARCHAR(16) NOT NULL, source VARCHAR(128) NOT NULL,
         parser_version VARCHAR(32) NOT NULL, coverage VARCHAR(64) NOT NULL,

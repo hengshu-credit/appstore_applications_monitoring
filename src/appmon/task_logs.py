@@ -33,6 +33,8 @@ class Execution:
         elapsed = time.monotonic()-self.started
         state = 'stale' if not accepted else outcome
         labels = {'ok':'采集成功，数据已保存','missing':'本次地区查询未发现应用','error':'采集失败，保留上次有效数据','stale':'租约已失效，本次结果未写入'}
+        if error is not None:
+            detail=(detail+'；' if detail else '')+'原因：'+safe_message(error)
         self.write(state,f'{labels.get(state,state)}；耗时 {elapsed:.2f} 秒'+(f'；{detail}' if detail else ''),
                    'error' if state=='error' else 'warning' if state in ('stale','missing') else 'info',
                    diagnostics(error,duration_seconds=round(elapsed,2)) if error else None)

@@ -49,6 +49,10 @@ def ready(db, cfg, lane, now):
 
 def choose(db, cfg):
     if blocked(db,cfg):
+        from .storage_policy import storage_guard
+        if not storage_guard(db,cfg) and db.execute("""SELECT 1 FROM collection_source_tasks WHERE enabled=1 AND due<=%s
+            AND lease_until<=%s AND failures<3 AND kind IN ('aso_import','aso_report') LIMIT 1""",(time.time(),time.time())).fetchone():
+            return 'sources'
         return None
     with db:
         # Serialize only the scheduling decision. HTTP happens outside this lock.

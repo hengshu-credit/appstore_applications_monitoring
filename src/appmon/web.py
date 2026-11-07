@@ -436,6 +436,11 @@ def create_app(cfg):
         from .source_tasks import receipt
         return receipt(db,identifier)
 
+    @api.get('/research/collection/top50')
+    def top50_progress(db=DB):
+        from .chart_enrichment import report
+        return report(db)
+
     @api.get('/discovery/reports')
     def imported_reports(store:str,country:str='us',language:str='en',app_id:str='',db=DB):
         return keyword_reports.reports(db,intel.market(dict(store=store,country=country,language=language,app_id=app_id),require_app=bool(app_id)))

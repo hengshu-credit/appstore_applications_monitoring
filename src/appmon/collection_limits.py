@@ -97,6 +97,9 @@ def blocked(db, cfg):
     rows = {r['name']:r['next_at'] for r in db.execute(
         "SELECT name,next_at FROM schedules WHERE name IN ('rate:global','quota:day','quota:used')").fetchall()}
     now = time.time()
-    return (rows.get('rate:global',0)-now >= max(1,cfg.get('lease_seconds',600)-2*cfg['timeout_seconds'])
+    # Lease just before the shared slot becomes available, rather than holding
+    # whole batches and producing rate-wait logs throughout a long cooldown.
+    prefetch=max(1,min(10,cfg.get('lease_seconds',600)-2*cfg['timeout_seconds']))
+    return (rows.get('rate:global',0)-now > prefetch
             or bool(limits['daily_request_limit'] and rows.get('quota:day')==int(now//86400)*86400
                     and rows.get('quota:used',0)>=limits['daily_request_limit']))

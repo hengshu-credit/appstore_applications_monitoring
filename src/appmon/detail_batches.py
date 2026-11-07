@@ -2,7 +2,7 @@
 import time
 from .db import claim_details
 from .ingest import disk_check
-from .stores import FetchError
+from .stores import FetchError,CollectionDeferred
 from .task_logs import Execution
 from .collection_batch import write_batch
 
@@ -42,7 +42,7 @@ def work_details(cfg, db, limit, client, *, watchlist=False, managed=False, max_
             if managed:
                 from .pipelines import settings
                 if not settings(db,cfg,'pool')['enabled']:
-                    raise FetchError('全池采集已暂停',60)
+                    raise CollectionDeferred('全池采集已暂停',60)
             # A batch shares a token, but retains independent identities and results.
             rows = db.execute('''SELECT j.app_id FROM jobs j LEFT JOIN watchlist w
                 USING(store,app_id,country,language) WHERE j.store=%s AND j.country=%s AND j.language=%s
@@ -50,7 +50,7 @@ def work_details(cfg, db, limit, client, *, watchlist=False, managed=False, max_
                 AND '''+('w.enabled=1' if watchlist else 'w.id IS NULL'),
                 (jobs[0]['store'],jobs[0]['country'],jobs[0]['language'],*[j['app_id'] for j in jobs],jobs[0]['token'],time.time())).fetchall()
             if len(rows)!=len(jobs):
-                raise FetchError('批次内任务已暂停或租约已替换',60)
+                raise CollectionDeferred('批次内任务已暂停或租约已替换，等待重新组批',1)
         client.progress,client.request_guard = progress,guard
         try:
             for job, task_log in zip(jobs,logs):
@@ -66,6 +66,13 @@ def work_details(cfg, db, limit, client, *, watchlist=False, managed=False, max_
                 results = [exc]*len(jobs)
             with write_batch(db) as writer:
                 for job,result,task_log in zip(jobs,results,logs):
+                    if isinstance(result,CollectionDeferred):
+                        from .collection_batch import defer
+                        accepted=defer(writer,'jobs',job,result)
+                        task_log.write('deferred' if accepted else 'stale',str(result))
+                        counts['processed']+=1;counts['deferred']=counts.get('deferred',0)+int(bool(accepted))
+                        counts['stale']+=int(not accepted)
+                        continue
                     local_cfg = cfg | {'refresh_hours':job['refresh_hours']} if watchlist else cfg
                     failure = result if isinstance(result,FetchError) else None
                     accepted = save_result(writer,local_cfg,job,error=failure) if failure else save_result(writer,local_cfg,job,result=result)

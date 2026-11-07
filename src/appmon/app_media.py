@@ -45,9 +45,12 @@ def active_predicate(alias='a'):
 def sync_existing(db,cfg,wait=0):
     """Revisit only small focus/chart sets; never scan millions of listings in memory."""
     with db.named_lock('media-scope-sync',timeout=wait):
+        from .chart_enrichment import settings as enrichment_settings
+        incremental=enrichment_settings(db).get('enabled',False)
         desired='''SELECT store,app_id,country,language FROM app_group_members UNION
             SELECT t.store,o.item_id,t.country,t.language FROM observation_targets t
-            JOIN observation_items o ON o.run_id=t.latest_success_id WHERE t.kind='chart' '''
+            JOIN observation_items o ON o.run_id=t.latest_success_id WHERE t.kind='chart' AND o.position<=50 '''
+        if incremental:desired='SELECT store,app_id,country,language FROM app_group_members'
         # Materialize only focus/latest-chart detail dependencies, not a global market product.
         with db:
             db.execute('''INSERT INTO watchlist(store,app_id,country,language,group_name,refresh_hours,enabled,created_at)
@@ -59,7 +62,8 @@ def sync_existing(db,cfg,wait=0):
             db.execute('UPDATE app_icons i SET requested=1 WHERE i.requested=0 AND '+media_predicate())
         count=processed=0;last=None
         while True:
-            rows=db.execute('SELECT l.* FROM listings l WHERE l.payload IS NOT NULL AND '+media_predicate('l')+
+            scope="EXISTS(SELECT 1 FROM app_group_members g WHERE g.store=l.store AND g.app_id=l.app_id)" if incremental else media_predicate('l')
+            rows=db.execute('SELECT l.* FROM listings l WHERE l.payload IS NOT NULL AND '+scope+
                 (' AND (l.store,l.app_id,l.country,l.language)>(%s,%s,%s,%s)' if last else '')+
                 ' ORDER BY l.store,l.app_id,l.country,l.language LIMIT 200',last).fetchall()
             if not rows:break
@@ -90,10 +94,10 @@ def work(cfg,db,client):
     record_dispatch(db,'screenshots',row['store'],1)
     old=client.request_guard
     def guard():
-        from .stores import FetchError
+        from .stores import CollectionDeferred
         if old:old()
         if not db.execute('SELECT 1 FROM app_media_assets a WHERE a.id=%s AND a.token=%s AND a.enabled=1 AND '+active_predicate(),(row['id'],token)).fetchone():
-            raise FetchError('图片任务已暂停或移出关注范围',60)
+            raise CollectionDeferred('图片任务已暂停或移出关注范围',60)
     client.request_guard=guard
     try:
         guard()
@@ -106,6 +110,13 @@ def work(cfg,db,client):
             log.finish('ok',bool(saved));touch(db)
         return {'processed':1,'ok':saved}
     except Exception as exc:
+        from .stores import CollectionDeferred
+        if isinstance(exc,CollectionDeferred):
+            from .collection_batch import defer
+            with db:
+                saved=defer(db,'app_media_assets',row,exc)
+                log.write('deferred' if saved else 'stale',str(exc));touch(db)
+            return {'processed':1,'deferred':saved}
         from .task_logs import safe_message
         with db:
             saved=db.execute('''UPDATE app_media_assets SET failures=failures+1,last_error=%s,due=%s,token=NULL,lease_until=0

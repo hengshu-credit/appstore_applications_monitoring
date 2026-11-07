@@ -20,7 +20,7 @@ TABLES = {
         lease_until DOUBLE NOT NULL DEFAULT 0, token CHAR(32), failures INT NOT NULL DEFAULT 0,
         last_error TEXT, checked_at DOUBLE, success_at DOUBLE, permission_count INT,
         payload LONGTEXT, raw_path TEXT, UNIQUE KEY permission_app(store,app_id,country),
-        INDEX permission_queue(enabled,due,lease_until)''',
+        INDEX permission_queue(enabled,due,lease_until),INDEX target_retry(enabled,failures,due,lease_until)''',
     'app_permission_runs': '''id BIGINT AUTO_INCREMENT PRIMARY KEY, target_id BIGINT NOT NULL,
         observed_at DOUBLE NOT NULL, outcome VARCHAR(16) NOT NULL, payload LONGTEXT,
         raw_path TEXT, error TEXT, INDEX permission_history(target_id,id)''',

@@ -609,4 +609,9 @@ def control_monitoring(db, identifier, value):
             app_permissions.enqueue(db,targets)
             db.execute('''UPDATE app_permission_targets p JOIN app_group_members m ON p.store=m.store AND p.app_id=m.app_id AND p.country=m.country
                 SET p.enabled=1,p.due=IF(p.lease_until<=%s,0,p.due) WHERE '''+where,(now,*args))
+        for resource,source in [('watchlist','watchlist t JOIN app_group_members m USING(store,app_id,country,language)'),
+                                ('permissions','app_permission_targets t JOIN app_group_members m ON t.store=m.store AND t.app_id=m.app_id AND t.country=m.country')]:
+            db.execute('''INSERT INTO collection_logs(resource,target_key,created_at,level,event,message)
+                SELECT %s,CAST(t.id AS CHAR),%s,'info',%s,%s FROM '''+source+' WHERE '+where+' GROUP BY t.id',
+                (resource,now,action,'应用分组监控已'+('暂停' if action=='pause' else '恢复'),*args))
     return dict(targets=len(targets),action=action,note='已'+('暂停' if action=='pause' else '恢复')+'当前范围的详情与权限采集；历史保留，共享这些目标的其他分组同步受影响。')

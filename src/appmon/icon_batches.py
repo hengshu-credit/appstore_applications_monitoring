@@ -3,7 +3,7 @@ import hashlib
 import os
 import time
 import uuid
-from .stores import Client, FetchError
+from .stores import Client, FetchError, CollectionDeferred
 from .collection_batch import can_batch, retry_condition, NETWORK_ERRORS, write_batch
 from .collection_limits import blocked
 from .task_logs import Execution
@@ -54,11 +54,11 @@ def download(cfg,db,client,row,started,max_bytes=None):
             return cached
         with client.request(row['store'],'GET',url,stream=True,allow_redirects=False) as response:
             if response.status_code!=200:raise FetchError('图标下载失败')
-            if int(response.headers.get('Content-Length','0'))>MAX_BYTES:raise FetchError('图标超过2MB限制')
+            if int(response.headers.get('Content-Length','0'))>MAX_BYTES:raise FetchError(f'图片超过{MAX_BYTES//1024**2}MiB限制；保留任务待处理')
             raw=bytearray()
             for chunk in response.iter_content(65536):
                 raw.extend(chunk)
-                if len(raw)>MAX_BYTES:raise FetchError('图标超过2MB限制')
+                if len(raw)>MAX_BYTES:raise FetchError(f'图片超过{MAX_BYTES//1024**2}MiB限制；保留任务待处理')
         mime,extension=media_type(raw);digest=hashlib.sha256(raw).hexdigest()
         path=cfg['data_dir']/'icons'/digest[:2]/(digest+'.'+extension);path.parent.mkdir(parents=True,exist_ok=True)
         if not path.exists():
@@ -91,7 +91,7 @@ def work(cfg,db,limit=5,client=None,max_requests=None):
                 if old_guard:old_guard()
                 active=db.execute('SELECT COUNT(*) n FROM app_icons WHERE token=%s AND enabled=1 AND lease_until>%s',
                     (rows[0]['token'],time.time())).fetchone()['n']
-                if active==0 or metadata and active!=len(rows):raise FetchError('图标批次已暂停或租约失效',60)
+                if active==0 or metadata and active!=len(rows):raise CollectionDeferred('图标批次已暂停或租约失效，等待重新组批',1)
             def progress(event,message):
                 with db:
                     for log in logs:log.write(event,message)
@@ -134,6 +134,13 @@ def work(cfg,db,limit=5,client=None,max_requests=None):
                                 log.finish('ok',bool(saved),'同一响应按任务独立回填')
                                 counts['ok' if saved else 'stale']+=1;completed.add(row['id'])
                         except (FetchError,ValueError,OSError,RuntimeError) as exc:
+                            if isinstance(exc,CollectionDeferred):
+                                from .collection_batch import defer
+                                saved=defer(writer,'app_icons',row,exc)
+                                log.write('deferred' if saved else 'stale',str(exc));completed.add(row['id'])
+                                counts['deferred']=counts.get('deferred',0)+int(bool(saved))
+                                counts['stale']+=int(not saved)
+                                continue
                             failures=row['failures']+1
                             saved=writer.execute('''UPDATE app_icons SET status='error',failures=%s,last_error=%s,due=%s,token=NULL,lease_until=0
                                 WHERE id=%s AND token=%s AND enabled=1''',

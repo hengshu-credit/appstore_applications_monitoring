@@ -71,6 +71,10 @@ def receipt(db, identifier):
 def work(db,cfg):
     from . import apple_popularity, keyword_reports, collection_limits
     from .collection_lineage import record_dispatch
+    from .storage_policy import storage_guard
+    if storage_guard(db,cfg):return {'processed':0}
+    local_only=collection_limits.blocked(db,cfg)
+    local_scope=" AND kind IN ('aso_import','aso_report')" if local_only else ''
     now=time.time(); token=uuid.uuid4().hex
     try:
         # Serialize only claiming, so simultaneous consumers do not split one compatible batch.
@@ -78,7 +82,7 @@ def work(db,cfg):
         with db.named_lock('source-claim'):
             with db:
                 first=db.execute('''SELECT * FROM collection_source_tasks WHERE enabled=1 AND due<=%s AND lease_until<=%s
-                    AND failures<3 ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED''',(now,now)).fetchone()
+                    AND failures<3'''+local_scope+' ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED',(now,now)).fetchone()
                 if not first:return {'processed':0}
                 rows=db.execute('''SELECT id,language,failures,JSON_EXTRACT(payload,'$.limit') requested_limit
                     FROM collection_source_tasks WHERE batch_key=%s AND enabled=1 AND due<=%s

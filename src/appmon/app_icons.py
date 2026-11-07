@@ -19,10 +19,45 @@ def source_url(value):
 
 def media_type(raw):
     if raw.startswith(b'\x89PNG\r\n\x1a\n') and len(raw)>=32 and b'IEND' in raw[-16:]:return 'image/png','png'
-    if raw.startswith(b'\xff\xd8\xff') and raw.endswith(b'\xff\xd9'):return 'image/jpeg','jpg'
+    if jpeg_complete(raw):return 'image/jpeg','jpg'
     if raw[:4]==b'RIFF' and raw[8:12]==b'WEBP' and len(raw)>=20:return 'image/webp','webp'
     if raw[:6] in (b'GIF87a',b'GIF89a') and len(raw)>=14:return 'image/gif','gif'
     raise FetchError('图标不是支持的位图格式')
+
+
+def jpeg_complete(raw):
+    """Check JPEG segment/scan framing; CDN metadata may follow the EOI marker."""
+    if not raw.startswith(b'\xff\xd8'):return False
+    pos=2;scan=False;frame=False;seen_scan=False
+    while pos<len(raw):
+        if scan:
+            pos=raw.find(b'\xff',pos)
+            if pos<0:return False
+        elif raw[pos]!=255:return False
+        while pos<len(raw) and raw[pos]==255:pos+=1
+        if pos>=len(raw):return False
+        marker=raw[pos];pos+=1
+        if marker==0:
+            if not scan:return False
+            continue
+        if 0xd0<=marker<=0xd7:
+            if not scan:return False
+            continue
+        if marker==0xd9:return frame and seen_scan
+        if marker==0xd8:return False
+        if marker==1:continue
+        if pos+2>len(raw):return False
+        length=int.from_bytes(raw[pos:pos+2],'big')
+        if length<2 or pos+length>len(raw):return False
+        if marker in (0xc0,0xc1,0xc2,0xc3,0xc5,0xc6,0xc7,0xc9,0xca,0xcb,0xcd,0xce,0xcf):
+            if length<11 or raw[pos+7]==0 or length<8+3*raw[pos+7]:return False
+            frame=True
+        if marker==0xda:
+            if not frame or length<6:return False
+            scan=True;seen_scan=True
+        else:scan=False
+        pos+=length
+    return False
 
 
 def remember(db,store,app_id,country,language,url,name=None):
