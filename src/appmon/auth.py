@@ -112,9 +112,16 @@ def audit(db, actor, action, target=None):
     db.execute('INSERT INTO auth_audit_heads(actor_key) VALUES(%s) ON DUPLICATE KEY UPDATE actor_key=%s', (key, key))
     last = db.execute('''SELECT a.* FROM auth_audit_heads h JOIN auth_audit a ON a.id=h.last_id
                          WHERE h.actor_key=%s''', (key,)).fetchone()
+    if not last:
+        # An upgraded database can have audit history without an actor head yet.
+        last = db.execute('SELECT * FROM auth_audit WHERE actor_id <=> %s ORDER BY id DESC LIMIT 1',
+                          (actor,)).fetchone()
+        if last:
+            db.execute('UPDATE auth_audit_heads SET last_id=%s WHERE actor_key=%s', (last['id'], key))
     now = time.time()
     if last and last['action'] == action and last['target_id'] == target:
-        db.execute('UPDATE auth_audit SET ended_at=GREATEST(ended_at,%s) WHERE id=%s', (now, last['id']))
+        db.execute('UPDATE auth_audit SET ended_at=GREATEST(COALESCE(ended_at,created_at),%s) WHERE id=%s',
+                   (now, last['id']))
         return
     entry = db.execute('INSERT INTO auth_audit(actor_id,target_id,action,created_at,ended_at) VALUES(%s,%s,%s,%s,%s)',
                        (actor, target, action, now, now)).lastrowid
@@ -539,9 +546,22 @@ def router(database):
 
     @api.get('/admin/audit')
     def audit_log(row=Depends(admin), db=DB):
-        return db.execute('''SELECT a.id,a.action,a.actor_id,a.target_id,a.created_at,
-            COALESCE(a.ended_at,a.created_at) ended_at,u.username actor,t.username target FROM auth_audit a
+        # Group the full per-account sequence before limiting the result, including
+        # legacy rows. Preserve boundaries when either the action or target changes.
+        return db.execute('''WITH previous AS (
+            SELECT a.*,LAG(action) OVER actor_order previous_action,
+                LAG(target_id) OVER actor_order previous_target
+            FROM auth_audit a WINDOW actor_order AS (PARTITION BY actor_id ORDER BY id)
+        ), segments AS (
+            SELECT p.*,SUM(CASE WHEN action=previous_action AND target_id <=> previous_target
+                THEN 0 ELSE 1 END) OVER (PARTITION BY actor_id ORDER BY id) segment
+            FROM previous p
+        ), intervals AS (
+            SELECT MAX(id) id,actor_id,action,target_id,MIN(created_at) created_at,
+                MAX(COALESCE(ended_at,created_at)) ended_at
+            FROM segments GROUP BY actor_id,segment,action,target_id
+        ) SELECT a.*,u.username actor,t.username target FROM intervals a
             LEFT JOIN auth_users u ON u.id=a.actor_id LEFT JOIN auth_users t ON t.id=a.target_id
-            ORDER BY COALESCE(a.ended_at,a.created_at) DESC,a.id DESC LIMIT 200''').fetchall()
+            ORDER BY a.ended_at DESC,a.id DESC LIMIT 200''').fetchall()
 
     return api

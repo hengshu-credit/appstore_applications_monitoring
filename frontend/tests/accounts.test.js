@@ -28,7 +28,7 @@ function setup(responder) {
       json: async () => result.data,
     };
   };
-  Object.assign(window,{pagination,bindPagination});
+  Object.assign(window, { pagination, bindPagination });
   window.filterBar = filterBar;
   window.eval(
     source +
@@ -240,10 +240,27 @@ test("admin creates and renames a group, previews merged grants and creates an a
     await accounts.management(doc.querySelector("main"));
     doc.querySelector("#accounts-tab-roles").click();
     let editor = doc.querySelector("#role-editor");
-    editor.elements.role.value = "";
-    editor.elements.role.dispatchEvent(new window.Event("change"));
+    doc.querySelector("#add-role").click();
+    assert.equal(editor.elements.role.value, "");
+    assert.equal(doc.activeElement, editor.elements.group_name);
+    assert.equal(doc.querySelector("#save-role").textContent, "创建用户组");
     editor.elements.group_name.value = "运营";
     editor.querySelector('[value="events:write"]').click();
+    const search = editor.querySelector("[data-permission-search]");
+    search.value = "apps";
+    search.dispatchEvent(new window.Event("input"));
+    assert.equal(
+      editor.querySelector('[data-permission-resource="events"]').hidden,
+      true,
+    );
+    assert.equal(
+      editor.querySelector('[data-permission-resource="apps"]').hidden,
+      false,
+    );
+    const status = editor.querySelector("[data-permission-status]");
+    status.value = "granted";
+    status.dispatchEvent(new window.Event("change"));
+    assert.equal(editor.querySelector("[data-permission-empty]").hidden, false);
     submit(editor);
     await tick();
     assert.deepEqual(calls.find((c) => c.url.endsWith("/roles")).body, {
@@ -252,6 +269,10 @@ test("admin creates and renames a group, previews merged grants and creates an a
     });
     editor = doc.querySelector("#role-editor");
     assert.equal(editor.elements.role.value, "custom");
+    doc.querySelector("#add-role").click();
+    doc.querySelector("#cancel-role-create").click();
+    assert.equal(editor.elements.role.value, "custom");
+    assert.equal(editor.querySelector('[value="events:write"]').checked, true);
     editor.elements.group_name.value = "内容运营";
     submit(editor);
     await tick();

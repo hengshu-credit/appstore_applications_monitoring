@@ -143,6 +143,41 @@ test("gradient colors and direction can be configured without typing color codes
   }
 });
 
+test("layout choices preview directly and preserve selection through save and cancel", async () => {
+  const win = new Window({ url: "http://localhost:5173" });
+  win.document.body.innerHTML = '<button id="open-theme">主题设置</button>';
+  try {
+    const controller = initTheme(win);
+    win.document.querySelector("#open-theme").click();
+    const choice = win.document.querySelector(
+      '[data-theme-field="tableScrollMode"][data-theme-value="FIXED"]',
+    );
+    choice.click();
+    assert.equal(controller.get().tableScrollMode, "FIXED");
+    assert.equal(choice.getAttribute("aria-pressed"), "true");
+    assert.equal(win.document.documentElement.dataset.tableScroll, "fixed");
+    win.document.querySelector("#theme-settings").close();
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(controller.get().tableScrollMode, "AUTO");
+    win.document.querySelector("#open-theme").click();
+    assert.equal(choice.getAttribute("aria-pressed"), "false");
+    choice.click();
+    win.document
+      .querySelector(
+        '[data-theme-field="navigationLayout"][data-theme-value="TOP"]',
+      )
+      .click();
+    win.document
+      .querySelector("#theme-form")
+      .dispatchEvent(new win.Event("submit", { cancelable: true }));
+    const saved = JSON.parse(win.localStorage.getItem(THEME_KEY));
+    assert.equal(saved.tableScrollMode, "FIXED");
+    assert.equal(saved.navigationLayout, "TOP");
+  } finally {
+    await win.happyDOM.close();
+  }
+});
+
 test("chart colors follow presets and custom palettes in both modes", async () => {
   const win = new Window();
   try {

@@ -173,6 +173,43 @@ class AccountTest(MySQLTestCase):
         rows = admin.get('/api/auth/admin/audit').json()
         self.assertEqual([r['target_id'] for r in rows if r['action'] == 'update_user'], [2, 2, 3, 2])
 
+    def test_legacy_audit_merges_before_limit_and_keeps_action_target_boundaries(self):
+        admin = self.login_admin(self.client())
+        # Legacy logins have no ended_at and no head. Another actor does not
+        # interrupt this account's sequence, but a different action or target does.
+        with self.db:
+            self.db.execute('DELETE FROM auth_audit_heads')
+            self.db.execute('DELETE FROM auth_audit')
+            self.db.executemany('''INSERT INTO auth_audit(actor_id,target_id,action,created_at)
+                VALUES(%s,%s,%s,%s)''', [(1, 1, 'login', n) for n in range(1, 251)])
+            self.db.execute("INSERT INTO auth_audit(actor_id,target_id,action,created_at) VALUES(2,2,'login',251)")
+            self.db.execute("INSERT INTO auth_audit(actor_id,target_id,action,created_at) VALUES(1,1,'login',252)")
+            self.db.execute("INSERT INTO auth_audit(actor_id,target_id,action,created_at) VALUES(1,1,'profile',253)")
+            self.db.execute("INSERT INTO auth_audit(actor_id,target_id,action,created_at) VALUES(1,1,'login',254)")
+            self.db.execute("INSERT INTO auth_audit(actor_id,target_id,action,created_at) VALUES(1,2,'login',255)")
+            self.db.execute("INSERT INTO auth_audit(actor_id,target_id,action,created_at) VALUES(NULL,NULL,'maintenance',256)")
+            self.db.execute("INSERT INTO auth_audit(actor_id,target_id,action,created_at) VALUES(NULL,NULL,'maintenance',257)")
+        rows = admin.get('/api/auth/admin/audit').json()
+        self.assertEqual(len(rows), 6)
+        self.assertEqual([(r['actor_id'], r['action'], r['created_at'], r['ended_at']) for r in rows],
+                         [(None, 'maintenance', 256, 257), (1, 'login', 255, 255),
+                          (1, 'login', 254, 254), (1, 'profile', 253, 253),
+                          (1, 'login', 1, 252), (2, 'login', 251, 251)])
+        self.assertEqual(self.db.execute('SELECT count(*) n FROM auth_audit').fetchone()['n'], 257)
+
+    def test_audit_resumes_legacy_head_without_losing_start_time(self):
+        self.login_admin(self.client())
+        with self.db:
+            self.db.execute('DELETE FROM auth_audit_heads')
+            self.db.execute("UPDATE auth_audit SET created_at=10,ended_at=NULL WHERE action='login'")
+            before = self.db.execute("SELECT id FROM auth_audit WHERE action='login'").fetchone()['id']
+            with patch('appmon.auth.time.time', return_value=20):
+                auth.audit(self.db, 1, 'login', 1)
+        rows = self.db.execute("SELECT * FROM auth_audit WHERE action='login'").fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]['id'], rows[0]['created_at'], rows[0]['ended_at']), (before, 10, 20))
+        self.assertEqual(self.db.execute('SELECT last_id FROM auth_audit_heads WHERE actor_key=1').fetchone()['last_id'], before)
+
     def test_recovery_finds_username_rotates_code_and_revokes_sessions(self):
         self.login_admin(self.client()); client = self.client()
         created = self.register(client); self.login(client)

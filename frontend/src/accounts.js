@@ -270,16 +270,48 @@ export function createAccounts({ esc, onReady, toast }) {
     };
   }
   function permissionFields(resources, selected) {
-    return `<div class="table-wrap permission-table"><table><thead><tr><th>页面 / 功能</th><th>访问</th><th>操作</th></tr></thead><tbody>${Object.entries(
+    return `<div class="permission-editor"><div class="permission-filters"><label>查找页面 / 功能<input type="search" data-permission-search placeholder="输入名称或功能标识"></label><label>授权状态<select data-permission-status><option value="all">全部权限</option><option value="granted">已授权</option><option value="none">未授权</option></select></label><output data-permission-count aria-live="polite"></output></div><div class="table-wrap permission-table"><table><thead><tr><th>页面 / 功能</th><th>访问</th><th>操作</th></tr></thead><tbody>${Object.entries(
       resources,
     )
       .map(
         ([key, label]) =>
-          `<tr><th scope="row">${esc(label)}</th>${["read", "write"].map((action) => `<td><input type="checkbox" name="permissions" aria-label="${esc(label)}${action === "read" ? "访问" : "操作"}" value="${key}:${action}" ${selected.includes(`${key}:${action}`) ? "checked" : ""}></td>`).join("")}</tr>`,
+          `<tr data-permission-resource="${esc(key)}"><th scope="row">${esc(label)}</th>${["read", "write"].map((action) => `<td><input type="checkbox" name="permissions" aria-label="${esc(label)}${action === "read" ? "访问" : "操作"}" value="${key}:${action}" ${selected.includes(`${key}:${action}`) ? "checked" : ""}></td>`).join("")}</tr>`,
       )
-      .join("")}</tbody></table></div>`;
+      .join(
+        "",
+      )}</tbody></table></div><p class="sub" data-permission-empty hidden>没有匹配的页面或功能，请调整筛选条件。</p></div>`;
   }
   function syncPermissionChecks(root) {
+    const editor = root.querySelector(".permission-editor");
+    const filter = () => {
+      const query = editor
+        .querySelector("[data-permission-search]")
+        .value.trim()
+        .toLowerCase();
+      const status = editor.querySelector("[data-permission-status]").value;
+      const rows = [...editor.querySelectorAll("[data-permission-resource]")];
+      let visible = 0;
+      rows.forEach((row) => {
+        const granted = Boolean(row.querySelector("input:checked"));
+        row.hidden =
+          !`${row.textContent} ${row.dataset.permissionResource}`
+            .toLowerCase()
+            .includes(query) ||
+          (status === "granted" && !granted) ||
+          (status === "none" && granted);
+        if (!row.hidden) visible++;
+      });
+      editor.querySelector("[data-permission-count]").textContent =
+        `${visible} / ${rows.length} 项功能`;
+      editor.querySelector("[data-permission-empty]").hidden = visible > 0;
+    };
+    editor.querySelector("[data-permission-search]").oninput = filter;
+    editor.querySelector("[data-permission-search]").onkeydown = (event) => {
+      if (event.key === "Enter") event.preventDefault();
+    };
+    editor.querySelector("[data-permission-status]").onchange = filter;
+    root.onchange = filter;
+    filter();
     root.querySelectorAll("[name=permissions]").forEach((input) =>
       input.addEventListener("change", () => {
         const [resource, action] = input.value.split(":");
@@ -327,8 +359,7 @@ export function createAccounts({ esc, onReady, toast }) {
       "accounts",
     )}
       <div id="accounts-panel-users" role="tabpanel" aria-labelledby="accounts-tab-users">
-      ${filterBar({ id: "user-search", submit: "搜索", values: { q }, fields: [{ name: "q", label: "搜索账号", options: data.users.map((u) => u.username) }], actions: own && can("administration") ? '<a href="#administration">查看全部账户</a>' : "" })}
-      ${isAdmin ? '<div class="auth-actions"><button type="button" id="add-account">新增账户</button></div>' : ""}
+      ${filterBar({ id: "user-search", submit: "搜索", values: { q }, fields: [{ name: "q", label: "搜索账号", options: data.users.map((u) => u.username) }], actions: `<div class="account-toolbar-actions">${own && can("administration") ? '<a href="#administration">查看全部账户</a>' : ""}${isAdmin ? '<button type="button" id="add-account">新增账户</button>' : ""}</div>` })}
       <div class="table-wrap"><table><thead><tr><th>账号</th><th>用户组</th><th>状态</th><th>会员到期</th><th>权限来源</th><th>操作</th></tr></thead><tbody>${data.users.map((u) => `<tr><td>${esc(u.username)}${u.id === user.id ? ' <span class="sub">（当前账户）</span>' : ""}</td><td data-account-groups="${u.id}">${esc(groupLabel(u))}</td><td>${u.enabled ? "启用" : "停用"}</td><td>${u.member_until ? new Date(u.member_until * 1000).toLocaleString() : "—"}</td><td>${u.role === "admin" ? "全部权限" : u.override === null ? "用户组授权" : "单独配置"}</td><td>${u.id === user.id || canManage ? `<button data-user="${u.id}" class="secondary">编辑</button>` : "仅查看"}</td></tr>`).join("")}</tbody></table></div>
       ${pagination({ id: "users-pages", offset, limit: 100, total: data.total, prevId: "users-prev", nextId: "users-next" })}</div>
       ${isAdmin ? '<div id="accounts-panel-roles" role="tabpanel" aria-labelledby="accounts-tab-roles" hidden></div><div id="accounts-panel-audit" role="tabpanel" aria-labelledby="accounts-tab-audit" hidden></div>' : ""}</section>`;
@@ -376,30 +407,46 @@ export function createAccounts({ esc, onReady, toast }) {
         labels["create_role_" + id] = "新增用户组 · " + names[id];
         labels["role_" + id] = "编辑用户组 · " + names[id];
       }
-      target.innerHTML = `<p class="sub">最近 200 条安全操作</p><div class="table-wrap"><table><thead><tr><th>开始时间</th><th>结束时间</th><th>操作人</th><th>动作</th><th>目标</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${new Date(r.created_at * 1000).toLocaleString()}</td><td>${new Date((r.ended_at ?? r.created_at) * 1000).toLocaleString()}</td><td>${esc(r.actor || "服务器运维")}</td><td>${esc(labels[r.action] || r.action)}</td><td>${esc(r.target || "—")}</td></tr>`).join("")}</tbody></table></div>`;
+      target.innerHTML = `<p class="sub">最近 200 段安全操作 · 同一账户连续对同一目标执行相同动作时合并，仅显示开始与结束时间。</p><div class="table-wrap"><table><thead><tr><th>开始时间</th><th>结束时间</th><th>操作人</th><th>动作</th><th>目标</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${new Date(r.created_at * 1000).toLocaleString()}</td><td>${new Date((r.ended_at ?? r.created_at) * 1000).toLocaleString()}</td><td>${esc(r.actor || "服务器运维")}</td><td>${esc(labels[r.action] || r.action)}</td><td>${esc(r.target || "—")}</td></tr>`).join("")}</tbody></table></div>`;
     }
     function renderRoles(selected = "user") {
       const target = root.querySelector("#accounts-panel-roles");
-      target.innerHTML = `<div class="auth-actions"><label class="auth-check"><input id="registration-enabled" type="checkbox" ${data.registration_enabled ? "checked" : ""}>允许外部用户注册</label></div><form id="role-editor"><div class="auth-actions"><label>用户组<select name="role">${Object.keys(
+      target.innerHTML = `<div class="auth-actions"><label class="auth-check"><input id="registration-enabled" type="checkbox" ${data.registration_enabled ? "checked" : ""}>允许外部用户注册</label></div><form id="role-editor"><div class="role-toolbar"><label>用户组<select name="role">${Object.keys(
         data.roles,
       )
         .map((id) => `<option value="${id}">${esc(names[id])}</option>`)
         .join(
           "",
-        )}<option value="">＋ 新增用户组</option></select></label><label>组名称<input name="group_name" maxlength="64" required></label></div><p class="sub">操作权限包含访问权限。选择多个用户组时，合并各组权限。</p><div id="role-permissions"></div><button>保存用户组</button><p role="alert"></p></form>`;
+        )}<option value="" hidden>新用户组</option></select></label><label>组名称<input name="group_name" maxlength="64" placeholder="输入用户组名称" required></label><div class="account-toolbar-actions"><button type="button" id="add-role" class="secondary">＋ 新增用户组</button><button type="button" id="cancel-role-create" class="secondary" hidden>取消新增</button><button type="submit" id="save-role">保存用户组</button></div></div><p class="sub">操作权限包含访问权限。筛选仅改变显示范围，保存时保留所有已选权限。</p><div id="role-permissions"></div><p role="alert"></p></form>`;
       const form = target.querySelector("form");
       form.elements.role.value = selected;
       const sync = () => {
+        const creating = !form.elements.role.value;
+        form.querySelector("#add-role").hidden = creating;
+        form.querySelector("#cancel-role-create").hidden = !creating;
+        form.querySelector("#save-role").textContent = creating
+          ? "创建用户组"
+          : "保存用户组";
         form.elements.group_name.value = names[form.elements.role.value] || "";
         form.querySelector("[role=alert]").textContent = "";
         target.querySelector("#role-permissions").innerHTML = permissionFields(
           data.resources,
           data.roles[form.elements.role.value] || [],
         );
-        syncPermissionChecks(form);
+        syncPermissionChecks(target.querySelector("#role-permissions"));
       };
       sync();
       form.elements.role.onchange = sync;
+      form.querySelector("#add-role").onclick = () => {
+        selected = form.elements.role.value;
+        form.elements.role.value = "";
+        sync();
+        form.elements.group_name.focus();
+      };
+      form.querySelector("#cancel-role-create").onclick = () => {
+        form.elements.role.value = selected;
+        sync();
+      };
       target.querySelector("#registration-enabled").onchange = async (e) => {
         try {
           await request(
@@ -416,7 +463,7 @@ export function createAccounts({ esc, onReady, toast }) {
       };
       form.onsubmit = async (e) => {
         e.preventDefault();
-        const button = form.querySelector("button");
+        const button = form.querySelector("[type=submit]");
         button.disabled = true;
         try {
           const value = {

@@ -95,6 +95,8 @@ body.account-locked > :not(#login) {
   color: var(--accent-text);
 }
 .account-admin [role="tabpanel"][hidden],
+.account-admin [hidden],
+.permission-editor [hidden],
 .account-dialog [role="tabpanel"][hidden],
 .account-dialog button[hidden] {
   display: none !important;
@@ -175,9 +177,64 @@ body.account-locked > :not(#login) {
 .permission-table td {
   text-align: left;
 }
+.permission-table tbody th {
+  background: var(--surface);
+  font-weight: 500;
+}
 .account-admin .permission-table th,
 .account-dialog .permission-table th {
   position: static;
+  inset: auto;
+  z-index: auto;
+  box-shadow: none;
+}
+.account-admin #user-search > .filter-control {
+  flex: 0 1 360px;
+  min-width: 160px;
+}
+.account-toolbar-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-left: auto;
+}
+.role-toolbar,
+.permission-filters {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.role-toolbar > label {
+  flex: 1 1 220px;
+  max-width: 320px;
+}
+.role-toolbar > label:first-child {
+  flex: 0 1 240px;
+}
+.role-toolbar input,
+.role-toolbar select,
+.permission-filters input {
+  width: 100%;
+}
+.permission-filters {
+  margin-top: 20px;
+}
+.permission-filters > label:first-child {
+  flex: 0 1 320px;
+}
+.permission-filters > label {
+  min-width: 160px;
+}
+.permission-filters output {
+  margin-left: auto;
+  align-self: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+.account-dialog .permission-filters label {
+  margin: 0;
 }
 .membership-options {
   display: flex;
@@ -202,6 +259,12 @@ body.account-locked > :not(#login) {
   width: auto;
 }
 @media (max-width: 600px) {
+  .account-admin #user-search > .filter-control {
+    flex: 1 1 100%;
+  }
+  .role-toolbar > label {
+    max-width: none;
+  }
   .account-dialog {
     padding: 16px;
   }
