@@ -16,6 +16,31 @@
   break-inside: avoid;
   vertical-align: top;
 }
+.global-market-group {
+  display: contents;
+}
+.global-board-grid[data-layout="columns"][data-store="all"] {
+  --country-width: calc(var(--chart-count, 3) * 190px + 34px);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.global-board-grid[data-layout="columns"] .global-market-group {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(min(100%, var(--country-width)), 1fr)
+  );
+  flex: var(--store-count) 1
+    calc(
+      var(--store-count) * var(--country-width) + (var(--store-count) - 1) *
+        16px
+    );
+  gap: 16px;
+  min-width: 0;
+  max-width: 100%;
+  align-items: start;
+}
 .global-board-grid[data-layout="columns"] .global-lists {
   grid-template-columns: repeat(var(--chart-count, 3), minmax(0, 1fr));
   grid-auto-flow: row;

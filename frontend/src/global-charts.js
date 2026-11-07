@@ -195,17 +195,34 @@ export function createGlobalCharts(ctx) {
             )
             .join("")}</ol>`
         : `<div class="global-chart-empty"><strong>暂无数据</strong></div>`;
-    const cards = data.countries
-      .map(
-        (c) =>
-          `<section class="panel global-country" style="--chart-slots:${Math.max(1, ...c.boards.flatMap((b) => b.items.map((r) => Number(r.position))))}"><div class="panel-heading"><h2 class="global-country-title"><img class="country-flag" src="/flags/${esc(c.country)}.svg" alt="">${esc(c.name)}${store === "all" ? `<span class="sub">${storeName(c)}</span>` : ""}</h2><span class="sub">${esc(selectors.languageName(c.language))} <small>${esc(c.language)}</small></span></div><div class="global-lists" role="region" aria-label="${esc(c.name)}排行榜" tabindex="0">${c.boards
+    const countryCard = (c) =>
+      `<section class="panel global-country" style="--chart-slots:${Math.max(1, ...c.boards.flatMap((b) => b.items.map((r) => Number(r.position))))}"><div class="panel-heading"><h2 class="global-country-title"><img class="country-flag" src="/flags/${esc(c.country)}.svg" alt="">${esc(c.name)}${store === "all" ? `<span class="sub">${storeName(c)}</span>` : ""}</h2><span class="sub">${esc(selectors.languageName(c.language))} <small>${esc(c.language)}</small></span></div><div class="global-lists" role="region" aria-label="${esc(c.name)}排行榜" tabindex="0">${c.boards
+        .map(
+          (b) =>
+            `<section class="global-chart"><div class="global-chart-summary" title="${esc(boardMeta(b))}"><h3>${boardTitle(c, b, b.definition.name + (b.definition.mode === "derived" ? "（派生）" : ""))}</h3>${boardState(b) ? `<span class="global-chart-status" data-error="${Boolean(b.last_error)}">${esc(boardState(b))}</span>` : ""}</div><div class="global-chart-head" aria-hidden="true"><span>排名</span><span>应用</span></div>${applications(c, b)}</section>`,
+        )
+        .join("")}</div></section>`;
+    const countryMarkets = new Map();
+    for (const country of data.countries) {
+      if (!countryMarkets.has(country.country))
+        countryMarkets.set(country.country, []);
+      countryMarkets.get(country.country).push(country);
+    }
+    const cards =
+      store === "all"
+        ? [...countryMarkets.entries()]
             .map(
-              (b) =>
-                `<section class="global-chart"><div class="global-chart-summary" title="${esc(boardMeta(b))}"><h3>${boardTitle(c, b, b.definition.name + (b.definition.mode === "derived" ? "（派生）" : ""))}</h3>${boardState(b) ? `<span class="global-chart-status" data-error="${Boolean(b.last_error)}">${esc(boardState(b))}</span>` : ""}</div><div class="global-chart-head" aria-hidden="true"><span>排名</span><span>应用</span></div>${applications(c, b)}</section>`,
+              ([country, markets]) =>
+                `<div class="global-market-group" data-country="${esc(country)}" style="--store-count:${markets.length}">${markets
+                  .sort(
+                    (a, b) =>
+                      Number(a.store === "apple") - Number(b.store === "apple"),
+                  )
+                  .map(countryCard)
+                  .join("")}</div>`,
             )
-            .join("")}</div></section>`,
-      )
-      .join("");
+            .join("")
+        : data.countries.map(countryCard).join("");
     if (
       !mount(
         `${filterBar({
@@ -252,7 +269,7 @@ export function createGlobalCharts(ctx) {
           hasMore: data.has_more,
           prevId: "global-prev",
           nextId: "global-next",
-        })}<div id="global-rankings"><div class="global-board-grid" data-layout="${filters.layout}" style="--chart-display-depth:${Number(filters.depth)};--chart-count:${types.size}" role="region" aria-label="各国排行榜" tabindex="0">${cards}</div></div>`,
+        })}<div id="global-rankings"><div class="global-board-grid" data-layout="${filters.layout}" data-store="${esc(store)}" style="--chart-display-depth:${Number(filters.depth)};--chart-count:${types.size}" role="region" aria-label="各国排行榜" tabindex="0">${cards}</div></div>`,
         rev,
         `各国独立排名 · 本页有效 ${data.fresh_boards}/${data.requested_boards} 榜，已观察 ${data.observed_boards} 榜`,
       )
