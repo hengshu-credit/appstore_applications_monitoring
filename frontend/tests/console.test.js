@@ -93,7 +93,7 @@ const newModules = (
     ),
     wrappedModule(
       "monitoring-charts.js",
-      "monitoringChart,bindMonitoringCharts",
+      "monitoringChart,monitoringBars,bindMonitoringCharts",
     ),
     wrappedModule("app-insights.js", "createAppInsights"),
     wrappedModule("discovery.js", "createDiscoveryPages"),

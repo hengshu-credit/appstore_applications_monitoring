@@ -1,71 +1,300 @@
+/* Geometry scales with the panel; type, markers and strokes stay in CSS pixels. */
 .interactive-plot {
-  overflow-x: auto;
+  margin: 0;
   max-width: 100%;
+  min-width: 0;
+  container-type: inline-size;
 }
-.grid2 > .panel { min-width: 0; }
-.interactive-plot .chart {
-  min-width: 440px;
-  height: auto;
+.grid2 > .panel {
+  min-width: 0;
 }
-.plot-hit {
-  fill: transparent;
-  stroke: none;
-  pointer-events: all;
+.plot-viewport {
+  --plot-left: 58px;
+  --plot-right: 18px;
+  position: relative;
+  height: 232px;
+}
+.plot-canvas {
+  position: absolute;
+  inset: 14px var(--plot-right) 36px var(--plot-left);
+}
+.interactive-plot .plot-lines {
+  position: absolute;
+  inset: 0;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.plot-lines polyline {
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.plot-lines .gridline {
+  stroke-width: 1;
+}
+.plot-y-axis {
+  position: absolute;
+  inset: 14px auto 36px 0;
+  width: calc(var(--plot-left) - 10px);
+}
+.plot-y-axis span {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+}
+.plot-x-axis {
+  position: absolute;
+  inset: auto var(--plot-right) 0 var(--plot-left);
+  height: 28px;
+}
+.plot-x-tick {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.plot-x-tick[data-anchor="start"] {
+  transform: none;
+}
+.plot-x-tick[data-anchor="end"] {
+  transform: translateX(-100%);
+}
+.plot-y-axis,
+.plot-x-axis {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.interactive-plot .plot-point {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  filter: none;
   cursor: crosshair;
+  touch-action: pan-y;
 }
-.plot-tip {
-  display: none;
-  pointer-events: none;
-}
-.plot-tip rect {
-  fill: var(--surface);
-  stroke: var(--line);
-}
-.plot-tip text {
-  fill: var(--ink);
-  font-size: 13px;
-}
-.plot-guide {
-  stroke: var(--chart-accent);
-  stroke-dasharray: 4 4;
-}
-.plot-point:hover .plot-tip,
-.plot-point:focus .plot-tip,
-.plot-point.selected .plot-tip {
-  display: block;
-}
-.chart:has(.plot-point:hover) .plot-point:not(:hover) .plot-tip {
-  display: none;
-}
-.chart:has(.plot-point:focus) .plot-point:not(:focus):not(:hover) .plot-tip {
-  display: none;
-}
-.plot-point:focus {
+.interactive-plot .plot-point:focus {
   outline: none;
 }
-.plot-point:focus circle,
-.plot-point:hover circle {
-  stroke: var(--ink);
-  stroke-width: 2px;
+.plot-dot,
+.plot-gap {
+  position: absolute;
+  left: var(--point-x);
+  top: var(--point-y);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
-.barrow {
-  position: relative;
+.plot-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--chart-accent);
+  box-shadow: 0 0 0 1.5px var(--surface);
 }
-.bar-tooltip {
+.plot-gap {
+  width: 7px;
+  height: 2px;
+  background: var(--muted);
+  opacity: 0.5;
+}
+.plot-cursor {
   display: none;
   position: absolute;
-  left: 10%;
-  bottom: 100%;
-  z-index: 5;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  color: var(--ink);
-  padding: 8px 12px;
-  box-shadow: 0 4px 12px var(--shadow);
+  inset-block: 0;
+  left: var(--point-x);
+  border-left: 1px dashed var(--chart-accent);
+  opacity: 0.6;
+  pointer-events: none;
 }
-.barrow:hover .bar-tooltip,
-.barrow:focus .bar-tooltip {
+.plot-point.is-active .plot-cursor,
+.plot-point:focus-visible .plot-cursor {
   display: block;
+}
+.plot-point.is-active .plot-dot,
+.plot-point:focus-visible .plot-dot {
+  width: 7px;
+  height: 7px;
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 3px var(--chart-accent);
+}
+.plot-point:focus-visible .plot-gap {
+  height: 3px;
+  opacity: 1;
+  background: var(--chart-accent);
+}
+.plot-no-values {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  pointer-events: none;
+}
+.plot-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 18px;
+  margin-top: 4px;
+}
+.plot-empty {
+  display: grid;
+  place-items: center;
+  min-height: 160px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.chart-tooltip {
+  position: fixed;
+  z-index: 150;
+  width: max-content;
+  min-width: 156px;
+  max-width: min(280px, calc(100vw - 16px));
+  max-height: min(320px, calc(100dvh - 16px));
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 8px 24px var(--shadow);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.chart-tooltip[hidden] {
+  display: none;
+}
+.chart-tip-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.chart-tip-heading strong {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+}
+.chart-tip-pin {
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.chart-tooltip .chart-tip-close {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  margin: -4px -5px -2px 0;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  font-size: 18px;
+  line-height: 24px;
+}
+.chart-tooltip .chart-tip-close:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+.chart-tip-value {
+  margin-block: 4px 2px;
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.chart-tooltip time,
+.chart-tooltip small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+.chart-tooltip p {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.bar-list {
+  min-width: 0;
+}
+.bar-list .barrow {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(64px, min(35%, 180px)) minmax(0, 1fr) auto;
+  gap: 12px;
+  width: 100%;
+  min-height: 30px;
+  margin: 0;
+  padding: 6px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 400;
+  text-align: start;
+  line-height: 18px;
+  box-shadow: none;
+}
+.bar-list .barrow:is(:hover, .is-active) {
+  background: var(--hover);
+}
+.bar-list .barrow:focus-visible {
+  outline: 2px solid var(--chart-accent);
+  outline-offset: -2px;
+}
+.bar-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bar-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.bar-chart {
+  display: block;
+}
+@container (max-width: 480px) {
+  .plot-x-tick[data-optional="true"] {
+    display: none;
+  }
+  .plot-viewport {
+    --plot-left: 44px;
+    --plot-right: 10px;
+    height: 210px;
+  }
+  .plot-x-axis,
+  .plot-y-axis {
+    font-size: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .interactive-plot *,
+  .bar-list *,
+  .chart-tooltip {
+    transition: none;
+    animation: none;
+  }
 }
 .detail-facts {
   display: grid;

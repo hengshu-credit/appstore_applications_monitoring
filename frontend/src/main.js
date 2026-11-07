@@ -32,7 +32,11 @@ import "./pagination.css";
 import "./monitoring.css";
 import "./experience.css";
 import "./accounts.css";
-import { monitoringChart, bindMonitoringCharts } from "./monitoring-charts.js";
+import {
+  monitoringChart,
+  monitoringBars,
+  bindMonitoringCharts,
+} from "./monitoring-charts.js";
 import { createAppInsights } from "./app-insights.js";
 import { createAvailabilityPage } from "./availability.js";
 import { createGroupWorkspace } from "./app-groups.js";
@@ -315,19 +319,11 @@ function bindForm(id, callback) {
 function controlButtons(resource, row) {
   return `<div class="actions"><button class="secondary small" data-control="${resource}" data-id="${row.id}" data-action="${row.enabled ? "pause" : "resume"}">${row.enabled ? "暂停" : "恢复"}</button>${resource === "rules" ? "" : `<button class="secondary small" data-control="${resource}" data-id="${row.id}" data-action="refresh">安排刷新</button>`}</div>`;
 }
-function chart(points, invert = false, formatAt = stamp) {
-  return monitoringChart(points, invert, formatAt);
+function chart(points, invert = false, formatAt = stamp, options = {}) {
+  return monitoringChart(points, invert, formatAt, options);
 }
 function bars(rows) {
-  const max = Math.max(1, ...rows.map((r) => Number(r.count)));
-  return (
-    rows
-      .map(
-        (r) =>
-          `<div class="barrow" tabindex="0"><span class="bar-tooltip" role="tooltip">${esc(r.label || r.rating || "未知")}：${num(r.count)}</span><span>${esc(r.label || r.rating || "未知")}</span><svg class="bar-chart" width="100%" height="10" viewBox="0 0 100 10" preserveAspectRatio="none"><rect width="100" height="10" class="bar-track"/><rect width="${(Number(r.count) / max) * 100}" height="10" class="bar-value"/></svg><span>${num(r.count)}</span></div>`,
-      )
-      .join("") || empty()
-  );
+  return monitoringBars(rows);
 }
 function evidence(report) {
   const r = report.latest_success;
@@ -644,7 +640,17 @@ async function appDetail(store, id, rev = ++revision) {
   const p = data.listing?.payload || {};
   if (
     !mount(
-      `<div class="panel-heading"><div>${appLink(store, id, p.name || data.app.name, p.icon)}<p class="sub">${esc(store)} · ${esc(m.country.toUpperCase())} · ${esc(m.language)} · ${esc(p.developer || "开发者待采集")}</p></div><div class="actions"><button id="collect-app-now">立即采集全部公开信息</button><button id="quick-watch" class="secondary">管理采集配置</button><button class="secondary" id="open-aso-workbench">ASO 工作台</button></div></div><div id="app-collection-progress"></div>${panel("应用明细", await appRows([{ ...data.app, ...p, store, app_id: id }], { scope: m }))}<div class="cards">${metric("商店评分", p.rating, "来自最近一次商店观察")}${metric("评分数", p.ratings, "累计公开评分数量")}${metric("版本快照", data.snapshots.length, "显示最近最多100次变更")}${metric("历史命中过的关键词", data.keywords.coverage.length, "包含当前未命中词；有效覆盖见下方监控")}</div><div class="grid2">${panel("当前商店资料", `<h3>${esc(p.name || "等待采集")}</h3><p>版本 ${esc(p.version || "—")} · ${esc(data.app.category_name || p.category || "—")}</p><p>${esc(p.summary || "")}</p><details><summary>描述与版本说明</summary><div class="review-text">${esc(p.description || "暂无描述")}</div><h3 class="spacer">版本说明</h3><div class="review-text">${esc(p.release_notes || "暂无版本说明")}</div></details>${safeURL(p.url) ? `<a href="${safeURL(p.url)}" target="_blank" rel="noopener">查看商店原页 ↗</a>` : ""}`)}${panel("评分变化", chart([...data.snapshots].reverse().map((r) => ({ at: r.observed_at, value: r.payload?.rating }))))}</div>${appInsights.facts(p, data.app)}<div id="monitoring-trends"></div><div id="app-market-matrix"></div><div id="app-keyword-markets"></div>${panel("素材与版本历史", `<label>选择历史快照<select id="snapshot-choice">${data.snapshots.length ? "" : '<option value="">暂无已保存的快照</option>'}${data.snapshots.map((r, i) => `<option value="${i}">${esc(stamp(r.observed_at))} · ${esc(r.payload?.version || "")}</option>`).join("")}</select></label><div id="snapshot-view"></div>`)}${panel(
+      `<div class="panel-heading"><div>${appLink(store, id, p.name || data.app.name, p.icon)}<p class="sub">${esc(store)} · ${esc(m.country.toUpperCase())} · ${esc(m.language)} · ${esc(p.developer || "开发者待采集")}</p></div><div class="actions"><button id="collect-app-now">立即采集全部公开信息</button><button id="quick-watch" class="secondary">管理采集配置</button><button class="secondary" id="open-aso-workbench">ASO 工作台</button></div></div><div id="app-collection-progress"></div>${panel("应用明细", await appRows([{ ...data.app, ...p, store, app_id: id }], { scope: m }))}<div class="cards">${metric("商店评分", p.rating, "来自最近一次商店观察")}${metric("评分数", p.ratings, "累计公开评分数量")}${metric("版本快照", data.snapshots.length, "显示最近最多100次变更")}${metric("历史命中过的关键词", data.keywords.coverage.length, "包含当前未命中词；有效覆盖见下方监控")}</div><div class="grid2">${panel("当前商店资料", `<h3>${esc(p.name || "等待采集")}</h3><p>版本 ${esc(p.version || "—")} · ${esc(data.app.category_name || p.category || "—")}</p><p>${esc(p.summary || "")}</p><details><summary>描述与版本说明</summary><div class="review-text">${esc(p.description || "暂无描述")}</div><h3 class="spacer">版本说明</h3><div class="review-text">${esc(p.release_notes || "暂无版本说明")}</div></details>${safeURL(p.url) ? `<a href="${safeURL(p.url)}" target="_blank" rel="noopener">查看商店原页 ↗</a>` : ""}`)}${panel(
+        "评分变化",
+        chart(
+          [...data.snapshots]
+            .reverse()
+            .map((r) => ({ at: r.observed_at, value: r.payload?.rating })),
+          false,
+          stamp,
+          { label: "评分", domain: [0, 5], precision: 2 },
+        ),
+      )}</div>${appInsights.facts(p, data.app)}<div id="monitoring-trends"></div><div id="app-market-matrix"></div><div id="app-keyword-markets"></div>${panel("素材与版本历史", `<label>选择历史快照<select id="snapshot-choice">${data.snapshots.length ? "" : '<option value="">暂无已保存的快照</option>'}${data.snapshots.map((r, i) => `<option value="${i}">${esc(stamp(r.observed_at))} · ${esc(r.payload?.version || "")}</option>`).join("")}</select></label><div id="snapshot-view"></div>`)}${panel(
         "关键词覆盖",
         table(
           ["关键词", "最近位置", "变化", "数据时间", "状态"],

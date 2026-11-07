@@ -1077,7 +1077,20 @@ export function createGroupWorkspace(ctx) {
           .map(([name, points]) => panel(esc(name), chart(points)))
           .join("") ||
         '<p class="empty">尚无下载 / 收入数据，可通过分组看板导入授权指标。</p>'
-      }${panel("评分变化", chart([...r.snapshots].reverse().map((s) => ({ at: s.observed_at, value: s.payload.rating ?? null }))))}${table(
+      }${panel(
+        "评分变化",
+        chart(
+          [...r.snapshots]
+            .reverse()
+            .map((s) => ({
+              at: s.observed_at,
+              value: s.payload.rating ?? null,
+            })),
+          false,
+          stamp,
+          { label: "评分", domain: [0, 5], precision: 2 },
+        ),
+      )}${table(
         ["日期", "指标", "数值", "币种", "口径"],
         r.metrics.map((f) => [
           esc(f.day),
