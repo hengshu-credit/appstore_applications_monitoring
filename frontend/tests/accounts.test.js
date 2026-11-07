@@ -43,6 +43,36 @@ const user = {
   effective_role: "user",
   permissions: ["apps:read"],
 };
+
+test("account trigger opens with arrow keys and Escape closes from either trigger or menu", async () => {
+  const { window, doc } = setup(() => ({ data: {} }));
+  try {
+    const trigger = doc.querySelector("#account-trigger");
+    const menu = doc.querySelector("#account-menu");
+    trigger.dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+    );
+    assert.equal(menu.hidden, false);
+    assert.equal(doc.activeElement.id, "account-settings");
+    doc.activeElement.dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    );
+    assert.equal(menu.hidden, true);
+    assert.equal(doc.activeElement, trigger);
+    trigger.dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }),
+    );
+    assert.equal(doc.activeElement.id, "logout-account");
+    trigger.focus();
+    trigger.dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    );
+    assert.equal(menu.hidden, true);
+    assert.equal(trigger.getAttribute("aria-expanded"), "false");
+  } finally {
+    await window.happyDOM.close();
+  }
+});
 test("initialization validates confirmation, displays one-time recovery and then logs in", async () => {
   let initialized = false;
   const { window, doc, calls, accounts } = setup((url) => {

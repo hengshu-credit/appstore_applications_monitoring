@@ -192,6 +192,19 @@ export function createAccounts({ esc, onReady, toast }) {
     trigger.setAttribute("aria-expanded", String(!menu.hidden));
     if (!menu.hidden) menu.querySelector("[role=menuitem]")?.focus();
   });
+  trigger?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeMenu(true);
+    } else if (["ArrowDown", "ArrowUp"].includes(event.key)) {
+      event.preventDefault();
+      const menu = document.querySelector("#account-menu");
+      menu.hidden = false;
+      trigger.setAttribute("aria-expanded", "true");
+      const items = menu.querySelectorAll("[role=menuitem]");
+      items[event.key === "ArrowDown" ? 0 : items.length - 1]?.focus();
+    }
+  });
   document.addEventListener("click", (e) => {
     if (!e.target.closest(".account-dropdown")) closeMenu();
   });
