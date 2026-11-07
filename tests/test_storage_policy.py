@@ -39,7 +39,9 @@ class StoragePolicyTest(MySQLTestCase):
         self.assertEqual(json.loads(snapshot['payload']),payload);self.assertEqual(snapshot['raw_path'],'')
         self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM app_media_assets').fetchone()['n'],0)
         self.assertFalse((self.cfg['data_dir']/'responses').exists())
-        self.assertEqual(app_icons.request_icon(self.db,self.cfg,self.m|{'app_id':'200'})['status'],'links_only')
+        icon=app_icons.request_icon(self.db,self.cfg,self.m|{'app_id':'200'})
+        self.assertEqual(icon['status'],'links_only');self.assertEqual(icon['url'],payload['icon'])
+        self.assertEqual(self.db.execute("SELECT requested FROM app_icons WHERE app_id='200'").fetchone()['requested'],0)
         self.assertTrue(storage_policy.archive_raw(self.db,self.cfg,'apple',['100'],b'focus-response'))
 
     def test_focus_and_latest_chart_images_only_no_video_and_shared_url_once(self):

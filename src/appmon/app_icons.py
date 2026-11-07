@@ -50,8 +50,10 @@ def request_icon(db,cfg,value,force=False):
     from .storage_policy import media_allowed
     if not media_allowed(db,cfg,m['store'],m['app_id']):
         row=db.execute('SELECT * FROM app_icons WHERE store=%s AND app_id=%s AND country=%s AND language=%s',key).fetchone()
-        if row:return public(cfg,row)|{'pending':False,'status':'links_only'}
-        return m|{'id':None,'status':'links_only','url':None,'pending':False,'checked_at':None}
+        if row:
+            result=public(cfg,row)
+            return result|{'pending':False,'status':'links_only','url':result['url'] or source_url(row['source_url']) or source_url(value.get('source_url'))}
+        return m|{'id':None,'status':'links_only','url':source_url(value.get('source_url')),'pending':False,'checked_at':None}
     with db:
         row=db.execute('SELECT * FROM app_icons WHERE store=%s AND app_id=%s AND country=%s AND language=%s FOR UPDATE',key).fetchone()
         if not row:
