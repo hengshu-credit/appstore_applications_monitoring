@@ -170,6 +170,9 @@ def report(db,cfg,store='all',hours=24):
     claims=db.execute("""SELECT target_key,SUM(JSON_EXTRACT(details,'$.tasks')) tasks FROM collection_logs
         WHERE resource='dispatch' AND created_at BETWEEN %s AND %s"""+event_scope+' GROUP BY target_key',event_args).fetchall()
     claims={r['target_key']:int(r['tasks']) for r in claims}
+    mixed_rows=db.execute("""SELECT target_key,JSON_UNQUOTE(JSON_EXTRACT(details,'$.store')) store,SUM(JSON_EXTRACT(details,'$.tasks')) tasks FROM collection_logs
+        WHERE resource='dispatch_mixed' AND created_at BETWEEN %s AND %s"""+event_scope+' GROUP BY target_key,store',event_args).fetchall()
+    mixed={s:{r['target_key']:int(r['tasks']) for r in mixed_rows if r['store']==s} for s in ('google','apple')}
     http_rows=db.execute("""SELECT target_key,JSON_UNQUOTE(JSON_EXTRACT(details,'$.lane')) lane,COUNT(*) requests,
         SUM(JSON_EXTRACT(details,'$.failed')=true) errors FROM collection_logs
         WHERE resource='http' AND created_at BETWEEN %s AND %s"""+event_scope+' GROUP BY target_key,lane',event_args).fetchall()
@@ -199,13 +202,16 @@ def report(db,cfg,store='all',hours=24):
         node('q:'+kind,label,1,kind=kind,value=total,unit='共享目标',states=states,eligible=eligible,
              note='当前队列快照；同一目标可被多个计划复用',link='#collection?view=pipelines' if kind=='pool' else '#collection?kind='+kind)
         batch=cfg.get('apple_lookup_batch_size',50) if kind in ('details','pool') else cfg.get('google_rpc_batch_size',20)
-        if kind in ('icons','featured'):batch=1
-        if kind in SOURCE_KINDS:batch=50
-        node('d:'+kind,'动态分配 · '+label,2,kind=kind,value=claims.get(kind),unit='已消费任务',eligible=eligible,
+        if kind=='featured':batch=1
+        if kind in SOURCE_KINDS or kind=='icons':batch=cfg.get('collection_batch_size',2000)
+        direct_claims=max(0,claims.get(kind,0)-sum(v.get(kind,0) for v in mixed.values())) if kind in claims else None
+        node('d:'+kind,'动态分配 · '+label,2,kind=kind,value=direct_claims,unit='已消费任务',eligible=eligible,
              batch_limit=batch,workers=worker['workers'],paused=control['paused'],note='兼容商店、国家、语言和协议才组批；多个消费者共享额度',link='#collection?view=tasks')
         for origin in ('platform','external'):edge(origin,'q:'+kind,kind,submitted.get((origin,kind)),'次任务提交')
         if kind not in SOURCE_KINDS:edge('timer','q:'+kind,kind)
-        edge('q:'+kind,'d:'+kind,kind,claims.get(kind),'次任务消费')
+        edge('q:'+kind,'d:'+kind,kind,direct_claims,'次任务消费')
+        for s,counts in mixed.items():
+            if kind in counts:edge('q:'+kind,'d:mixed_'+s,kind,counts[kind],'次任务消费')
         by_source={}
         for row in matching:
             source=source_for(kind,row['store'])
@@ -217,6 +223,11 @@ def report(db,cfg,store='all',hours=24):
         for lane,source in interactions:
             if lane==kind:by_source.setdefault(source,0)
         for source,count in by_source.items():edge('d:'+kind,'s:'+source,kind,claims.get(kind) if source=='aso_file' else interactions.get((kind,source)),'次文件处理' if source=='aso_file' else '次 HTTP',tasks=count)
+    for s,source,label,capacity in [('google','google','Google 联合批次',cfg.get('google_rpc_batch_size',20)),('apple','lookup','Apple 联合详情',cfg.get('apple_lookup_batch_size',50))]:
+        if mixed[s] or ('mixed_'+s,source) in interactions:
+            node('d:mixed_'+s,label,2,value=sum(mixed[s].values()),unit='已消费任务',batch_limit=capacity,
+                 note='同国家、语言和请求身份的兼容任务合并；逻辑任务数量与实际 HTTP 分开计数',link='#collection')
+            edge('d:mixed_'+s,'s:'+source,count=interactions.get(('mixed_'+s,source)),unit='次 HTTP',tasks=sum(mixed[s].values()))
     first=db.execute("SELECT next_at FROM schedules WHERE name='lineage:http-since'").fetchone()
     accounts={r['provider']:r['status'] for r in db.execute('SELECT provider,status FROM source_accounts').fetchall()}
     for source,(label,endpoint,note) in SOURCES.items():

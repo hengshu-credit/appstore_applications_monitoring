@@ -30,6 +30,8 @@ def work_details(cfg, db, limit, client, *, watchlist=False, managed=False, max_
             break
         batches += 1
         logs = [Execution(db,'watchlist' if watchlist else 'pipelines',j['watch_id'] if watchlist else 'pool') for j in jobs]
+        client.lineage_batch_key=jobs[0]['token']
+        client.lineage_tasks=len(jobs)
         old_progress, old_guard = getattr(client,'progress',None),getattr(client,'request_guard',None)
         def progress(event,message):
             for task_log in logs:
@@ -55,7 +57,9 @@ def work_details(cfg, db, limit, client, *, watchlist=False, managed=False, max_
                 task_log.write('started',f"开始采集：{job['store']} / {job['app_id']} / {job['country']}；本批 {len(jobs)} 个应用")
             try:
                 guard()
-                results = client.fetch_many(jobs) if len(jobs)>1 else [client.fetch(jobs[0])]
+                from .collection_batch import can_batch
+                batchable=len(jobs)>1 or jobs[0]['store']=='google' and can_batch(jobs[0]) and callable(getattr(client,'fetch_many',None))
+                results = client.fetch_many(jobs) if batchable else [client.fetch(jobs[0])]
                 if len(results)!=len(jobs):
                     raise FetchError('批次结果数量异常，保留原有数据')
             except FetchError as exc:

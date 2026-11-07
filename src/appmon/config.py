@@ -18,6 +18,11 @@ def load(path="config.toml"):
     if not re.fullmatch(r"[a-z]{2}(?:[-_][A-Za-z]{2})?", cfg["language"]):
         raise ValueError("Invalid language")
     cfg.setdefault('google_rpc_batch_size', 20)
+    cfg.setdefault('collector_concurrency',4)
+    cfg.setdefault('collection_batch_size',2000)
+    for key,low,high in [('collector_concurrency',1,8),('collection_batch_size',50,2000)]:
+        if type(cfg[key]) is not int or not low<=cfg[key]<=high:
+            raise ValueError(f'{key} must be an integer from {low} to {high}')
     if type(cfg['google_rpc_batch_size']) is not int or not 1<=cfg['google_rpc_batch_size']<=20:
         raise ValueError('google_rpc_batch_size must be an integer from 1 to 20')
     cfg.setdefault('apple_lookup_batch_size', 50)

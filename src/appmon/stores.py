@@ -96,6 +96,8 @@ class Client:
         self.session.headers["User-Agent"] = "Mozilla/5.0 (compatible; AppPoolMonitor/0.1)"
         self.progress = None
         self.request_guard = None
+        self.rpc_coalescer = cfg.get('_rpc_coalescer')
+        self.lookup_coalescer = cfg.get('_lookup_coalescer')
 
     def report(self,event,message):
         if self.progress:
@@ -183,6 +185,14 @@ class Client:
             return []
         if jobs[0]['store']=='google':
             return self.fetch_google_many(jobs)
+        from .collection_batch import can_batch
+        if self.lookup_coalescer and all(not j.get('failures') or can_batch(j) for j in jobs):
+            if len(jobs)>50 or len({(j['store'],j['country'],j.get('language','en')) for j in jobs})!=1 or jobs[0]['store']!='apple':
+                raise ValueError('A detail batch must contain at most 50 jobs in one market')
+            return self.lookup_coalescer.submit(self,jobs[0],[('lookup',j['app_id']) for j in jobs])[0]
+        return self.fetch_apple_many(jobs)
+
+    def fetch_apple_many(self,jobs):
         if len(jobs) > 50 or len({(j['store'],j['country'],j.get('language','en')) for j in jobs}) != 1:
             raise ValueError('A detail batch must contain at most 50 jobs in one market')
         if jobs[0]['store'] != 'apple':

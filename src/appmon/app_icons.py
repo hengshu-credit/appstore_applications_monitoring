@@ -1,14 +1,8 @@
 """Bounded, leased local caching of public store icons; no arbitrary URL proxy."""
-import hashlib
-import os
 import time
-import uuid
-from pathlib import Path
 from urllib.parse import urlsplit,urlunsplit
 from .intelligence import market
-from .stores import Client,FetchError
-from .ingest import disk_check
-from .task_logs import execution
+from .stores import FetchError
 
 MAX_BYTES=2*1024*1024
 
@@ -79,52 +73,6 @@ def public(cfg,row):
         'pending':bool(row['enabled'] and row['status'] in ('queued','running'))}
 
 
-def work_icons(cfg,db,limit=5,client=None):
-    client=client or Client(cfg,db);counts={'processed':0,'ok':0,'error':0,'stale':0}
-    for _ in range(limit):
-        from .collection_limits import blocked
-        if blocked(db,cfg):
-            break
-        disk_check(cfg['data_dir'],cfg['min_free_gb'])
-        with db:
-            row=db.execute('''SELECT * FROM app_icons WHERE requested=1 AND enabled=1 AND due<=%s AND lease_until<=%s
-                ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED''',(time.time(),time.time())).fetchone()
-            if not row:break
-            token=uuid.uuid4().hex
-            db.execute("UPDATE app_icons SET token=%s,lease_until=%s,status='running' WHERE id=%s",(token,time.time()+cfg['lease_seconds'],row['id']))
-        with execution(db,client,'icons',row['id'],f"{row['store']} / {row['app_id']}") as log:
-            try:
-                observed_name=None
-                url=source_url(row['source_url'])
-                if not url:
-                    detail=client.fetch(row)
-                    if detail.outcome!='ok':raise FetchError('当前地区未找到可用应用图标')
-                    url=source_url(detail.payload.get('icon'))
-                    observed_name=detail.payload.get('name')
-                if not url:raise FetchError('商店未提供受支持的图标地址')
-                # Redirects are deliberately not followed outside the CDN allowlist.
-                with client.request(row['store'],'GET',url,stream=True,allow_redirects=False) as response:
-                    if response.status_code!=200:raise FetchError('图标下载失败')
-                    if int(response.headers.get('Content-Length','0'))>MAX_BYTES:raise FetchError('图标超过2MB限制')
-                    raw=bytearray()
-                    for chunk in response.iter_content(65536):
-                        raw.extend(chunk)
-                        if len(raw)>MAX_BYTES:raise FetchError('图标超过2MB限制')
-                mime,extension=media_type(raw);digest=hashlib.sha256(raw).hexdigest()
-                path=cfg['data_dir']/'icons'/digest[:2]/(digest+'.'+extension);path.parent.mkdir(parents=True,exist_ok=True)
-                if not path.exists():
-                    temp=path.with_suffix('.'+token+'.part');temp.write_bytes(raw);os.replace(temp,path)
-                saved=db.execute('''UPDATE app_icons SET name=COALESCE(%s,name),source_url=%s,file_path=%s,mime=%s,checked_at=%s,status='ready',
-                    due=%s,failures=0,last_error=NULL,token=NULL,lease_until=0 WHERE id=%s AND token=%s''',
-                    (observed_name,url,path.relative_to(cfg['data_dir']).as_posix(),mime,time.time(),time.time()+row['refresh_hours']*3600,row['id'],token)).rowcount
-                if saved and observed_name:
-                    db.execute("UPDATE apps SET name=%s WHERE store=%s AND app_id=%s AND (name IS NULL OR name='' OR name=app_id)",(observed_name,row['store'],row['app_id']))
-                log.finish('ok',bool(saved),f'图标已缓存，{len(raw)} 字节');counts['ok' if saved else 'stale']+=1
-            except (FetchError,ValueError,OSError) as exc:
-                failures=row['failures']+1
-                saved=db.execute('''UPDATE app_icons SET status='error',failures=%s,last_error=%s,due=%s,token=NULL,lease_until=0
-                    WHERE id=%s AND token=%s''',(failures,str(exc) if isinstance(exc,FetchError) else type(exc).__name__,
-                    time.time()+min(86400,300*2**min(failures,8)),row['id'],token)).rowcount
-                log.finish('error',bool(saved),detail=str(exc) if isinstance(exc,FetchError) else type(exc).__name__,error=exc);counts['error' if saved else 'stale']+=1
-        counts['processed']+=1
-    return counts
+def work_icons(cfg,db,limit=5,client=None,max_requests=None):
+    from .icon_batches import work
+    return work(cfg,db,limit,client,max_requests)

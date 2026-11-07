@@ -82,7 +82,7 @@ def work(db,cfg):
                 if not first:return {'processed':0}
                 rows=db.execute('''SELECT id,language,failures,JSON_EXTRACT(payload,'$.limit') requested_limit
                     FROM collection_source_tasks WHERE batch_key=%s AND enabled=1 AND due<=%s
-                    AND lease_until<=%s AND failures<3 ORDER BY id LIMIT 50 FOR UPDATE SKIP LOCKED''',(first['batch_key'],now,now)).fetchall()
+                    AND lease_until<=%s AND failures<3 ORDER BY id LIMIT %s FOR UPDATE SKIP LOCKED''',(first['batch_key'],now,now,cfg.get('collection_batch_size',2000))).fetchall()
                 for row in rows:
                     db.execute('UPDATE collection_source_tasks SET token=%s,lease_until=%s WHERE id=%s',(token,now+max(600,cfg.get('lease_seconds',600)),row['id']))
                 touch(db)
@@ -91,7 +91,8 @@ def work(db,cfg):
         raise
     kind=first['kind']; payload=json.loads(first['payload'])
     record_dispatch(db,kind,first['store'],len(rows))
-    for row in rows:emit(db,'sources',row['id'],'started',f'消费者已领取；合并 {len(rows)} 个兼容任务')
+    with db:
+        for row in rows:emit(db,'sources',row['id'],'started',f'消费者已领取；合并 {len(rows)} 个兼容任务')
     error=None; data=None
     try:
         if kind=='aso_popularity':
@@ -128,10 +129,10 @@ def work(db,cfg):
                     emit(writer,'sources',row['id'],'ok',f'一次性任务已完成；保存 {result.get("returned",result.get("rows",0))} 条结果')
     except Exception as exc:
         completed=0
-        for row in rows:
-            with db:
+        with db:
+            for row in rows:
                 failed+=db.execute('''UPDATE collection_source_tasks SET failures=failures+1,last_error=%s,due=%s,token=NULL,lease_until=0
                     WHERE id=%s AND token=%s''',(safe_message(exc),time.time()+min(3600,60*2**row['failures']),row['id'],token)).rowcount
                 emit(db,'sources',row['id'],'error','执行失败：'+safe_message(exc),'error')
-                touch(db)
+            touch(db)
     return {'processed':len(rows),'ok':completed,'error':failed}

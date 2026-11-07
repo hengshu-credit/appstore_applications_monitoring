@@ -38,6 +38,12 @@ def parse_frames(text, rpc_ids):
 def rpc_many(client, market, calls):
     if not 1<=len(calls)<=20:
         raise ValueError('Google RPC batch must contain 1–20 calls')
+    if getattr(client,'rpc_coalescer',None):
+        return client.rpc_coalescer.submit(client,market,calls)
+    return send_rpc(client,market,calls)
+
+
+def send_rpc(client, market, calls, capacity=20):
     unique, indices, lookup = [], [], {}
     for rpc, payload in calls:
         key = (rpc,json.dumps(payload,separators=(',',':'),sort_keys=True))
@@ -45,6 +51,8 @@ def rpc_many(client, market, calls):
             lookup[key] = len(unique)
             unique.append((rpc,payload))
         indices.append(lookup[key])
+    if not unique or len(unique)>capacity:
+        raise ValueError('Too many distinct RPC calls')
     response=client.request('google','POST','https://play.google.com/_/PlayStoreUi/data/batchexecute',
         params={'rpcids':','.join(dict.fromkeys(rpc for rpc,_ in unique)),
                 'hl':market['language'],'gl':market['country'],'rt':'c'},

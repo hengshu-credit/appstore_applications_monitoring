@@ -139,6 +139,7 @@ def connect(cfg, *, initialize=True, allow_migration=False):
             for table,name,columns in [('apps','apps_store_category','store,category(64)'),
                                        ('collection_logs','log_source_time','resource,created_at'),
                                        ('requests','request_observed','observed_at'),
+                                       ('app_icons','icon_source_queue','requested,enabled,source_url(191),due,lease_until'),
                                        ('keyword_runs','keyword_observed','observed_at'),
                                        ('observation_runs','observation_observed','observed_at'),
                                        ('app_permission_runs','permission_observed','observed_at'),

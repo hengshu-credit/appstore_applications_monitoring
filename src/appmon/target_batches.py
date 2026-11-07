@@ -54,6 +54,8 @@ def work_targets(cfg, db, limit, client, *, table, resource, single, multiple, s
             break
         batches += 1
         logs=[Execution(db,resource,row['id']) for row in rows]
+        client.lineage_batch_key=rows[0]['token']
+        client.lineage_tasks=len(rows)
         old_progress,old_guard=getattr(client,'progress',None),getattr(client,'request_guard',None)
         def guard():
             if old_guard:
@@ -71,7 +73,8 @@ def work_targets(cfg, db, limit, client, *, table, resource, single, multiple, s
                 task_log.write('started',f"开始采集：{row['store']} / {row['country']} / {row['language']}；本批 {len(rows)} 个目标")
             try:
                 guard()
-                results=getattr(client,multiple)(rows) if len(rows)>1 else [getattr(client,single)(rows[0])]
+                batched=len(rows)>1 or rows[0]['store']=='google' and can_batch(rows[0])
+                results=getattr(client,multiple)(rows) if batched else [getattr(client,single)(rows[0])]
                 if len(results)!=len(rows):
                     raise FetchError('批次结果数量异常')
             except (FetchError,ValueError,TypeError,KeyError,IndexError) as exc:

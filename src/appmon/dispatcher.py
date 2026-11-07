@@ -90,7 +90,7 @@ def run_batch(db, cfg, lane):
             return work_targets(cfg,db,size,client,table='app_permission_targets',resource='permissions',single='collect',
                                 multiple='collect_many',save=save_batch_result,max_batches=1)
         from .app_icons import work_icons
-        return work_icons(cfg,db,1,client)
+        return work_icons(cfg,db,cfg.get('collection_batch_size',2000),client,max_requests=1)
     finally:
         client.session.close()
 
@@ -107,9 +107,28 @@ def dispatch_once(db, cfg, worker_id):
 
 
 def worker(cfg, role='collector'):
+    from threading import Thread, Event
+    from .rpc_coalescer import RpcCoalescer, LookupCoalescer
+    coalescer=RpcCoalescer(cfg.get('google_rpc_batch_size',20))
+    lookup=LookupCoalescer(cfg.get('apple_lookup_batch_size',50))
+    stop=Event()
+    runtime=cfg | {'_rpc_coalescer':coalescer,'_lookup_coalescer':lookup}
+    threads=[Thread(target=_worker_loop,args=(runtime,role,stop),name=f'{role}-{i+1}',daemon=True)
+             for i in range(cfg.get('collector_concurrency',4))]
+    try:
+        for thread in threads:thread.start()
+        for thread in threads:thread.join()
+    finally:
+        stop.set()
+        coalescer.close()
+        lookup.close()
+
+
+def _worker_loop(cfg, role, stop):
+    from threading import current_thread
     from .collection import work_plans
-    worker_id = f'{role}:{socket.gethostname()}:{os.getpid()}'
-    while True:
+    worker_id = f'{role}:{socket.gethostname()}:{os.getpid()}:{current_thread().name}'
+    while not stop.is_set():
         db = None
         result = {'processed':0}
         try:
@@ -124,7 +143,7 @@ def worker(cfg, role='collector'):
             if db is not None:
                 db.close()
         if not result['processed']:
-            time.sleep(5)
+            stop.wait(5)
 
 
 def status(db):

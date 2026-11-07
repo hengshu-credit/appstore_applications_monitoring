@@ -77,11 +77,24 @@ def import_frequency(db,value):
     if type(limit) is not int or not 1<=limit<=5000: raise ValueError('每次下载取1–5000个候选词')
     suffix='full' if code in ('ja','kk','hi','tl') else '50k'
     link=f'https://raw.githubusercontent.com/hermitdave/FrequencyWords/{FREQUENCY_SHA}/content/2018/{code}/{code}_{suffix}.txt'
-    try:
-        r=requests.get(link,timeout=30);r.raise_for_status()
-    except requests.RequestException as exc: raise ValueError('开源词库下载失败：'+type(exc).__name__) from exc
+    source_key=hashlib.sha256(link.encode()).hexdigest()
+    with db.named_lock('immutable-source:'+source_key,timeout=60):
+        cached=db.execute('SELECT content,sha256 FROM immutable_sources WHERE source_key=%s',(source_key,)).fetchone()
+        if cached and hashlib.sha256(cached['content'].encode()).hexdigest()==cached['sha256']:
+            content=cached['content']
+        else:
+            try:
+                r=requests.get(link,timeout=30);r.raise_for_status()
+            except requests.RequestException as exc: raise ValueError('开源词库下载失败：'+type(exc).__name__) from exc
+            content=r.text
+            # Oversized source files retain the original full parsing path without
+            # exceeding MySQL's packet budget merely to populate this cache.
+            if len(content.encode())<=8*1024*1024:
+                db.execute('''INSERT INTO immutable_sources VALUES(%s,%s,%s,%s) AS incoming
+                    ON DUPLICATE KEY UPDATE content=incoming.content,sha256=incoming.sha256,fetched_at=incoming.fetched_at''',
+                    (source_key,content,hashlib.sha256(content.encode()).hexdigest(),time.time()))
     words=[]
-    for line in r.text.splitlines():
+    for line in content.splitlines():
         term,_,frequency=line.rpartition(' ')
         if term and frequency.isdigit():
             words.append({'keyword':term,'frequency':int(frequency)})

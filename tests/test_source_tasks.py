@@ -25,6 +25,14 @@ class SourceQueueTest(MySQLTestCase):
         with self.assertRaises(ValueError):queue.enqueue(self.db,'aso_popularity',self.spec,request_id=0)
         self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM collection_source_tasks').fetchone()['n'],0)
 
+    def test_compatible_one_shot_receipts_exceed_old_fifty_task_limit(self):
+        for i in range(70):queue.enqueue(self.db,'aso_popularity',self.spec,request_id=f'large-{i}')
+        with patch('appmon.apple_popularity.request_data',return_value=self.response) as fetch:
+            result=queue.work(self.db,self.cfg)
+        self.assertEqual((result['processed'],result['ok']),(70,70));fetch.assert_called_once()
+        self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM keyword_source_fetches').fetchone()['n'],1)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM collection_source_tasks WHERE due IS NULL').fetchone()['n'],70)
+
     def test_api_only_enqueues_merge_fetch_and_complete_without_rescheduling(self):
         client=TestClient(create_app(self.cfg));self.login_admin(client)
         with patch('appmon.apple_popularity.requests.post') as http:
