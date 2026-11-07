@@ -24,7 +24,8 @@ export const navigationSections = [
     label: "管理",
     modules: [
       { label: "采集中心", pages: ["collection", "watchlist"] },
-      { label: "数据管理", pages: ["exports", "datasources"] },
+      { label: "数据管理", pages: ["exports"] },
+      { label: "数据源配置", pages: ["datasources"] },
       { label: "账户管理", pages: ["administration"] },
     ],
   },

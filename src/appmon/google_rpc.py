@@ -36,11 +36,11 @@ def parse_frames(text, rpc_ids):
 
 
 def rpc_many(client, market, calls):
-    if not 1<=len(calls)<=20:
-        raise ValueError('Google RPC batch must contain 1–20 calls')
+    if not 1<=len(calls)<=100:
+        raise ValueError('Google RPC batch must contain 1–100 calls')
     if getattr(client,'rpc_coalescer',None):
         return client.rpc_coalescer.submit(client,market,calls)
-    return send_rpc(client,market,calls)
+    return send_rpc(client,market,calls,capacity=client.cfg.get('google_rpc_batch_size',20))
 
 
 def send_rpc(client, market, calls, capacity=20):
@@ -53,10 +53,18 @@ def send_rpc(client, market, calls, capacity=20):
         indices.append(lookup[key])
     if not unique or len(unique)>capacity:
         raise ValueError('Too many distinct RPC calls')
-    response=client.request('google','POST','https://play.google.com/_/PlayStoreUi/data/batchexecute',
-        params={'rpcids':','.join(dict.fromkeys(rpc for rpc,_ in unique)),
-                'hl':market['language'],'gl':market['country'],'rt':'c'},
-        data={'f.req':json.dumps([[[rpc,json.dumps(payload),None,str(i)] for i,(rpc,payload) in enumerate(unique)]])})
+    try:
+        response=client.request('google','POST','https://play.google.com/_/PlayStoreUi/data/batchexecute',
+            params={'rpcids':','.join(dict.fromkeys(rpc for rpc,_ in unique)),
+                    'hl':market['language'],'gl':market['country'],'rt':'c'},
+            data={'f.req':json.dumps([[[rpc,json.dumps(payload),None,str(i)] for i,(rpc,payload) in enumerate(unique)]])})
+    except FetchError as exc:
+        if str(exc) not in ('HTTP 413','HTTP 414') or len(unique)<2:raise
+        middle=len(unique)//2
+        left,raw_left=send_rpc(client,market,unique[:middle],capacity)
+        right,raw_right=send_rpc(client,market,unique[middle:],capacity)
+        results=left+right
+        return [results[index] for index in indices],raw_left+b'\n'+raw_right
     if response.status_code!=200:
         raise FetchError('Google batch endpoint unavailable')
     results = parse_frames(response.text,[rpc for rpc,_ in unique])
@@ -64,5 +72,5 @@ def send_rpc(client, market, calls, capacity=20):
 
 
 def same_market(targets):
-    if not targets or len(targets)>20 or len({(t['store'],t['country'],t['language']) for t in targets})!=1 or targets[0]['store']!='google':
-        raise ValueError('Google batch requires 1–20 targets in the same country and language')
+    if not targets or len(targets)>100 or len({(t['store'],t['country'],t['language']) for t in targets})!=1 or targets[0]['store']!='google':
+        raise ValueError('Google batch requires 1–100 targets in the same country and language')

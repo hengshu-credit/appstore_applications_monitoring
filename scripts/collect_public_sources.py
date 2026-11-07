@@ -13,13 +13,17 @@ parser.add_argument('--config',default='config.toml')
 args=parser.parse_args();summary=[]
 from appmon.config import load
 from appmon.source_profiles import profile
+from appmon.db import connect
 cfg=load(args.config)
-for kind,key in [('app',x) for x in args.app]+[('country',x) for x in args.country]:
-    try:
-        options=dict(zip(('store','app_id'),key.split(':',1))) if kind=='app' else {'country':key}
-        result=collect(args.output,proxy=args.proxy,origin=profile(cfg,'community' if kind=='app' else 'web_feed')['origin'],**options)
-        summary.append({'source':key,'ok':True,'scope':result['scope'],'rows':len(result.get('items',[])),
-                        'metrics':result.get('values_display')})
-    except Exception as error:summary.append({'source':key,'ok':False,'error':str(error)})
-    time.sleep(1)
+db=connect(cfg,initialize=False)
+try:
+    for kind,key in [('app',x) for x in args.app]+[('country',x) for x in args.country]:
+        try:
+            options=dict(zip(('store','app_id'),key.split(':',1))) if kind=='app' else {'country':key}
+            result=collect(args.output,proxy=args.proxy,origin=profile(cfg,'community' if kind=='app' else 'web_feed',db)['origin'],**options)
+            summary.append({'source':key,'ok':True,'scope':result['scope'],'rows':len(result.get('items',[])),
+                            'metrics':result.get('values_display')})
+        except Exception as error:summary.append({'source':key,'ok':False,'error':str(error)})
+        time.sleep(1)
+finally:db.close()
 print(json.dumps(summary,ensure_ascii=False,indent=2))

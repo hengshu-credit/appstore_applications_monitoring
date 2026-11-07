@@ -17,6 +17,24 @@ export function createDataSourcePage({
         configured: false,
         message: "未配置账户",
       };
+    const sourceTable = () =>
+      table(
+        ["数据源", "接入地址 / 仓库", "访问方式", "数据范围", "凭据", "操作"],
+        (data.connections || []).map((source) => [
+          esc(source.name),
+          esc(source.origin || "尚未配置"),
+          esc(source.access),
+          esc(source.fields),
+          source.account?.configured
+            ? source.account.status === "endpoint_changed"
+              ? "地址变更，需重新保存凭据"
+              : "已保存 · 密钥不回显"
+            : "公开 / 未配置账户",
+          source.editable
+            ? `<button type="button" class="link" data-source-edit="${esc(source.id)}">配置${source.batch_size ? ` · 每批 ${source.batch_size}` : ""}</button>`
+            : "内置协议",
+        ]),
+      );
     const metricsLabels = {
       total_installs: "来源累计安装（全球）",
       installs: "累计安装档位下限",
@@ -29,7 +47,7 @@ export function createDataSourcePage({
     };
     if (
       !mount(
-        `${panel("公开指标接入", `<p id="provider-state" role="status">${esc(state.message)}${state.checked_at ? " · " + new Date(state.checked_at * 1000).toLocaleString() : ""}</p><form id="provider-account" class="toolbar"><label>账户邮箱<input type="email" name="email" required autocomplete="off" placeholder="${state.configured ? "已保存，更换账户时填写" : "公开元数据 登录邮箱"}"></label><label>密码<input type="password" name="password" required autocomplete="new-password"></label><button type="submit">保存并自动授权</button><button type="button" id="provider-authorize" class="secondary" ${state.configured ? "" : "disabled"}>检查 / 续期授权</button><button type="button" id="provider-datasets" class="secondary" ${state.configured ? "" : "disabled"}>读取免费数据目录</button></form><p class="sub">账密与会话加密保存在服务器，密码不回显。普通密码登录可自动授权；邮箱验证、验证码或二次验证需在 公开元数据 完成。授权不自动开通付费服务。</p><div id="provider-result"></div>`)}${panel("安装指标接入", `<p id="directory-state" role="status">${esc(directory.message)}</p><form id="directory-account" class="toolbar"><label>账户邮箱<input name="email" type="email" required autocomplete="off" placeholder="${directory.configured ? "已保存，更换时填写" : "安装指标 登录邮箱"}"></label><label>密码<input name="password" type="password" required autocomplete="new-password"></label><button type="submit">保存并自动授权</button><button type="button" id="directory-authorize" class="secondary" ${directory.configured ? "" : "disabled"}>检查 / 续期授权</button></form><p class="sub">使用 安装指标 自身的邮箱密码；第三方单点登录和验证码需在来源网站完成。免费账户仅获取实际开放的数据。</p>`)}${panel(
+        `${panel("数据源配置", `<div id="source-config-list">${sourceTable()}</div><p class="sub">配置保存在后台并实时回显。批量设置在新批次生效；修改接入地址后须重新保存账户凭据。</p>`)}${panel("首轮 24 小时容量", `<div id="initial-capacity">正在核算全库容量…</div>`)}${panel("公开批量数据包", `<div id="bulk-source-imports">正在读取本地数据包…</div>`)}${panel("公开指标接入", `<p id="provider-state" role="status">${esc(state.message)}${state.checked_at ? " · " + new Date(state.checked_at * 1000).toLocaleString() : ""}</p><form id="provider-account" class="toolbar"><label>账户邮箱<input type="email" name="email" required autocomplete="off" value="${esc(state.email || "")}" placeholder="${state.configured ? "已保存，更换账户时填写" : "公开元数据 登录邮箱"}"></label><label>密码<input type="password" name="password" required autocomplete="new-password"></label><button type="submit">保存并自动授权</button><button type="button" id="provider-authorize" class="secondary" ${state.configured ? "" : "disabled"}>检查 / 续期授权</button><button type="button" id="provider-datasets" class="secondary">读取免费数据目录</button></form><p class="sub">账密与会话加密保存在服务器，密码不回显。普通密码登录可自动授权；邮箱验证、验证码或二次验证需在 公开元数据 完成。授权不自动开通付费服务。</p><div id="provider-result"></div>`)}${panel("安装指标接入", `<p id="directory-state" role="status">${esc(directory.message)}</p><form id="directory-account" class="toolbar"><label>账户邮箱<input name="email" type="email" required autocomplete="off" value="${esc(directory.email || "")}" placeholder="${directory.configured ? "已保存，更换时填写" : "安装指标 登录邮箱"}"></label><label>密码<input name="password" type="password" required autocomplete="new-password"></label><button type="submit">保存并自动授权</button><button type="button" id="directory-authorize" class="secondary" ${directory.configured ? "" : "disabled"}>检查 / 续期授权</button></form><p class="sub">使用 安装指标 自身的邮箱密码；第三方单点登录和验证码需在来源网站完成。免费账户仅获取实际开放的数据。</p>`)}${panel(
           "获取应用公开指标",
           `${filterBar({
             id: "source-app-query",
@@ -84,14 +102,150 @@ export function createDataSourcePage({
       return;
     const root = $("#provider-account").closest("main");
     bindMarketData({ $, api, esc, table, toast, root });
+    const loadCapacity = async () => {
+      const capacity = await api("/data-sources/initial-capacity");
+      const target = root.querySelector("#initial-capacity");
+      if (!target) return;
+      target.innerHTML = `<p><strong>全内容 24 小时达标条件尚未满足</strong> · 全库 ${capacity.inventory.reduce((n, r) => n + r.apps, 0).toLocaleString()} 个应用</p><p>单市场详情请求理论下限 <strong>${capacity.detail_requests_lower_bound.toLocaleString()}</strong> 次 · 当前配置至少 <strong>${capacity.detail_hours_lower_bound}</strong> 小时</p><p>磁盘可用 ${capacity.free_gib ?? "—"} GiB · 保护线 ${capacity.minimum_free_gib ?? "—"} GiB · 单份详情载荷样本估算 ${capacity.estimated_payload_gib ?? "待采样"} GiB</p><p class="sub">${esc(capacity.scope_note)} ${esc(capacity.blockers.join("；"))}</p>`;
+    };
+    loadCapacity().catch((error) => {
+      const target = root.querySelector("#initial-capacity");
+      if (target) target.textContent = error.message;
+    });
+    let bulkTimer;
+    const loadBulk = async () => {
+      if (!root.isConnected) return;
+      const data = await api("/data-sources/baseline-imports"),
+        target = root.querySelector("#bulk-source-imports");
+      if (!target) return;
+      const status = {
+        queued: "排队中",
+        running: "导入中",
+        complete: "导入完成",
+        complete_with_rejections: "导入结束，有拒绝行",
+        paused_disk: "磁盘保护暂停",
+        paused_user: "已暂停",
+        error: "导入异常，可续传",
+      };
+      target.innerHTML = `<p class="sub">${esc(data.coverage)} · <a href="https://appgoblin.info" target="_blank" rel="noopener noreferrer">Data provided by AppGoblin</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">${esc(data.license)}</a></p>${table(
+        ["数据包", "本地文件", "操作"],
+        data.files.map((row) => [
+          esc(row.dataset),
+          esc(row.file_name),
+          `<button class="secondary small" data-bulk-import="${row.dataset}" ${row.available ? "" : "disabled"}>导入 / 续传</button>`,
+        ]),
+      )}${table(
+        ["数据包", "状态", "已处理行", "有效行", "拒绝行", "最近写入", "操作"],
+        data.imports.map((row) => [
+          esc(row.dataset),
+          esc(status[row.status] || row.status),
+          row.processed.toLocaleString(),
+          row.valid.toLocaleString(),
+          row.rejected.toLocaleString(),
+          new Date(row.updated_at * 1000).toLocaleString(),
+          ["complete", "complete_with_rejections"].includes(row.status)
+            ? "—"
+            : `<button class="link" data-bulk-control="${row.digest}" data-action="${["queued", "running"].includes(row.status) ? "pause" : "resume"}">${["queued", "running"].includes(row.status) ? "暂停" : "续传"}</button>`,
+        ]),
+      )}`;
+      if (
+        data.imports.some((row) => ["queued", "running"].includes(row.status))
+      )
+        bulkTimer = setTimeout(() => loadBulk().catch(() => {}), 5000);
+    };
+    $("#bulk-source-imports").onclick = async (event) => {
+      const button = event.target.closest(
+        "[data-bulk-import], [data-bulk-control]",
+      );
+      if (!button) return;
+      button.disabled = true;
+      try {
+        if (button.dataset.bulkControl)
+          await api(
+            `/data-sources/baseline-imports/${button.dataset.bulkControl}/control`,
+            { action: button.dataset.action },
+          );
+        else
+          await api("/data-sources/baseline-imports", {
+            dataset: button.dataset.bulkImport,
+          });
+        clearTimeout(bulkTimer);
+        await loadBulk();
+      } catch (error) {
+        toast(error.message);
+        if (button.isConnected) button.disabled = false;
+      }
+    };
+    loadBulk().catch((error) => {
+      const target = root.querySelector("#bulk-source-imports");
+      if (target) target.textContent = error.message;
+    });
+
+    $("#source-config-list").onclick = (event) => {
+      const button = event.target.closest("[data-source-edit]");
+      if (!button) return;
+      const source = data.connections.find(
+        (row) => row.id === button.dataset.sourceEdit,
+      );
+      const dialog = document.createElement("dialog");
+      dialog.className = "collection-editor";
+      dialog.innerHTML = `<form id="source-binding-form" class="form-grid"><h2 class="full">${esc(source.name)}</h2>${source.editable_origin ? `<label class="full">HTTPS 接入地址<input name="origin" type="url" required value="${esc(source.origin || "")}"></label><label class="full">允许的域名（逗号分隔）<input name="hosts" required value="${esc((source.hosts || []).join(", "))}"></label>` : source.editable_token ? `<label>广告账户 ID<input name="ad_account_id" required value="${esc(source.ad_account_id || "")}"></label><label>访问令牌<input name="access_token" type="password" autocomplete="new-password" placeholder="${source.account?.configured ? "已保存，留空保留" : "填写访问令牌"}"></label>` : `<label class="full">每次请求最大任务数<input name="batch_size" type="number" min="1" max="${source.batch_max}" required value="${source.batch_size}"></label><p class="sub full">已验证最大 ${source.batch_max}。${esc(source.batch_scope || "同市场应用详情")}。保持国家、语言隔离和完整字段；超大请求会拆分补采。</p>`}<p class="sub full" role="status"></p><button type="submit">保存配置</button><button type="button" class="secondary" data-close-source>关闭</button></form>`;
+      root.append(dialog);
+      dialog.querySelector("[data-close-source]").onclick = () =>
+        dialog.close();
+      dialog.onclose = () => dialog.remove();
+      dialog.showModal();
+      dialog.querySelector("form").onsubmit = async (event) => {
+        event.preventDefault();
+        const form = event.currentTarget,
+          submit = form.querySelector('[type="submit"]');
+        submit.disabled = true;
+        const value = source.editable_origin
+          ? {
+              origin: form.elements.origin.value.trim(),
+              hosts: form.elements.hosts.value
+                .split(",")
+                .map((v) => v.trim())
+                .filter(Boolean),
+            }
+          : source.editable_token
+            ? {
+                ad_account_id: form.elements.ad_account_id.value.trim(),
+                access_token: form.elements.access_token.value,
+              }
+            : { batch_size: Number(form.elements.batch_size.value) };
+        if (source.editable_token) form.elements.access_token.value = "";
+        try {
+          const saved = await api(
+            `/data-sources/config/${source.id}`,
+            value,
+            "PUT",
+          );
+          data.connections = data.connections.map((row) =>
+            row.id === saved.id ? saved : row,
+          );
+          if (root.querySelector("#source-config-list"))
+            root.querySelector("#source-config-list").innerHTML = sourceTable();
+          dialog.close();
+          toast("数据源配置已保存");
+          loadCapacity().catch(() => {});
+        } catch (error) {
+          if (dialog.isConnected)
+            form.querySelector('[role="status"]').textContent = error.message;
+        } finally {
+          if (source.editable_token) value.access_token = "";
+          if (submit.isConnected) submit.disabled = false;
+        }
+      };
+    };
+
     const update = (result) => {
       if (!root.querySelector("#provider-state")) return;
       root.querySelector("#provider-state").textContent =
         result.community.message;
       root.querySelector("#provider-authorize").disabled =
         !result.community.configured;
-      root.querySelector("#provider-datasets").disabled =
-        !result.community.configured;
+      root.querySelector("#provider-datasets").disabled = false;
     };
     const run = async (button, work) => {
       button.disabled = true;

@@ -27,11 +27,11 @@ def load(path="config.toml"):
     for key,low,high in [('collector_concurrency',1,8),('collection_batch_size',50,2000)]:
         if type(cfg[key]) is not int or not low<=cfg[key]<=high:
             raise ValueError(f'{key} must be an integer from {low} to {high}')
-    if type(cfg['google_rpc_batch_size']) is not int or not 1<=cfg['google_rpc_batch_size']<=20:
-        raise ValueError('google_rpc_batch_size must be an integer from 1 to 20')
+    if type(cfg['google_rpc_batch_size']) is not int or not 1<=cfg['google_rpc_batch_size']<=100:
+        raise ValueError('google_rpc_batch_size must be an integer from 1 to 100')
     cfg.setdefault('apple_lookup_batch_size', 50)
-    if type(cfg['apple_lookup_batch_size']) is not int or not 1<=cfg['apple_lookup_batch_size']<=50:
-        raise ValueError('apple_lookup_batch_size must be an integer from 1 to 50')
+    if type(cfg['apple_lookup_batch_size']) is not int or not 1<=cfg['apple_lookup_batch_size']<=200:
+        raise ValueError('apple_lookup_batch_size must be an integer from 1 to 200')
     cfg.setdefault('global_interval_seconds', 5)
     cfg.setdefault('cooldown_seconds', 900)
     for key, low, high in [('global_interval_seconds',0.1,3600),('cooldown_seconds',60,86400)]:

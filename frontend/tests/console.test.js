@@ -375,10 +375,10 @@ test("navigation queries the API and escapes upstream application content", asyn
     assert.equal(hint.title, hint.textContent);
     assert.equal(window.document.querySelector("main .lead"), null);
     assert.ok(calls.some((c) => c.path.startsWith("/api/apps?")));
-    assert.equal(window.document.querySelectorAll("#navigation a").length, 12);
+    assert.equal(window.document.querySelectorAll("#navigation a").length, 13);
     assert.equal(
       window.document.querySelectorAll("#navigation a .ui-icon").length,
-      12,
+      13,
     );
     assert.ok(window.document.querySelector('[data-nav="groups"]'));
     assert.ok(window.document.querySelector('[data-pages~="datasources"]'));

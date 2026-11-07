@@ -42,7 +42,7 @@ def claim_targets(db, table, lease_seconds, size, kind=None):
             retry_filter='1=1' if same_protocol else retry_condition()
             extras=[' AND failures>0',' AND failures=0'] if retry else [' AND failures=0 AND due>0',' AND due<=0'] if mode=='scheduled' else ['']
             for failed in extras:
-                remaining=min(size,20)-len(rows)
+                remaining=min(size,100)-len(rows)
                 if not remaining:break
                 source=table+' FORCE INDEX (target_retry)' if failed==' AND failures>0' else table
                 rows+=list(db.execute(f'''SELECT {columns} FROM {source} WHERE enabled=1 AND due<=%s AND lease_until<=%s

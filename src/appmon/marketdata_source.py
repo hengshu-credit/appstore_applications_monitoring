@@ -116,25 +116,26 @@ def authorize(db, client, saved):
 
 
 def client_for(db, cfg):
-    from .data_sources import cipher, session
-    from cryptography.fernet import InvalidToken
-    row = db.execute("SELECT secret FROM source_accounts WHERE provider='marketdata'").fetchone()
-    if not row:
-        raise SourceError('api_token_required', '请先配置 市场数据 Token')
-    try:
-        saved = json.loads(cipher(cfg).decrypt(row['secret'].encode()))
-    except (ValueError, OSError, InvalidToken):
-        raise SourceError('key_unavailable', '市场数据 凭据密钥不可用') from None
-    client = session(cfg)
-    try:
-        from .source_profiles import bind
-        bind(client,cfg,'marketdata')
-        configure(client, saved)
-    except Exception:
-        client.close()
-        raise
-    return client
-
+    with db.named_lock('data-source-marketdata'):
+        from .data_sources import cipher, session
+        from cryptography.fernet import InvalidToken
+        row = db.execute("SELECT secret,status FROM source_accounts WHERE provider='marketdata'").fetchone()
+        if not row:
+            raise SourceError('api_token_required', '请先配置 市场数据 Token')
+        if row['status']=='endpoint_changed':raise SourceError('api_token_required','接入地址变更后须重新保存凭据')
+        try:
+            saved = json.loads(cipher(cfg).decrypt(row['secret'].encode()))
+        except (ValueError, OSError, InvalidToken):
+            raise SourceError('key_unavailable', '市场数据 凭据密钥不可用') from None
+        client = session(cfg)
+        try:
+            from .source_profiles import bind
+            bind(client,cfg,'marketdata',db)
+            configure(client, saved)
+        except Exception:
+            client.close()
+            raise
+        return client
 
 def archive(db, cfg, kind, value, provenance, records, csv_text=False, raw_bytes=None):
     raw = raw_bytes if isinstance(raw_bytes, bytes) else value.encode('utf-8') if csv_text else dump(value).encode('utf-8')

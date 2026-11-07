@@ -126,7 +126,8 @@ def connect(cfg, *, initialize=True, allow_migration=False):
     try:
         if initialize:
             for table, columns in TABLES.items():
-                db.execute(f'CREATE TABLE IF NOT EXISTS `{table}` ({columns}){ENGINE}')
+                storage=' ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8' if table=='public_app_baselines' else ''
+                db.execute(f'CREATE TABLE IF NOT EXISTS `{table}` ({columns}){ENGINE}{storage}')
             if not db.execute("SHOW COLUMNS FROM app_media_assets LIKE 'manual_paused'").fetchone():
                 with db.named_lock('media-pause-column',timeout=30):
                     if not db.execute("SHOW COLUMNS FROM app_media_assets LIKE 'manual_paused'").fetchone():

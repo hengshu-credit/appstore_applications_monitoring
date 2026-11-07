@@ -203,23 +203,28 @@ class Client:
             return self.fetch_google_many(jobs)
         from .collection_batch import can_batch
         if self.lookup_coalescer and all(not j.get('failures') or can_batch(j) for j in jobs):
-            if len(jobs)>50 or len({(j['store'],j['country'],j.get('language','en')) for j in jobs})!=1 or jobs[0]['store']!='apple':
-                raise ValueError('A detail batch must contain at most 50 jobs in one market')
+            if len(jobs)>200 or len({(j['store'],j['country'],j.get('language','en')) for j in jobs})!=1 or jobs[0]['store']!='apple':
+                raise ValueError('A detail batch must contain at most 200 jobs in one market')
             return self.lookup_coalescer.submit(self,jobs[0],[('lookup',j['app_id']) for j in jobs])[0]
         return self.fetch_apple_many(jobs)
 
     def fetch_apple_many(self,jobs):
-        if len(jobs) > 50 or len({(j['store'],j['country'],j.get('language','en')) for j in jobs}) != 1:
-            raise ValueError('A detail batch must contain at most 50 jobs in one market')
+        if len(jobs) > 200 or len({(j['store'],j['country'],j.get('language','en')) for j in jobs}) != 1:
+            raise ValueError('A detail batch must contain at most 200 jobs in one market')
         if jobs[0]['store'] != 'apple':
             raise ValueError('This store does not support multi-ID detail lookup')
         ids = [j['app_id'] for j in jobs]
         if len(set(ids)) != len(ids):
             raise ValueError('Duplicate batch IDs')
         language = jobs[0].get('language','en')
-        r = self.get('apple', 'https://itunes.apple.com/lookup',
-                     {'id':','.join(ids),'country':jobs[0]['country'],'entity':'software','lang':language,'limit':200},
-                     headers={'Accept-Language':language})
+        try:
+            r = self.get('apple', 'https://itunes.apple.com/lookup',
+                         {'id':','.join(ids),'country':jobs[0]['country'],'entity':'software','lang':language,'limit':200},
+                         headers={'Accept-Language':language})
+        except FetchError as exc:
+            if str(exc) not in ('HTTP 413','HTTP 414') or len(jobs)<2:raise
+            middle=len(jobs)//2
+            return self.fetch_apple_many(jobs[:middle])+self.fetch_apple_many(jobs[middle:])
         if r.status_code != 200:
             raise FetchError('Apple lookup endpoint unavailable')
         try:

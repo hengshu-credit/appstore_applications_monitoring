@@ -62,6 +62,7 @@ def worker(cfg):
     Thread(target=collect_worker,args=(cfg,'console'),daemon=True,name='collection-dispatcher').start()
     Thread(target=marketdata_worker,args=(cfg,),daemon=True,name='marketdata').start()
     Thread(target=developer_reference_worker,args=(cfg,),daemon=True,name='developer-references').start()
+    Thread(target=baseline_worker,args=(cfg,),daemon=True,name='public-baselines').start()
     while True:
         db=None
         try:
@@ -91,6 +92,23 @@ def developer_reference_worker(cfg):
         except Exception as exc:
             log.error('Developer reference refresh failed: %s',type(exc).__name__)
         time.sleep(3600)
+
+
+def baseline_worker(cfg):
+    from .db import connect
+    from .bulk_baseline import run
+    while True:
+        db=None
+        try:
+            db=connect(cfg,initialize=False)
+            result=run(db,cfg)
+            if result['processed']:log.info('Public baseline import %s',result)
+        except Exception as exc:
+            if not isinstance(exc,RuntimeError) or str(exc)!='Another process is already importing this dataset':
+                log.error('Public baseline import: %s',type(exc).__name__)
+        finally:
+            if db is not None:db.close()
+        time.sleep(10)
 
 
 def marketdata_worker(cfg):

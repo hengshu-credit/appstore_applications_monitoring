@@ -10,6 +10,7 @@ from .stores import FetchError
 class RpcCoalescer:
     lineage_lane='mixed_google'
     store='google'
+    capacity_key='google_rpc_batch_size'
     def __init__(self, capacity=20, wait_seconds=0.2):
         self.capacity, self.wait_seconds = capacity, wait_seconds
         self.condition = threading.Condition()
@@ -25,7 +26,8 @@ class RpcCoalescer:
         session = client.session
         scope = (market['country'], market['language'],
                  dump(dict(session.headers)), dump(session.cookies.get_dict()),
-                 dump(session.proxies), client.cfg.get('timeout_seconds'))
+                 dump(session.proxies), client.cfg.get('timeout_seconds'),
+                 min(self.capacity,client.cfg.get(self.capacity_key,self.capacity)))
         future = Future()
         with self.condition:
             if self.closed: raise FetchError('RPC consumer stopped',60)
@@ -47,14 +49,14 @@ class RpcCoalescer:
             deadline = time.monotonic() + self.wait_seconds
             while not self.closed and time.monotonic() < deadline:
                 scope = self.pending[0][0]
-                if len({(rpc,dump(payload)) for e in self.pending if e[0]==scope for rpc,payload in e[3]}) >= self.capacity: break
+                if len({(rpc,dump(payload)) for e in self.pending if e[0]==scope for rpc,payload in e[3]}) >= scope[-1]: break
                 self.condition.wait(deadline-time.monotonic())
             first = self.pending.pop(0)
             group, unique = [first], {(rpc,dump(payload)) for rpc,payload in first[3]}
             for entry in list(self.pending):
                 if entry[0] != first[0]: continue
                 keys = {(rpc,dump(payload)) for rpc,payload in entry[3]}
-                if len(unique | keys) <= self.capacity:
+                if len(unique | keys) <= first[0][-1]:
                     group.append(entry);unique.update(keys);self.pending.remove(entry)
             return group
 
@@ -97,12 +99,13 @@ class RpcCoalescer:
 
     def _send(self,leader,market,calls):
         from .google_rpc import send_rpc
-        return send_rpc(leader,market,calls,self.capacity)
+        return send_rpc(leader,market,calls,min(self.capacity,leader.cfg.get(self.capacity_key,self.capacity)))
 
 
 class LookupCoalescer(RpcCoalescer):
     lineage_lane='mixed_apple'
     store='apple'
+    capacity_key='apple_lookup_batch_size'
 
     def __init__(self,capacity=50,wait_seconds=0.2):
         super().__init__(capacity,wait_seconds)

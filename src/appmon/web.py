@@ -304,7 +304,39 @@ def create_app(cfg):
     def global_preview(value:dict=Body(...)):return global_charts.preview(value)
 
     @api.get('/data-sources')
-    def source_settings(db=DB):return data_sources.status(db)
+    def source_settings(db=DB):
+        from .source_registry import report
+        return data_sources.public_status(db,cfg)|{'connections':report(db,cfg)}
+
+    @api.put('/data-sources/config/{name}')
+    def source_binding_save(name:str,value:dict=Body(...),db=DB):
+        from .source_registry import save
+        return save(db,cfg,name,value)
+
+    @api.get('/data-sources/baseline-imports')
+    def baseline_imports(db=DB):
+        from .bulk_baseline import report
+        return report(db,cfg)
+
+    @api.post('/data-sources/baseline-imports')
+    def baseline_import_start(value:dict=Body(...),db=DB):
+        from .bulk_baseline import queue
+        return queue(db,cfg,value.get('dataset'))
+
+    @api.post('/data-sources/baseline-imports/{digest}/control')
+    def baseline_import_control(digest:str,value:dict=Body(...),db=DB):
+        from .bulk_baseline import control
+        return control(db,digest,value.get('action'))
+
+    @api.get('/data-sources/baselines/{store}/{app_id}')
+    def baseline_app(store:str,app_id:str,db=DB):
+        from .bulk_baseline import app
+        return app(db,store,app_id)
+
+    @api.get('/data-sources/initial-capacity')
+    def initial_collection_capacity(db=DB):
+        from .initial_capacity import report
+        return report(db,cfg)
 
     @api.put('/data-sources/community')
     def source_save(value:dict=Body(...),db=DB):return data_sources.save(db,cfg,value)
@@ -411,7 +443,7 @@ def create_app(cfg):
     def signal_candidates(identifier:int,db=DB):return keyword_discovery.promote_signals(db,identifier)
 
     @api.get('/discovery/keywords/apple-popularity')
-    def popularity_configuration():return apple_popularity.configuration()
+    def popularity_configuration(db=DB):return apple_popularity.configuration(cfg,db)
 
     @api.post('/discovery/keywords/apple-popularity')
     def popularity_fetch(value:dict=Body(...),db=DB):

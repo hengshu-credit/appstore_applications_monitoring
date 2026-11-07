@@ -21,7 +21,7 @@ MESSAGES={'not_configured':'未配置账户','saved':'已保存，等待授权',
     'invalid_token':'API Token 无效或已过期','access_denied':'当前账户无 API 权限或额度不足',
     'invalid_credentials':'登录失败，请检查邮箱和密码','action_required':'需要在来源网站完成邮箱、验证码或二次验证',
     'rate_limited':'来源限制请求，请稍后重试','network_error':'来源连接失败，稍后可重试',
-    'source_changed':'来源响应不符合预期，请检查登录方式','key_unavailable':'凭据密钥不可用，请恢复原密钥后重试'}
+    'source_changed':'来源响应不符合预期，请检查登录方式','key_unavailable':'凭据密钥不可用，请恢复原密钥后重试','endpoint_changed':'接入地址已变更，请重新保存凭据后授权'}
 CATALOG=[{'id':'store_public','name':'Google Play / App Store','access':'官方商店接口',
           'capabilities':'应用资料、榜单与搜索结果','limits':'按国家和观察时间保存，缺失数据不推算'}]
 
@@ -44,6 +44,17 @@ def status(db):
         row=db.execute('SELECT provider,status,checked_at,retry_after,updated_at FROM source_accounts WHERE provider=%s',(provider,)).fetchone()
         result[provider]=dict(row or {'provider':provider,'status':'not_configured'})|{'configured':row is not None,
             'message':MESSAGES.get(row['status'] if row else 'not_configured','来源暂不可用')}
+    return result
+
+
+def public_status(db,cfg):
+    result=status(db)
+    for row in db.execute('SELECT provider,secret FROM source_accounts').fetchall():
+        if row['provider'] not in result:continue
+        try:saved=json.loads(cipher(cfg).decrypt(row['secret'].encode()))
+        except (InvalidToken,ValueError,OSError):continue
+        if not isinstance(saved,dict):continue
+        result[row['provider']].update(email=saved.get('email',''),has_password=bool(saved.get('password')),has_token=bool(saved.get('access_token')))
     return result
 
 
@@ -103,6 +114,7 @@ def _authorize(db,cfg,provider):
     with db.named_lock('data-source-'+provider):
         row=db.execute("SELECT * FROM source_accounts WHERE provider=%s",(provider,)).fetchone()
         if not row:return status(db)
+        if row['status']=='endpoint_changed':return status(db)
         if row['retry_after']>time.time():return status(db)
         try:
             encryption=cipher(cfg);saved=json.loads(encryption.decrypt(row['secret'].encode()))
@@ -111,7 +123,7 @@ def _authorize(db,cfg,provider):
             return status(db)
         outcome='network_error';client=session(cfg)
         try:
-            bind(client,cfg,provider)
+            bind(client,cfg,provider,db)
             for cookie in saved.get('cookies',[]):
                 if cookie_allowed(client.source_profile,cookie.get('domain','')):
                     client.cookies.set(cookie['name'],cookie['value'],domain=cookie['domain'],path=cookie.get('path','/'),secure=True)
@@ -143,34 +155,34 @@ def _authorize(db,cfg,provider):
 
 
 def account_session(db,cfg,provider="community"):
-    provider_name(provider)
-    state=authorize(db,cfg,provider)[provider]
-    if state['status']!='authorized':raise ValueError(state['message'])
-    row=db.execute("SELECT secret FROM source_accounts WHERE provider=%s",(provider,)).fetchone()
-    saved=json.loads(cipher(cfg).decrypt(row['secret'].encode()));client=session(cfg)
-    bind(client,cfg,provider)
-    if provider=='marketdata':
-        from .marketdata_source import configure
-        configure(client,saved)
-    for c in saved['cookies']:client.cookies.set(c['name'],c['value'],domain=c['domain'],path=c['path'],secure=True)
-    return client
-
+    with db.named_lock('data-source-'+provider):
+        provider_name(provider)
+        state=authorize(db,cfg,provider)[provider]
+        if state['status']!='authorized':raise ValueError(state['message'])
+        row=db.execute("SELECT secret FROM source_accounts WHERE provider=%s",(provider,)).fetchone()
+        saved=json.loads(cipher(cfg).decrypt(row['secret'].encode()));client=session(cfg)
+        bind(client,cfg,provider,db)
+        if provider=='marketdata':
+            from .marketdata_source import configure
+            configure(client,saved)
+        for c in saved['cookies']:client.cookies.set(c['name'],c['value'],domain=c['domain'],path=c['path'],secure=True)
+        return client
 
 def dataset_catalog(db,cfg):
-    with account_session(db,cfg) as client:
+    with (account_session(db,cfg) if status(db)['community']['configured'] else bind(session(cfg),cfg,'community',db)) as client:
         response=request(client,'GET','/free-app-datasets')
         if response.status_code!=200:raise ValueError('数据目录暂不可用或账户权限不足')
         # Metadata only; no guessed download URLs or API token creation.
         files=sorted(set(re.findall(r'[A-Za-z0-9_-]+\.(?:tsv\.xz|csv)',response.text)))
         return {'files':[f'数据集 {i+1}' for i in range(len(files))],
-            'note':'已通过账户会话读取目录。下载范围由免费账户权限决定；此处不代表文件已导入。'}
+            'note':'已读取来源目录。下载链接可能需要已验证的免费账户；目录存在不代表文件已下载或导入。'}
 
 
 def directory_metrics(db,cfg,store,app_id):
     from . import directory_source
     import hashlib
     if store!='google':raise ValueError('安装指标当前适配器仅支持Android应用')
-    client=account_session(db,cfg,'directory') if status(db)['directory']['configured'] else bind(session(cfg),cfg,'directory')
+    client=account_session(db,cfg,'directory') if status(db)['directory']['configured'] else bind(session(cfg),cfg,'directory',db)
     with client:
         response=directory_source.get(client,client.source_profile['origin']+'/app/'+app_id)
         if response.status_code!=200:raise ValueError('安装指标页面不可读取，请检查授权或在来源网站完成人工验证')
@@ -197,7 +209,7 @@ def app_metrics(db,cfg,store,app_id,provider='auto'):
                 return collect(Path(cfg['data_dir'])/'public-sources',store=store,app_id=app_id,client=client)
         except (ValueError,requests.RequestException):failures.append('公开元数据账户访问未成功')
     try:
-        return collect(Path(cfg['data_dir'])/'public-sources',store=store,app_id=app_id,proxy=cfg.get('proxy') or os.environ.get('HTTPS_PROXY'),origin=profile(cfg,'community')['origin'])
+        return collect(Path(cfg['data_dir'])/'public-sources',store=store,app_id=app_id,proxy=cfg.get('proxy') or os.environ.get('HTTPS_PROXY'),origin=profile(cfg,'community',db)['origin'])
     except (ValueError,requests.RequestException):failures.append('公开元数据公开页未成功')
     if provider=='community':raise ValueError('；'.join(failures))
     if store=='google' and status(db)['directory']['configured']:

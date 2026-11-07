@@ -16,9 +16,11 @@ GENRES=['BUSINESS','EDUCATION','ENTERTAINMENT','FINANCE','FOOD_DRINK','GAMES','H
         'NEW_PUBLICATION','PHOTO_VIDEO','PRODUCTIVITY_UTILITIES','SHOPPING','SOCIAL_NETWORKING','SPORTS','TRAVEL']
 
 
-def configuration():
+def configuration(cfg=None,db=None):
     today=datetime.now(timezone.utc).date();last_sunday=today-timedelta(days=(today.weekday()+1)%7)
-    return {'configured':bool(os.environ.get('APPLE_ADS_ACCESS_TOKEN') and os.environ.get('APPLE_ADS_AD_ACCOUNT_ID')),
+    configured=bool(os.environ.get('APPLE_ADS_ACCESS_TOKEN') and os.environ.get('APPLE_ADS_AD_ACCOUNT_ID'))
+    if db is not None:configured=configured or bool(db.execute("SELECT 1 FROM source_accounts WHERE provider='apple_ads'").fetchone())
+    return {'configured':configured,
             'genres':GENRES,'default_start':(last_sunday-timedelta(days=7)).isoformat(),
             'doc_url':DOC,'note':'Apple官方周/月搜索热度，需要Apple Ads Platform授权。不是实时热搜；查询语言为本地追踪配置，源数据按国家和分类提供。'}
 
@@ -68,8 +70,9 @@ def ingest(cfg,db,value,data,origin='用户导入Apple格式响应'):
 
 def request_data(cfg,db,value):
     *_,payload=specification(value)
-    token=os.environ.get('APPLE_ADS_ACCESS_TOKEN','');account=os.environ.get('APPLE_ADS_AD_ACCOUNT_ID','')
-    if not token or not account:raise ValueError('尚未配置Apple Ads授权；请在服务端环境设置访问令牌和广告账户ID，不要填写到聊天或浏览器表单')
+    from .source_registry import ads_credentials
+    saved=ads_credentials(db,cfg);token=saved['access_token'];account=saved['ad_account_id']
+    if not token or not account:raise ValueError('尚未配置 Apple Ads 授权，请在数据源配置中设置访问令牌和广告账户 ID')
     if not re.fullmatch(r'[0-9]+',account) or '\n' in token or '\r' in token:raise ValueError('Apple Ads服务端授权配置格式无效')
     from .collection_lineage import record_http
     started=time.monotonic()

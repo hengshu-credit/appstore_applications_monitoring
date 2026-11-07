@@ -69,6 +69,8 @@ def choose(db, cfg):
 
 
 def run_batch(db, cfg, lane):
+    from .source_registry import collector_config
+    cfg=collector_config(db,cfg,lane)
     if lane == 'sources':
         from .source_tasks import work
         return work(db,cfg)
@@ -122,8 +124,8 @@ def dispatch_once(db, cfg, worker_id):
 def worker(cfg, role='collector'):
     from threading import Thread, Event
     from .rpc_coalescer import RpcCoalescer, LookupCoalescer
-    coalescer=RpcCoalescer(cfg.get('google_rpc_batch_size',20))
-    lookup=LookupCoalescer(cfg.get('apple_lookup_batch_size',50))
+    coalescer=RpcCoalescer(100)
+    lookup=LookupCoalescer(200)
     stop=Event()
     runtime=cfg | {'_rpc_coalescer':coalescer,'_lookup_coalescer':lookup}
     threads=[Thread(target=_worker_loop,args=(runtime,role,stop),name=f'{role}-{i+1}',daemon=True)

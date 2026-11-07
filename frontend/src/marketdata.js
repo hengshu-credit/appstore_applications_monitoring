@@ -30,7 +30,7 @@ export function marketDataPanel(panel, esc, state = {}) {
     `
     <p id="marketdata-state" role="status">${esc(state.message || "未配置账户")}</p>
     <form id="marketdata-account" class="toolbar">
-      <label>账户邮箱<input type="email" name="email" autocomplete="off" placeholder="可选，与密码一起填写"></label>
+      <label>账户邮箱<input type="email" name="email" autocomplete="off" value="${esc(state.email || "")}" placeholder="可选，与密码一起填写"></label>
       <label>账户密码<input type="password" name="password" autocomplete="new-password"></label>
       <label class="wide">Personal Access Token<input type="password" name="access_token" autocomplete="new-password" placeholder="API 采集必填；不回显"></label>
       <button type="submit">保存并检查 API 授权</button>
