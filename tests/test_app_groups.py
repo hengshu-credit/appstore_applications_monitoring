@@ -74,9 +74,10 @@ class GroupDashboardTest(MySQLTestCase):
         owner = self.seed()
         market = dict(store='google', country='th', language='en')
         now = time.time()
+        self.db.execute("UPDATE apps SET category='TOOLS' WHERE store='google' AND app_id='com.loan.example'")
         self.db.execute('''INSERT INTO listings(store,app_id,country,language,state,checked_at,payload)
             VALUES('google','com.loan.example','th','en','available',%s,%s)''',
-            (now, dump({'developer':'Loan Studio','icon':'https://example.org/icon.png'})))
+            (now, dump({'developer':'Loan Studio','icon':'https://example.org/icon.png','category_id':'FINANCE','category':'Finance'})))
         for word, pos, age in [('loan',2,0),('budget',2,0),('cash',5,0),('pay',9,0),('old',1,90000)]:
             target = add_targets(self.db,[market|{'keyword':word}])['ids'][0]
             run = self.db.execute('''INSERT INTO keyword_runs(target_id,observed_at,outcome,source,parser_version,requested_depth,returned_count,coverage)
@@ -93,6 +94,7 @@ class GroupDashboardTest(MySQLTestCase):
         rows=groups.dashboard(self.db,self.cfg,owner['id'],store='google')['items']
         th=next(r for r in rows if r['country']=='th');vn=next(r for r in rows if r['country']=='vn')
         self.assertEqual((th['developer'],th['icon']),('Loan Studio','https://example.org/icon.png'))
+        self.assertEqual((th['category'],vn['category']),('FINANCE','TOOLS'))
         self.assertEqual((th['keyword_count'],th['keyword_top3_count']),(4,2))
         self.assertEqual([(r['keyword'],r['position']) for r in th['top_keywords']],[('budget',2),('loan',2),('cash',5)])
         boards={(r['collection'],r['category']):(r['sampled'],r['position']) for r in th['chart_positions']}

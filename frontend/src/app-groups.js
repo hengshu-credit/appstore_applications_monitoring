@@ -574,6 +574,9 @@ export function createGroupWorkspace(ctx) {
       (r) =>
         `<div class="member-identity">${appIconMarkup(r.store, r.app_id, r.name, r.icon, r.country, r.language)}<div><button class="link member-app-name" data-group-member="${r.id}" title="${esc(r.app_id)}">${esc(r.name || r.app_id)}</button>${developerCaption(r)}</div></div>`,
     );
+    add("category", "类别", "", (r) =>
+      esc(r.category ? categoryName(r.store, r.category) : "未分类"),
+    );
     add(
       "country",
       "市场",
@@ -708,10 +711,28 @@ export function createGroupWorkspace(ctx) {
     );
     const boardKey = (store, collection, category) =>
       JSON.stringify([category ? store : "", collection, category || ""]);
+    const boardOrder = [
+      "top-free",
+      "top-paid",
+      "top-grossing",
+      "trending",
+      "new-free",
+      "new-grossing",
+      "new-paid",
+    ];
+    const boardPriority = (collection) => {
+      const index = boardOrder.indexOf(collection);
+      return index < 0 ? boardOrder.length : index;
+    };
     const boards = new Map(
       ["top-free", "top-paid", "top-grossing"].map((id) => [
         boardKey("", id, ""),
-        chartName("google", id),
+        {
+          store: "",
+          category: "",
+          collection: id,
+          label: chartName("google", id),
+        },
       ]),
     );
     const positions = new Map();
@@ -721,24 +742,41 @@ export function createGroupWorkspace(ctx) {
       for (const chart of row.chart_positions || []) {
         const key = boardKey(row.store, chart.collection, chart.category);
         const label = chartName(row.store, chart.collection);
-        boards.set(
-          key,
-          chart.category
+        boards.set(key, {
+          store: row.store,
+          category: chart.category || "",
+          collection: chart.collection,
+          label: chart.category
             ? `${categoryName(row.store, chart.category)} · ${label}`
             : label,
-        );
+        });
         ranks.set(key, chart);
       }
     }
-    [...boards].forEach(([key, label], index) =>
-      add("chart" + index, label, "榜单", (r) => {
-        const item = positions.get(r.id).get(key);
-        if (!item?.sampled) return '<span title="暂无有效榜单采样">—</span>';
-        return item.position == null
-          ? "<small>未入榜</small>"
-          : `<b class="member-rank">#${num(item.position)}</b>`;
-      }),
-    );
+    [...boards]
+      .sort(
+        ([, a], [, b]) =>
+          Number(Boolean(a.category)) - Number(Boolean(b.category)) ||
+          (a.category
+            ? String(categoryName(a.store, a.category)).localeCompare(
+                String(categoryName(b.store, b.category)),
+                "zh-CN",
+              ) ||
+              a.store.localeCompare(b.store) ||
+              a.category.localeCompare(b.category)
+            : 0) ||
+          boardPriority(a.collection) - boardPriority(b.collection) ||
+          a.collection.localeCompare(b.collection),
+      )
+      .forEach(([key, { label }], index) =>
+        add("chart" + index, label, "榜单", (r) => {
+          const item = positions.get(r.id).get(key);
+          if (!item?.sampled) return '<span title="暂无有效榜单采样">—</span>';
+          return item.position == null
+            ? "<small>未入榜</small>"
+            : `<b class="member-rank">#${num(item.position)}</b>`;
+        }),
+      );
     add(
       "developer_id",
       "开发者 ID",
@@ -799,7 +837,7 @@ export function createGroupWorkspace(ctx) {
     const bands = [];
     const headersFor = new Map();
     for (const column of columns) {
-      const name = ["app", "country"].includes(column.key)
+      const name = ["app", "category", "country"].includes(column.key)
         ? "应用信息"
         : column.section;
       let band = bands.at(-1);

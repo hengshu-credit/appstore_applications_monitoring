@@ -8,6 +8,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 import pymysql
 from .db import add_apps, dump
+from .catalog import listing_category
 from .intelligence import market, text
 from . import app_permissions, metric_facts
 from . import developer_refs
@@ -234,7 +235,7 @@ def adjust_member(db, identifier, member_id, value, actor):
 
 def member_rows(db, identifier, store='all'):
     where,args=_scope(identifier,store)
-    rows=db.execute('''SELECT m.*,a.name,w.enabled,w.refresh_hours,l.state,l.checked_at,l.last_success,
+    rows=db.execute('''SELECT m.*,a.name,a.category,w.enabled,w.refresh_hours,l.state,l.checked_at,l.last_success,
         j.failures,j.last_error,j.due,j.lease_until,
         JSON_UNQUOTE(JSON_EXTRACT(l.payload,'$.rating')) rating,
         JSON_UNQUOTE(JSON_EXTRACT(l.payload,'$.ratings')) ratings,
@@ -300,6 +301,7 @@ def member_rank_details(db, identifier, page, now, cfg):
     where = 'm.group_id=%s AND m.id IN (' + ','.join('%s' for _ in page) + ')'
     args = (identifier, *members)
     identity = db.execute(f'''SELECT m.id,JSON_OBJECT('developer',l.payload->'$.developer','developer_id',l.payload->'$.developer_id','icon',l.payload->'$.icon',
+        'category',l.payload->'$.category','category_id',l.payload->'$.category_id','genre_ids',l.payload->'$.genre_ids',
         'price',l.payload->'$.price','currency',l.payload->'$.currency','has_iap',l.payload->'$.has_iap',
         'languages',l.payload->'$.languages','updated',l.payload->'$.updated','version',l.payload->'$.version') metadata,
         r.observed_at review_sample_at FROM app_group_members m LEFT JOIN listings l USING(store,app_id,country,language)
@@ -311,7 +313,10 @@ def member_rank_details(db, identifier, page, now, cfg):
     refs = developer_refs.references(cfg)
     for item in identity:
         member = members[item['id']]
-        member.update(json.loads(item['metadata']))
+        metadata = json.loads(item['metadata'])
+        category = listing_category(member['store'],metadata) or member.get('category')
+        member.update(metadata)
+        member['category'] = category
         member.update(developer_refs.identity(member,member,refs))
         member['yesterday_reviews'] = 0 if (item['review_sample_at'] or 0)>=midnight.timestamp() else None
     # Published dates may carry a storefront offset. Narrow the SQL range, then compare in UTC.

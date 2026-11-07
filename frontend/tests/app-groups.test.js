@@ -77,7 +77,7 @@ function dashboard() {
     scope: "scoped",
   };
 }
-function setup(handler = () => undefined, write = true) {
+function setup(handler = () => undefined, write = true, overrides = {}) {
   const window = new Window({ url: "http://localhost/#groups?id=1" }),
     doc = window.document,
     calls = [],
@@ -138,6 +138,7 @@ function setup(handler = () => undefined, write = true) {
     toast: (e) => errors.push(e),
     can: (_, action) => action !== "write" || write,
     countryName: (c) => ({ th: "泰国", vn: "越南" })[c] || c,
+    ...overrides,
   });
   return { window, doc, calls, errors, workspace };
 }
@@ -512,6 +513,143 @@ test("unified rows show permissions rankings money and ratings without mixing mi
     );
     c.doc.querySelector("#group-import-metrics").click();
     assert.ok(c.doc.querySelector("#group-metrics"));
+    assert.deepEqual(c.errors, []);
+  } finally {
+    await c.window.happyDOM.close();
+  }
+});
+
+test("chart columns keep market charts first and each category together across stores and response orders", async () => {
+  let reverse = false;
+  const ranks = [
+    { collection: "top-free", category: "SOCIAL", sampled: true, position: 3 },
+    { collection: "top-free", category: "GAME", sampled: true, position: 9 },
+    {
+      collection: "top-grossing",
+      category: "SOCIAL",
+      sampled: false,
+      position: null,
+    },
+    { collection: "new-free", category: "", sampled: true, position: 20 },
+    {
+      collection: "top-grossing",
+      category: "GAME",
+      sampled: true,
+      position: 8,
+    },
+    {
+      collection: "top-paid",
+      category: "SOCIAL",
+      sampled: true,
+      position: null,
+    },
+    { collection: "top-paid", category: "GAME", sampled: true, position: 7 },
+  ];
+  const c = setup(
+    (path) => {
+      if (!path.includes("/dashboard?")) return;
+      const data = dashboard();
+      data.items = [
+        {
+          ...member,
+          category: "SOCIAL",
+          chart_positions: reverse ? [...ranks].reverse() : ranks,
+        },
+        {
+          ...member,
+          id: 12,
+          store: "apple",
+          category: "6005",
+          chart_positions: [
+            {
+              collection: "top-free",
+              category: "6005",
+              sampled: true,
+              position: 11,
+            },
+          ],
+        },
+        { ...member, id: 13, category: null },
+      ];
+      if (reverse) data.items.reverse();
+      return data;
+    },
+    true,
+    {
+      categoryName: (_store, id) =>
+        ({ SOCIAL: "社交", GAME: "游戏", 6005: "社交" })[id] || id,
+      chartName: (_store, id) =>
+        ({
+          "top-free": "免费榜",
+          "top-paid": "付费榜",
+          "top-grossing": "畅销榜",
+          "new-free": "最新免费榜",
+        })[id] || id,
+    },
+  );
+  try {
+    const inspect = async () => {
+      await c.workspace.render(1);
+      c.doc.querySelector('[data-group-tab="matrix"]').click();
+      await tick();
+      const grid = c.doc.querySelector(".group-member-table");
+      assert.deepEqual(
+        [...grid.querySelectorAll('th[data-col^="chart"]')].map(
+          (th) => th.textContent,
+        ),
+        [
+          "免费榜",
+          "付费榜",
+          "畅销榜",
+          "最新免费榜",
+          "社交 · 免费榜",
+          "社交 · 免费榜",
+          "社交 · 付费榜",
+          "社交 · 畅销榜",
+          "游戏 · 免费榜",
+          "游戏 · 付费榜",
+          "游戏 · 畅销榜",
+        ],
+      );
+      const values = (id) =>
+        [
+          ...grid.querySelectorAll(
+            `[data-member-row="${id}"] td[data-col^="chart"]`,
+          ),
+        ].map((td) => td.textContent);
+      assert.deepEqual(values(11), [
+        "—",
+        "—",
+        "—",
+        "#20",
+        "—",
+        "#3",
+        "未入榜",
+        "—",
+        "#9",
+        "#7",
+        "#8",
+      ]);
+      assert.equal(values(12)[4], "#11");
+      assert.equal(values(12)[5], "—");
+      assert.equal(
+        grid.querySelector('th[data-col="category"]').textContent,
+        "类别",
+      );
+      assert.equal(
+        grid.querySelector('[data-member-row="11"] [data-col="category"]')
+          .textContent,
+        "社交",
+      );
+      assert.equal(
+        grid.querySelector('[data-member-row="13"] [data-col="category"]')
+          .textContent,
+        "未分类",
+      );
+    };
+    await inspect();
+    reverse = true;
+    await inspect();
     assert.deepEqual(c.errors, []);
   } finally {
     await c.window.happyDOM.close();
