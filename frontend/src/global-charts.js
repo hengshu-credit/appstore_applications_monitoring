@@ -173,7 +173,7 @@ export function createGlobalCharts(ctx) {
     const cards = data.countries
       .map(
         (c) =>
-          `<section class="panel global-country"><div class="panel-heading"><h2>${esc(c.name)} <span class="sub">${esc(c.country.toUpperCase())}${store === "all" ? " · " + storeName(c) : ""}</span></h2><span class="sub">${esc(c.language)}</span></div><div class="global-lists">${c.boards
+          `<section class="panel global-country"><div class="panel-heading"><h2>${esc(c.name)} <span class="sub">${esc(c.country.toUpperCase())}${store === "all" ? " · " + storeName(c) : ""}</span></h2><span class="sub">${esc(c.language)}</span></div><div class="global-lists" role="region" aria-label="${esc(c.name)}排行榜，横向滚动" tabindex="0">${c.boards
             .map(
               (b) =>
                 `<section class="global-chart"><h3>${boardTitle(c, b, b.definition.name + (b.definition.mode === "derived" ? "（派生）" : ""))}</h3>${boardMeta(b)}${table(
