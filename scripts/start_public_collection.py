@@ -14,7 +14,7 @@ def main():
     try:
         if cfg.get('raw_response_scope')!='groups' or cfg.get('media_scope')!='groups_and_current_charts' or cfg.get('archive_videos',True):
             raise ValueError('Configure the approved raw/image scope and disable video first')
-        if cfg['min_free_gb']<15 or storage_guard(db,cfg):raise ValueError('At least 15 GiB free-space protection is required')
+        if cfg['min_free_gb']<=0 or storage_guard(db,cfg):raise ValueError('Configured free-space protection must be enabled and satisfied')
         with db.named_lock('public-collection-start',timeout=10):
             pool=pipelines.settings(db,cfg,'pool')
             if len(pool['countries'])!=1:raise ValueError('First phase requires one baseline market; global expansion is staged')

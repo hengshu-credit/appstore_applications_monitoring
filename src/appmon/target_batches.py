@@ -5,7 +5,7 @@ from .collection_limits import blocked
 from .ingest import disk_check
 from .stores import FetchError,CollectionDeferred
 from .task_logs import Execution, BatchProgress
-from .collection_batch import can_batch, retry_condition, NETWORK_ERRORS, write_batch
+from .collection_batch import can_batch, retry_condition, NETWORK_ERRORS, persist_batch
 
 
 def claim_targets(db, table, lease_seconds, size, kind=None):
@@ -95,7 +95,14 @@ def work_targets(cfg, db, limit, client, *, table, resource, single, multiple, s
                     raise FetchError('批次结果数量异常')
             except (FetchError,ValueError,TypeError,KeyError,IndexError) as exc:
                 results=[exc if isinstance(exc,FetchError) else FetchError('批次解析失败：'+type(exc).__name__)]*len(rows)
-            with write_batch(db) as writer:
+            before_counts=counts.copy()
+            app_keys=[]
+            for row,result in zip(rows,results):
+                entries=getattr(result,'apps',None) or getattr(result,'items',None)
+                if isinstance(entries,(list,tuple)):
+                    app_keys.extend((row['store'],str(item['app_id'])) for item in entries if isinstance(item,dict) and item.get('app_id'))
+            def save_results(writer):
+                counts.clear();counts.update(before_counts)
                 for row,result,task_log in zip(rows,results,logs):
                     if isinstance(result,CollectionDeferred):
                         from .collection_batch import defer
@@ -111,6 +118,7 @@ def work_targets(cfg, db, limit, client, *, table, resource, single, multiple, s
                     task_log.finish(outcome,accepted,completion_note(result) or '按目标独立保存，保留原采集深度与周期',error=error)
                     counts['processed']+=1
                     counts[outcome if accepted else 'stale']+=1
+            persist_batch(db,save_results,app_keys)
             if any(isinstance(r,FetchError) and r.retry_after>=300 for r in results):
                 break
         finally:

@@ -188,7 +188,7 @@ TABLES.update(GROUP_TABLES)
 
 def add_apps(db, rows, source, now=None):
     now = time.time() if now is None else now
-    values = [(s, a, n, c, now, now, source) for s, a, n, c in rows]
+    values = [(s, a, n, c, now, now, source) for s, a, n, c in sorted(rows,key=lambda r:(str(r[0]),str(r[1])))]
     if not values:
         return 0
     # No INSERT IGNORE: invalid/truncated input must fail, not be silently altered.

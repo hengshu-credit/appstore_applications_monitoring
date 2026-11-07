@@ -59,7 +59,11 @@ def choose(db, cfg):
         db.execute("INSERT INTO schedules VALUES('dispatch:turn',0) ON DUPLICATE KEY UPDATE name=schedules.name")
         turn = db.execute("SELECT next_at FROM schedules WHERE name='dispatch:turn' FOR UPDATE").fetchone()['next_at']
         scores = {r['name'][9:]:r['next_at'] for r in db.execute("SELECT name,next_at FROM schedules WHERE name LIKE 'dispatch:%'").fetchall()}
-        for lane in sorted(LANES,key=lambda name:scores.get(name,0)):
+        lanes=sorted(LANES,key=lambda name:scores.get(name,0))
+        if cfg.get('collection_priority_mode')=='focus':
+            preferred=[lane for lane in lanes if lane!='pool']
+            lanes=(['pool']+preferred) if (int(turn)+1)%10==0 else (preferred+['pool'])
+        for lane in lanes:
             if ready(db,cfg,lane,time.time()):
                 db.execute("UPDATE schedules SET next_at=%s WHERE name='dispatch:turn'",(turn+1,))
                 db.execute('INSERT INTO schedules VALUES(%s,%s) AS incoming ON DUPLICATE KEY UPDATE next_at=incoming.next_at',

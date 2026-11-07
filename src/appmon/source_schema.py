@@ -4,6 +4,9 @@ TABLES={'source_accounts': '''provider VARCHAR(32) PRIMARY KEY, secret LONGTEXT 
 
 TABLES['data_source_configs']='''name VARCHAR(32) PRIMARY KEY, settings LONGTEXT NOT NULL,
     updated_at DOUBLE NOT NULL'''
+TABLES['collection_request_waiters']='''id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    token CHAR(32) CHARACTER SET ascii NOT NULL UNIQUE,store VARCHAR(16) CHARACTER SET ascii NOT NULL,
+    expires_at DOUBLE NOT NULL,INDEX waiter_expiry(expires_at),INDEX waiter_store(store,id)'''
 TABLES['source_bulk_imports']='''digest CHAR(64) CHARACTER SET ascii PRIMARY KEY,dataset VARCHAR(32) NOT NULL,
     file_name VARCHAR(128) NOT NULL,status VARCHAR(32) NOT NULL,processed BIGINT NOT NULL DEFAULT 0,
     valid BIGINT NOT NULL DEFAULT 0,rejected BIGINT NOT NULL DEFAULT 0,created_at DOUBLE NOT NULL,

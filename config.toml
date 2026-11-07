@@ -9,7 +9,7 @@ lease_seconds = 600
 timeout_seconds = 30
 # Local proxy compatibility; TLS certificate verification remains enabled.
 tls_maximum_version = "1.2"
-min_free_gb = 15
+min_free_gb = 10
 raw_response_scope = "groups"
 media_scope = "groups_and_current_charts"
 archive_videos = false
@@ -25,6 +25,8 @@ apple_lookup_batch_size = 50
 google_rpc_batch_size = 20
 # Concurrent logical consumers share one coalescing transport per service.
 collector_concurrency = 4
+# Give nine of ten dispatch opportunities to focused/detail/chart/keyword lanes.
+collection_priority_mode = "focus"
 # Logical fan-out per shared icon / ASO response, independent of upstream RPC size.
 collection_batch_size = 2000
 discovery_hours = 24

@@ -4,7 +4,7 @@ import os
 import time
 import uuid
 from .stores import Client, FetchError, CollectionDeferred
-from .collection_batch import can_batch, retry_condition, NETWORK_ERRORS, write_batch
+from .collection_batch import can_batch, retry_condition, NETWORK_ERRORS, persist_batch
 from .collection_limits import blocked
 from .task_logs import Execution, BatchProgress
 from .ingest import disk_check
@@ -120,7 +120,12 @@ def work(cfg,db,limit=5,client=None,max_requests=None):
                             force=any(r.get('checked_at') is not None and r['due']<=0 for r in rows))
                         results=[result]*len(rows)
                 except (FetchError,ValueError,OSError,RuntimeError) as exc:results=[exc]*len(rows)
-                with write_batch(db) as writer:
+                before_counts=counts.copy()
+                app_keys=[(r['store'],r['app_id']) for r in rows] if metadata else []
+                before_completed=set(completed);before_prepared=set(prepared)
+                def save_results(writer):
+                    counts.clear();counts.update(before_counts)
+                    completed.clear();completed.update(before_completed);prepared.clear();prepared.update(before_prepared)
                     for row,result,log in zip(rows,results,logs):
                         try:
                             if isinstance(result,Exception):raise result
@@ -157,6 +162,7 @@ def work(cfg,db,limit=5,client=None,max_requests=None):
                                 (failures,str(exc) if isinstance(exc,FetchError) else type(exc).__name__,
                                  time.time()+max(getattr(exc,'retry_after',0),min(86400,300*2**min(failures,8))),row['id'],row['token'])).rowcount
                             log.finish('error',bool(saved),error=exc);counts['error' if saved else 'stale']+=1;completed.add(row['id'])
+                persist_batch(db,save_results,app_keys)
             finally:client.request_guard,client.progress=old_guard,old_progress
         counts['prepared']=len(prepared-completed);counts['processed']=len(prepared|completed)
         return counts

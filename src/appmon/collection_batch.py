@@ -2,6 +2,8 @@
 from contextlib import contextmanager
 import re
 import time
+import logging
+import pymysql
 
 NETWORK_ERRORS = r'^(HTTP [0-9]{3}|ConnectTimeout|ReadTimeout|ConnectionError|ProxyError|SSLError|整体采集已暂停|等待共享限速窗口)'
 
@@ -74,3 +76,23 @@ def write_batch(db):
     with db:
         yield BatchWriter(db)
         touch(db)
+
+
+def persist_batch(db,save,app_keys=(),attempts=3):
+    """Retry only rolled-back lock conflicts, retaining the fetched response in memory."""
+    keys=sorted(set(app_keys))
+    for attempt in range(attempts):
+        try:
+            with write_batch(db) as writer:
+                # Claiming network work never holds these locks. Existing app
+                # identities are locked in a common order only at commit time.
+                for start in range(0,len(keys),500):
+                    batch=keys[start:start+500]
+                    writer.execute('SELECT store,app_id FROM apps FORCE INDEX(PRIMARY) WHERE (store,app_id) IN ('+
+                        ','.join('(%s,%s)' for _ in batch)+') ORDER BY store,app_id FOR UPDATE',
+                        tuple(value for pair in batch for value in pair)).fetchall()
+                return save(writer)
+        except pymysql.OperationalError as exc:
+            if not exc.args or exc.args[0] not in (1205,1213) or attempt+1>=attempts:raise
+            logging.getLogger(__name__).warning('Retrying database commit without HTTP: code=%s attempt=%s',exc.args[0],attempt+2)
+            time.sleep(0.05*2**attempt)

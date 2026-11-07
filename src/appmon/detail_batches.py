@@ -4,7 +4,7 @@ from .db import claim_details
 from .ingest import disk_check
 from .stores import FetchError,CollectionDeferred
 from .task_logs import Execution, BatchProgress
-from .collection_batch import write_batch
+from .collection_batch import persist_batch
 
 
 def work_details(cfg, db, limit, client, *, watchlist=False, managed=False, max_requests=None):
@@ -62,7 +62,10 @@ def work_details(cfg, db, limit, client, *, watchlist=False, managed=False, max_
                     raise FetchError('批次结果数量异常，保留原有数据')
             except FetchError as exc:
                 results = [exc]*len(jobs)
-            with write_batch(db) as writer:
+            before_counts=counts.copy()
+            app_keys=[(j['store'],j['app_id']) for j,r in zip(jobs,results) if not isinstance(r,Exception) and r.outcome=='ok']
+            def save_results(writer):
+                counts.clear();counts.update(before_counts)
                 for job,result,task_log in zip(jobs,results,logs):
                     if isinstance(result,CollectionDeferred):
                         from .collection_batch import defer
@@ -78,6 +81,7 @@ def work_details(cfg, db, limit, client, *, watchlist=False, managed=False, max_
                     task_log.finish(outcome,accepted,'批次结果按应用独立保存',error=failure)
                     counts['processed'] += 1
                     counts[('ok' if watchlist and outcome=='missing' else outcome) if accepted else 'stale'] += 1
+            persist_batch(db,save_results,app_keys)
             if any(isinstance(result,FetchError) and result.retry_after>=300 for result in results):
                 break
         finally:

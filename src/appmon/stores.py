@@ -4,6 +4,7 @@ import math
 import re
 import ssl
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -111,64 +112,67 @@ class Client:
         return self.request(store, "GET", url, params=params, headers=headers)
 
     def request(self, store, method, url, **kwargs):
-        deadline = time.monotonic() + max(1, self.cfg.get('lease_seconds',600)-self.cfg['timeout_seconds']*2)
-        for attempt in range(2):
-            while True:
-                if self.request_guard:
-                    self.request_guard()
-                delay = collection_limits.admission(self.db,self.cfg,store)
-                if delay is None:
-                    raise CollectionDeferred('整体采集已暂停', 60)
-                if delay == 0:
-                    break
-                if time.monotonic()+delay >= deadline:
-                    raise CollectionDeferred('等待共享限速窗口，稍后重试', delay)
-                self.report('rate_wait', f'等待整体 / 商店限速窗口：{delay:.1f} 秒')
-                time.sleep(min(delay, 2))  # re-read settings and cooldown after every wait
-            self.report('request', f'{method} 请求 {urlsplit(url).hostname}；超时上限 {self.cfg["timeout_seconds"]} 秒')
-            started = time.monotonic()
-            details=dict(stage='http_request',method=method,host=urlsplit(url).hostname,timeout_seconds=self.cfg['timeout_seconds'])
-            try:
-                if method == "GET":
-                    r = self.session.get(url, timeout=self.cfg["timeout_seconds"], **kwargs)
-                else:
-                    r = self.session.request(method, url, timeout=self.cfg["timeout_seconds"], **kwargs)
-            except requests.RequestException as e:
-                from .collection_lineage import record_http
-                record_http(self.db,store,url,elapsed=time.monotonic()-started,lane=getattr(self,'lineage_lane',None))
-                # Retrying read-only TLS connection failures uses a new verified connection.
-                # Certificate verification errors remain visible and are not bypassed.
-                readonly = method in ('GET','HEAD') or (method=='POST' and urlsplit(url).hostname=='play.google.com' and '/batchexecute' in urlsplit(url).path)
-                certificate_error = 'CERTIFICATE_VERIFY_FAILED' in str(e)
-                if attempt==0 and readonly and isinstance(e,requests.exceptions.SSLError) and not certificate_error:
-                    self.session.close()
-                    self.report('transport_retry','TLS 连接中断，重建连接后重试一次')
-                    continue
-                if isinstance(e,requests.exceptions.SSLError):
-                    details['note']='certificate_verification_failed' if certificate_error else 'tls_connection_error'
-                # Do not persist exception URLs, proxy credentials or bearer tokens.
-                raise FetchError(type(e).__name__,details=details) from e
-            break
-        from .collection_lineage import record_http
-        record_http(self.db,store,url,r.status_code,time.monotonic()-started,lane=getattr(self,'lineage_lane',None))
-        self.report('response', f'HTTP {r.status_code}；响应耗时 {time.monotonic()-started:.2f} 秒')
-        if r.status_code in (403, 429) or r.status_code >= 500:
-            delay = 300
-            value = r.headers.get("Retry-After", "")
-            try:
-                seconds = float(value)
-                if math.isfinite(seconds):
-                    delay = max(delay, seconds)
-            except ValueError:
+        ticket=uuid.uuid4().hex
+        try:
+            deadline = time.monotonic() + max(1, self.cfg.get('lease_seconds',600)-self.cfg['timeout_seconds']*2)
+            for attempt in range(2):
+                while True:
+                    if self.request_guard:
+                        self.request_guard()
+                    delay = collection_limits.admission(self.db,self.cfg,store,ticket=ticket)
+                    if delay is None:
+                        raise CollectionDeferred('整体采集已暂停', 60)
+                    if delay == 0:
+                        break
+                    if time.monotonic()+delay >= deadline:
+                        raise CollectionDeferred('等待共享限速窗口，稍后重试', delay)
+                    self.report('rate_wait', f'等待整体 / 商店限速窗口：{delay:.1f} 秒')
+                    time.sleep(min(delay, 2))  # re-read settings and cooldown after every wait
+                self.report('request', f'{method} 请求 {urlsplit(url).hostname}；超时上限 {self.cfg["timeout_seconds"]} 秒')
+                started = time.monotonic()
+                details=dict(stage='http_request',method=method,host=urlsplit(url).hostname,timeout_seconds=self.cfg['timeout_seconds'])
                 try:
-                    delay = max(delay, (parsedate_to_datetime(value) - datetime.now(timezone.utc)).total_seconds())
-                except (TypeError, ValueError):
-                    pass
-            delay = collection_limits.cooldown(self.db,self.cfg,store,delay)
-            raise FetchError(f"HTTP {r.status_code}", delay, details|dict(status_code=r.status_code,retry_after_seconds=delay))
-        if r.status_code not in (200, 404):
-            raise FetchError(f"HTTP {r.status_code}",details=details|dict(status_code=r.status_code))
-        return r
+                    if method == "GET":
+                        r = self.session.get(url, timeout=self.cfg["timeout_seconds"], **kwargs)
+                    else:
+                        r = self.session.request(method, url, timeout=self.cfg["timeout_seconds"], **kwargs)
+                except requests.RequestException as e:
+                    from .collection_lineage import record_http
+                    record_http(self.db,store,url,elapsed=time.monotonic()-started,lane=getattr(self,'lineage_lane',None))
+                    # Retrying read-only TLS connection failures uses a new verified connection.
+                    # Certificate verification errors remain visible and are not bypassed.
+                    readonly = method in ('GET','HEAD') or (method=='POST' and urlsplit(url).hostname=='play.google.com' and '/batchexecute' in urlsplit(url).path)
+                    certificate_error = 'CERTIFICATE_VERIFY_FAILED' in str(e)
+                    if attempt==0 and readonly and isinstance(e,requests.exceptions.SSLError) and not certificate_error:
+                        self.session.close()
+                        self.report('transport_retry','TLS 连接中断，重建连接后重试一次')
+                        continue
+                    if isinstance(e,requests.exceptions.SSLError):
+                        details['note']='certificate_verification_failed' if certificate_error else 'tls_connection_error'
+                    # Do not persist exception URLs, proxy credentials or bearer tokens.
+                    raise FetchError(type(e).__name__,details=details) from e
+                break
+            from .collection_lineage import record_http
+            record_http(self.db,store,url,r.status_code,time.monotonic()-started,lane=getattr(self,'lineage_lane',None))
+            self.report('response', f'HTTP {r.status_code}；响应耗时 {time.monotonic()-started:.2f} 秒')
+            if r.status_code in (403, 429) or r.status_code >= 500:
+                delay = 300
+                value = r.headers.get("Retry-After", "")
+                try:
+                    seconds = float(value)
+                    if math.isfinite(seconds):
+                        delay = max(delay, seconds)
+                except ValueError:
+                    try:
+                        delay = max(delay, (parsedate_to_datetime(value) - datetime.now(timezone.utc)).total_seconds())
+                    except (TypeError, ValueError):
+                        pass
+                delay = collection_limits.cooldown(self.db,self.cfg,store,delay)
+                raise FetchError(f"HTTP {r.status_code}", delay, details|dict(status_code=r.status_code,retry_after_seconds=delay))
+            if r.status_code not in (200, 404):
+                raise FetchError(f"HTTP {r.status_code}",details=details|dict(status_code=r.status_code))
+            return r
+        finally:collection_limits.withdraw(self.db,ticket)
 
     def fetch(self, job):
         store, app_id = job["store"], job["app_id"]

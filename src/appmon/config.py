@@ -23,6 +23,8 @@ def load(path="config.toml"):
     if cfg.get('media_scope','all') not in ('all','groups_and_current_charts'):
         raise ValueError('Invalid media_scope')
     cfg.setdefault('collector_concurrency',4)
+    cfg.setdefault('collection_priority_mode','balanced')
+    if cfg['collection_priority_mode'] not in ('balanced','focus'):raise ValueError('Invalid collection_priority_mode')
     cfg.setdefault('collection_batch_size',2000)
     for key,low,high in [('collector_concurrency',1,8),('collection_batch_size',50,2000)]:
         if type(cfg[key]) is not int or not low<=cfg[key]<=high:

@@ -39,7 +39,7 @@ def save(db, cfg, value):
     return result
 
 
-def admission(db, cfg, store):
+def admission(db, cfg, store, ticket=None):
     if store not in ('google','apple'):
         raise ValueError('未知商店')
     from .storage_policy import storage_guard
@@ -57,6 +57,15 @@ def admission(db, cfg, store):
             return None
         now = time.time()
         delay = max(0, *(r['next_at']-now for r in rows))
+        if ticket:
+            db.execute('DELETE FROM collection_request_waiters WHERE expires_at<=%s',(now,))
+            db.execute('''INSERT INTO collection_request_waiters(token,store,expires_at) VALUES(%s,%s,%s) AS incoming
+                ON DUPLICATE KEY UPDATE expires_at=incoming.expires_at''',(ticket,store,now+30))
+            if not delay:
+                rates={r['name'][5:]:r['next_at'] for r in db.execute("SELECT name,next_at FROM schedules WHERE name IN ('rate:apple','rate:google')").fetchall()}
+                eligible=[s for s in ('apple','google') if rates.get(s,0)<=now]
+                head=db.execute('SELECT token FROM collection_request_waiters WHERE store IN ('+','.join('%s' for _ in eligible)+') ORDER BY id LIMIT 1',eligible).fetchone()
+                if head and head['token']!=ticket:return 0.25
         if delay:
             return delay
         day = int(now//86400)*86400
@@ -73,7 +82,17 @@ def admission(db, cfg, store):
             for key, interval in zip(keys, (limits['global_interval_seconds'],limits[store+'_interval_seconds'])):
                 db.execute('UPDATE schedules SET next_at=%s WHERE name=%s',(now+interval,key))
             db.execute("UPDATE schedules SET next_at=next_at+1 WHERE name='quota:used'")
+            if ticket:db.execute('DELETE FROM collection_request_waiters WHERE token=%s',(ticket,))
         return delay
+
+
+def withdraw(db,ticket):
+    if db is None:return
+    import pymysql
+    try:db.execute('DELETE FROM collection_request_waiters WHERE token=%s',(ticket,))
+    except pymysql.MySQLError:
+        # A lost connection cannot clean up; the short heartbeat expiry releases the slot.
+        pass
 
 
 def cooldown(db, cfg, store, retry_after):
