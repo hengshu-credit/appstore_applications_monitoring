@@ -8,7 +8,7 @@ from .task_logs import Execution, BatchProgress,start_batch
 from .collection_batch import can_batch, retry_condition, NETWORK_ERRORS, persist_batch
 
 
-def claim_targets(db, table, lease_seconds, size, kind=None):
+def claim_targets(db, table, lease_seconds, size, kind=None, *, on_claim=None):
     if table not in ('keyword_targets','observation_targets','app_permission_targets'):
         raise ValueError('Unknown batch target table')
     now=time.time()
@@ -54,6 +54,8 @@ def claim_targets(db, table, lease_seconds, size, kind=None):
                    (token,now+lease_seconds,*[r['id'] for r in rows]))
         for row in rows:
             row['token']=token
+        if on_claim:
+            on_claim(rows)
     from .collection_lineage import record_dispatch
     lane = 'keywords' if table=='keyword_targets' else 'permissions' if table=='app_permission_targets' else first['kind']
     record_dispatch(db,lane,first['store'],len(rows))
@@ -67,11 +69,15 @@ def work_targets(cfg, db, limit, client, *, table, resource, single, multiple, s
         if blocked(db,cfg):
             break
         disk_check(cfg['data_dir'],cfg['min_free_gb'])
-        rows=claim_targets(db,table,max(cfg['lease_seconds'],900),min(cfg.get('google_rpc_batch_size',20),limit-counts['processed']),kind)
+        logs=[]
+        def started(rows):
+            logs.extend(Execution(db,resource,row['id']) for row in rows)
+            # Publish lease and start events together before any network request.
+            start_batch(logs,[f"开始采集：{row['store']} / {row['country']} / {row['language']}；本批 {len(rows)} 个目标" for row in rows],transaction=False)
+        rows=claim_targets(db,table,max(cfg['lease_seconds'],900),min(cfg.get('google_rpc_batch_size',20),limit-counts['processed']),kind,on_claim=started)
         if not rows:
             break
         batches += 1
-        logs=[Execution(db,resource,row['id']) for row in rows]
         client.lineage_batch_key=rows[0]['token']
         client.lineage_tasks=len(rows)
         old_progress,old_guard=getattr(client,'progress',None),getattr(client,'request_guard',None)
@@ -85,7 +91,6 @@ def work_targets(cfg, db, limit, client, *, table, resource, single, multiple, s
         progress=BatchProgress(logs)
         client.request_guard,client.progress=guard,progress
         try:
-            start_batch(logs,[f"开始采集：{row['store']} / {row['country']} / {row['language']}；本批 {len(rows)} 个目标" for row in rows])
             try:
                 guard()
                 batched=len(rows)>1 or rows[0]['store']=='google' and (table=='app_permission_targets' or can_batch(rows[0]))

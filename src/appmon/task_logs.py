@@ -4,7 +4,7 @@ import time
 import uuid
 import json
 from .log_details import clean, sanitize, diagnostics
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 
 
 def safe_message(value):
@@ -21,13 +21,13 @@ def emit(db, resource, identifier, event, message, level='info', execution_id=No
                (resource,str(identifier),execution_id,time.time(),level,event,clean(message,4000),json.dumps(sanitize(details),ensure_ascii=False) if details else None))
 
 
-def start_batch(logs,messages):
+def start_batch(logs,messages, *, transaction=True):
     """Keep a start event for every task with bounded packets and one commit."""
     if len(logs)!=len(messages):raise ValueError('Batch start event count mismatch')
     if not logs:return
     values=[(log.resource,str(log.identifier),log.id,time.time(),'info','started',clean(message,4000),None)
             for log,message in zip(logs,messages)]
-    with logs[0].db:
+    with logs[0].db if transaction else nullcontext():
         logs[0].db.executemany('''INSERT INTO collection_logs(resource,target_key,execution_id,created_at,level,event,message,details)
             VALUES(%s,%s,%s,%s,%s,%s,%s,%s)''',values)
 

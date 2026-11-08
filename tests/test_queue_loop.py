@@ -53,8 +53,11 @@ class QueueLoopTest(MySQLTestCase):
                 self.assertEqual(observer.execute('SELECT COUNT(*) n FROM keyword_runs').fetchone()['n'],0)
                 self.assertEqual(revision(observer),before)
             return original(sql,values)
+        def response_after_start(client,*args,**kwargs):
+            self.assertEqual(observer.execute("SELECT COUNT(*) n FROM collection_logs WHERE resource='keywords' AND event='started'").fetchone()['n'],3)
+            return self.response(client,*args,**kwargs)
         try:
-            with patch.object(Client,'request',autospec=True,side_effect=self.response) as http,patch.object(self.db,'executemany',side_effect=observe),patch.object(self.db.connection,'commit',wraps=self.db.connection.commit) as commit:
+            with patch.object(Client,'request',autospec=True,side_effect=response_after_start) as http,patch.object(self.db,'executemany',side_effect=observe),patch.object(self.db.connection,'commit',wraps=self.db.connection.commit) as commit:
                 counts=dispatcher.dispatch_once(self.db,self.cfg,'test')
             self.assertEqual(counts['ok'],3);self.assertEqual(http.call_count,1)
             self.assertEqual(commit.call_count,3)  # Scheduling, claim, atomic result batch.

@@ -279,6 +279,8 @@ export function createGlobalCharts(ctx) {
       root: $("#global-rankings"),
       api,
       esc,
+      countryName: selectors.countryName,
+      categoryName: selectors.categoryName,
       scope: {
         countries: data.selected_codes.join(","),
         collections: filters.collections,
