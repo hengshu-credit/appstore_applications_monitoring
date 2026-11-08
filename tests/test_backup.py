@@ -4,6 +4,7 @@ import zipfile
 from pathlib import Path
 from appmon.backup import backup, restore, verify
 from appmon.db import Database, TABLES, add_apps
+from appmon.content_store import TABLES as CONTENT_TABLES
 from appmon.data_sources import cipher
 from decimal import Decimal
 from test_monitor import MySQLTestCase
@@ -14,10 +15,12 @@ class BackupTest(MySQLTestCase):
         add_apps(self.db,[('google','com.legacy.app','Legacy',None)],'fixture')
         current=self.folder/'current.zip';legacy=self.folder/'legacy.zip'
         backup(self.cfg,current,Path(__file__).parents[1]/'config.toml')
-        filename='tables/app_group_adjustments.jsonl'
+        removed={'app_group_adjustments', *CONTENT_TABLES}
         with zipfile.ZipFile(current) as original,zipfile.ZipFile(legacy,'w') as out:
-            manifest=verify(original);self.assertEqual(manifest['format'],2)
-            manifest['format']=1;del manifest['tables']['app_group_adjustments'];del manifest['files'][filename]
+            manifest=verify(original);self.assertEqual(manifest['format'],3)
+            manifest['format']=1
+            for table in removed:
+                del manifest['tables'][table];del manifest['files']['tables/'+table+'.jsonl']
             out.writestr('manifest.json',json.dumps(manifest))
             for name in manifest['files']:out.writestr(name,original.read(name))
         name='appmon_test_legacy_'+uuid.uuid4().hex
@@ -32,6 +35,11 @@ class BackupTest(MySQLTestCase):
         finally:self.admin.execute(f'DROP DATABASE `{name}`')
 
     def test_streamed_roundtrip_all_tables_assets_and_empty_destination_guard(self):
+        from appmon.content_store import put, marker
+        original=json.dumps({'description':'无损历史内容'*100,'new_unknown_field':[None,True,123]})
+        with self.db:
+            reference=put(self.db,original)
+            self.db.execute("INSERT INTO listings VALUES('google','com.example.app','us','en','available',1,1,0,%s,%s)",(reference,marker(reference)['sha256']))
         add_apps(self.db,[('google','com.example.app','多语言 ไทย',None)],'fixture')
         secret=cipher(self.cfg,create=True).encrypt(b'{"email":"test@example.com","password":"fixture"}').decode()
         self.db.execute("INSERT INTO source_accounts(provider,secret,status,updated_at) VALUES('community',%s,'saved',0)",(secret,))
@@ -53,6 +61,8 @@ class BackupTest(MySQLTestCase):
             db=Database(target['mysql'])
             try:
                 self.assertEqual(db.execute('SELECT name FROM apps').fetchone()['name'],'多语言 ไทย')
+                self.assertEqual(db.execute('SELECT payload FROM listings').fetchone()['payload'],original)
+                self.assertEqual(db.execute('SELECT COUNT(*) n FROM content_blobs').fetchone()['n'],1)
                 self.assertEqual(db.execute('SELECT spend FROM ad_reports').fetchone()['spend'],Decimal('123456.123456'))
                 restored_secret=db.execute('SELECT secret FROM source_accounts').fetchone()['secret']
                 self.assertEqual(json.loads(cipher(target).decrypt(restored_secret.encode()))['password'],'fixture')

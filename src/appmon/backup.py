@@ -1,5 +1,6 @@
 """Portable, streamed MySQL + asset snapshots. Restore only into an empty database."""
 import hashlib
+import base64
 import json
 import os
 import shutil
@@ -8,11 +9,14 @@ import zipfile
 from decimal import Decimal
 from pathlib import Path, PurePosixPath
 from .db import Database, TABLES, ENGINE
+from .content_store import TABLES as CONTENT_TABLES
 
 ASSETS = ('responses', 'icons', 'exports', 'raw', 'keyword_reports', 'public-sources', 'secrets')
 
 
 def json_value(value):
+    if isinstance(value, bytes):
+        return {'$appmon_binary_v1': base64.b64encode(value).decode('ascii')}
     if isinstance(value, Decimal):
         return str(value)  # MySQL restores the exact decimal, without float rounding.
     raise TypeError(f'Unsupported database type: {type(value).__name__}')
@@ -33,7 +37,7 @@ def backup(cfg, destination, config_path):
     temp = destination.with_suffix(destination.suffix+'.part')
     if temp.exists():
         raise ValueError('存在未完成备份，请使用新的输出路径')
-    manifest = dict(format=2, created_at=time.time(), tables={}, files={})
+    manifest = dict(format=3, created_at=time.time(), tables={}, files={})
     db = Database(cfg['mysql'])
     try:
         db.execute('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ')
@@ -49,7 +53,7 @@ def backup(cfg, destination, config_path):
                 name = f'tables/{table}.jsonl'
                 h, count = hashlib.sha256(), 0
                 with archive.open(name,'w',force_zip64=True) as out:
-                    for row in db.iter_rows(f'SELECT * FROM `{table}`'):
+                    for row in db.iter_rows(f'SELECT * FROM `{table}`', resolve_content=False):
                         line = (json.dumps([row[c] for c in columns],ensure_ascii=False,allow_nan=False,default=json_value)+'\n').encode()
                         out.write(line); h.update(line); count += 1
                 manifest['tables'][table] = dict(columns=columns, rows=count)
@@ -89,8 +93,12 @@ def verify(archive):
     manifest = json.loads(archive.read('manifest.json'))
     # Version 1 predates per-member corrections. Restore creates the new empty table.
     version = manifest.get('format')
-    expected_tables = set(TABLES) - {'app_group_adjustments'} if version == 1 else set(TABLES)
-    if version not in (1, 2) or set(manifest['tables']) != expected_tables:
+    expected_tables = set(TABLES)
+    if version in (1, 2):
+        expected_tables -= set(CONTENT_TABLES)
+    if version == 1:
+        expected_tables -= {'app_group_adjustments'}
+    if version not in (1, 2, 3) or set(manifest['tables']) != expected_tables:
         raise ValueError('备份版本或表清单不匹配，请使用备份时的程序版本')
     if {name for name in names if name.startswith('tables/')} != {f'tables/{table}.jsonl' for table in expected_tables}:
         raise ValueError('备份表文件不完整')
@@ -127,7 +135,9 @@ def restore(cfg, source):
                 if table != 'migration_progress':
                     db.execute(f'CREATE TABLE `{table}` ({schema}){ENGINE}')
             for table, info in manifest['tables'].items():
-                columns = [r['Field'] for r in db.execute(f'SHOW COLUMNS FROM `{table}`').fetchall()]
+                description = db.execute(f'SHOW COLUMNS FROM `{table}`').fetchall()
+                columns = [r['Field'] for r in description]
+                binary_columns = [i for i, r in enumerate(description) if 'blob' in r['Type'].lower() or 'binary' in r['Type'].lower()]
                 if columns != info['columns']:
                     raise ValueError('表字段不匹配: '+table)
                 sql = f'INSERT INTO `{table}` ('+','.join(f'`{c}`' for c in columns)+') VALUES ('+','.join(['%s']*len(columns))+')'
@@ -137,6 +147,12 @@ def restore(cfg, source):
                         row = json.loads(line)
                         if not isinstance(row,list) or len(row)!=len(columns):
                             raise ValueError('备份行结构不匹配')
+                        for index in binary_columns:
+                            if row[index] is not None:
+                                value = row[index]
+                                if not isinstance(value, dict) or set(value) != {'$appmon_binary_v1'}:
+                                    raise ValueError('备份二进制字段格式无效')
+                                row[index] = base64.b64decode(value['$appmon_binary_v1'], validate=True)
                         batch.append(row); count += 1; batch_bytes += len(line)
                         if len(batch)>=1000 or batch_bytes>=4*1024*1024:
                             with db: db.executemany(sql,batch)

@@ -62,6 +62,8 @@ def save_result(db, cfg, job, result=None, error=None, now=None):
                     remember_media(db,cfg,job,result.payload)
                 new_payload = dump(result.payload)
                 new_digest = hashlib.sha256(new_payload.encode()).hexdigest()
+                from .content_store import put, reference
+                stored_payload = put(db, new_payload, project=True)
                 state, misses, last_success = "available", 0, now
                 if not previous or previous["digest"] is None:
                     events.append(("first_verified", {}))
@@ -74,11 +76,15 @@ def save_result(db, cfg, job, result=None, error=None, now=None):
                                    for f in old.keys() | result.payload.keys() if old.get(f) != result.payload.get(f)}
                         events.append(("metadata_changed", changes))
                     db.execute("""INSERT INTO snapshots(store,app_id,country,language,observed_at,digest,raw_path,payload)
-                                VALUES(%s,%s,%s,%s,%s,%s,%s,%s)""", (*k, now, new_digest, raw_path, new_payload))
-                payload, digest = new_payload, new_digest
+                                VALUES(%s,%s,%s,%s,%s,%s,%s,%s)""", (*k, now, new_digest, raw_path, reference(new_digest, len(new_payload.encode('utf8')))))
+                payload, digest = stored_payload, new_digest
                 db.execute("UPDATE apps SET name=%s,category=%s WHERE store=%s AND app_id=%s",
                            (result.payload.get("name"), listing_category(job["store"], result.payload), job["store"], job["app_id"]))
             elif outcome == "missing":
+                # Buffered reads returned the full body; preserve compact storage.
+                if payload is not None:
+                    from .content_store import put
+                    payload = put(db, payload, project=True)
                 misses = (previous["misses"] if previous else 0)
                 # Repeated manual invocations cannot accelerate confirmation.
                 if not previous or not misses or now - previous["checked_at"] >= cfg["missing_recheck_hours"] * 3600:

@@ -5,6 +5,7 @@ import uuid
 import hashlib
 from contextlib import contextmanager
 import pymysql
+from .content_store import ContentCursor, hydrate
 
 APP_KEY = 'store VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, app_id VARCHAR(512) CHARACTER SET ascii COLLATE ascii_bin NOT NULL'
 REGION = 'country CHAR(2) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, language VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL'
@@ -66,8 +67,9 @@ TABLES = {
 class Database:
     def __init__(self, options):
         self.database = options.get('database', '')
+        self.options = dict(options)
         self.connection = pymysql.connect(**options, charset='utf8mb4', autocommit=True,
-                                          cursorclass=pymysql.cursors.DictCursor)
+                                          cursorclass=ContentCursor)
         self.cursor = None
         self.execute('SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED')
 
@@ -85,10 +87,25 @@ class Database:
         self.cursor.executemany(sql, rows)
         return self.cursor
 
-    def iter_rows(self, sql, args=None):
-        with self.connection.cursor(pymysql.cursors.SSDictCursor) as cursor:
-            cursor.execute(sql, args)
-            yield from cursor
+    def iter_rows(self, sql, args=None, *, resolve_content=True):
+        # Backups stream physical references and bodies in the same snapshot.
+        # User exports resolve immutable bodies on a separate connection so the
+        # unbuffered result is never interrupted by a nested SELECT.
+        lookup = None
+        try:
+            with self.connection.cursor(pymysql.cursors.SSDictCursor) as cursor:
+                cursor.execute(sql, args)
+                while batch := cursor.fetchmany(100):
+                    if resolve_content:
+                        from .content_store import marker
+                        if any(marker(v) for row in batch for v in row.values()):
+                            if lookup is None:
+                                lookup = Database(self.options)
+                            hydrate(lookup.connection, batch)
+                    yield from batch
+        finally:
+            if lookup is not None:
+                lookup.close()
 
     def begin(self):
         self.connection.begin()
@@ -98,6 +115,7 @@ class Database:
 
     def rollback(self):
         self.connection.rollback()
+        self.connection._appmon_content_cache = None
 
     def close(self):
         self.connection.close()
@@ -184,6 +202,8 @@ from .source_schema import TABLES as SOURCE_TABLES
 TABLES.update(SOURCE_TABLES)
 from .group_schema import TABLES as GROUP_TABLES
 TABLES.update(GROUP_TABLES)
+from .content_store import TABLES as CONTENT_TABLES
+TABLES.update(CONTENT_TABLES)
 
 
 def add_apps(db, rows, source, now=None):

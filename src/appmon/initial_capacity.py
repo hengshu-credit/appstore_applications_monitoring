@@ -14,7 +14,7 @@ def report(db,cfg,hours=24):
     if limits['daily_request_limit']:bounds.append(count/limits['daily_request_limit']*86400)
     samples={};estimated=0;complete_sample=True
     for row in inventory:
-        sample=db.execute('SELECT COUNT(*) n,AVG(bytes) bytes FROM (SELECT OCTET_LENGTH(payload) bytes FROM snapshots WHERE store=%s LIMIT 200) sample',(row['store'],)).fetchone()
+        sample=db.execute("SELECT COUNT(*) n,AVG(bytes) bytes FROM (SELECT COALESCE(JSON_EXTRACT(payload,'$.__appmon_content_v1__.bytes'),OCTET_LENGTH(payload)) bytes FROM snapshots WHERE store=%s LIMIT 200) sample",(row['store'],)).fetchone()
         samples[row['store']]={'rows':sample['n'],'mean_payload_bytes':int(sample['bytes'] or 0)}
         if not sample['n']:complete_sample=False
         estimated+=int(sample['bytes'] or 0)*row['apps']
