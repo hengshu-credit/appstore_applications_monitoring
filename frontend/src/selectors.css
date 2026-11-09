@@ -98,10 +98,10 @@
   scrollbar-gutter: stable;
 }
 .picker-section-heading {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
+  gap: 8px 16px;
   padding: 8px 12px;
   background: var(--soft);
   margin: 12px 0 8px;
@@ -109,21 +109,14 @@
 .picker-section-heading h3 {
   margin: 0;
   font-size: 15px;
-}
-.picker-section-labels {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  flex: 1;
-  min-width: 0;
-  gap: 8px 16px;
+  white-space: nowrap;
 }
 .picker-group-actions {
   display: flex;
-  flex: 0 0 auto;
+  grid-column: 3;
+  justify-self: end;
   align-items: center;
   gap: 6px;
-  margin-left: auto;
 }
 .country-grid {
   display: grid;
@@ -174,10 +167,12 @@
 }
 .region-tabs {
   display: flex;
+  min-width: 0;
   gap: 6px;
-  flex-wrap: wrap;
+  overflow-x: auto;
 }
 .selection-dialog .region-tabs button {
+  flex: 0 0 auto;
   width: auto;
   background: transparent;
   color: var(--ink);
@@ -186,7 +181,7 @@
   padding: 4px 8px;
   font-size: 13px;
 }
-.region-tabs button[aria-selected="true"] {
+.selection-dialog .region-tabs button[aria-selected="true"] {
   color: var(--accent-text);
   border-bottom-color: var(--accent);
 }
@@ -220,6 +215,9 @@
   padding: 0 8px;
   font-size: 12px;
   white-space: nowrap;
+}
+.selection-dialog .picker-group-toggle:disabled {
+  cursor: default;
 }
 .choice-check {
   margin-left: auto;
@@ -366,6 +364,19 @@
   }
   .category-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 680px) {
+  .picker-section-heading {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .picker-group-actions {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .region-tabs {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 }
 @media (max-width: 560px) {
