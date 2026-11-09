@@ -1,3 +1,5 @@
+import { storeLogo } from "./icons.js";
+
 let sequence = 0;
 export function createAppDetailTable(ctx) {
   const {
@@ -161,6 +163,13 @@ export function createAppDetailTable(ctx) {
       options.appCell
         ? options.appCell(r, developerCaption(r))
         : `<div class="member-identity">${appIconMarkup(r.store, r.app_id, r.name, r.icon, r.country, r.language)}<div><button class="link member-app-name" data-group-member="${r.id}" title="${esc(r.app_id)}">${esc(r.name || r.app_id)}</button>${developerCaption(r)}</div></div>`,
+    );
+    add(
+      "store",
+      "应用商店",
+      "",
+      (r) =>
+        `<span class="member-store">${storeLogo(r.store)}<span>${esc(storeName(r.store))}</span></span>`,
     );
     add("category", "类别", "", (r) =>
       esc(r.category ? categoryName(r.store, r.category) : "-"),
@@ -425,7 +434,7 @@ export function createAppDetailTable(ctx) {
     const bands = [];
     const headersFor = new Map();
     for (const column of columns) {
-      const name = ["app", "category", "country"].includes(column.key)
+      const name = ["app", "store", "category", "country"].includes(column.key)
         ? "应用信息"
         : column.section;
       let band = bands.at(-1);

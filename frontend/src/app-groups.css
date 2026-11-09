@@ -585,6 +585,7 @@
   border-bottom: 1px solid var(--grid-rule);
 }
 .group-member-table [data-col="app"],
+.group-member-table [data-col="store"],
 .group-member-table [data-col="country"] {
   text-align: start;
 }
@@ -665,10 +666,17 @@
   padding: 0;
 }
 .member-country,
+.member-store,
 .member-market {
   display: inline-flex;
   gap: 6px;
   align-items: center;
+}
+.member-store .store-logo {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  object-fit: contain;
 }
 .member-country img,
 .member-market img {
