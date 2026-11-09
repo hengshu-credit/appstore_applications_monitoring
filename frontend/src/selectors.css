@@ -111,12 +111,30 @@
   font-size: 15px;
   white-space: nowrap;
 }
-.picker-group-actions {
+.picker-group-select {
   display: flex;
+  flex-direction: row;
   grid-column: 3;
   justify-self: end;
   align-items: center;
   gap: 6px;
+  min-height: 30px;
+  color: var(--ink);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.selection-dialog .picker-group-select input {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+  cursor: inherit;
+}
+.picker-group-select:has(input:disabled) {
+  opacity: 0.5;
+  cursor: default;
 }
 .country-grid {
   display: grid;
@@ -207,17 +225,6 @@
 }
 .country-multiple .picker-scroll {
   max-height: 46dvh;
-}
-.selection-dialog .picker-section-heading .picker-group-toggle {
-  width: auto;
-  height: 30px;
-  min-height: 30px;
-  padding: 0 8px;
-  font-size: 12px;
-  white-space: nowrap;
-}
-.selection-dialog .picker-group-toggle:disabled {
-  cursor: default;
 }
 .choice-check {
   margin-left: auto;
@@ -370,7 +377,7 @@
   .picker-section-heading {
     grid-template-columns: minmax(0, 1fr) auto;
   }
-  .picker-group-actions {
+  .picker-group-select {
     grid-column: 2;
     grid-row: 1;
   }

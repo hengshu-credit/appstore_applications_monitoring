@@ -312,7 +312,7 @@ test("filter country selection reuses the dialog without changing header market"
       onApply: (v) => (value = v),
     });
     const dialog = win.document.querySelector("#country-picker");
-    assert.equal(dialog.querySelector("[data-country-group-action]"), null);
+    assert.equal(dialog.querySelector("[data-country-group]"), null);
     assert.equal(
       dialog.querySelector('[data-country-code="cn"]').disabled,
       true,
@@ -333,7 +333,7 @@ test("filter country selection reuses the dialog without changing header market"
   }
 });
 
-test("each country group selects only its allowed countries and keeps a separate clear action", async () => {
+test("each country group checkbox selects and clears only its allowed countries", async () => {
   const { win, selector } = setup();
   try {
     const doc = win.document;
@@ -370,36 +370,31 @@ test("each country group selects only its allowed countries and keeps a separate
       const expected = group.countries
         .filter((c) => allowed.includes(c.code))
         .map((c) => c.code);
-      const all = () =>
+      const checkbox = () =>
         doc.querySelector(
-          `[data-country-section="${group.id}"] [data-country-group-action="all"]`,
+          `[data-country-section="${group.id}"] [data-country-group]`,
         );
-      const clear = () =>
-        doc.querySelector(
-          `[data-country-section="${group.id}"] [data-country-group-action="clear"]`,
-        );
-      assert.equal(all().textContent, "全选");
-      assert.equal(clear().textContent, "清空");
-      all().click();
-      assert.deepEqual(selectedCodes(), new Set(["us", ...expected]), group.id);
-      assert.equal(all().disabled, true);
-      all().click();
-      assert.deepEqual(
-        selectedCodes(),
-        new Set(["us", ...expected]),
-        "repeated select all must not clear the group",
+      assert.equal(checkbox().type, "checkbox");
+      assert.equal(checkbox().disabled, expected.length === 0);
+      assert.equal(
+        checkbox().indeterminate,
+        expected.includes("us") && expected.length > 1,
       );
-      clear().click();
+      checkbox().click();
+      assert.deepEqual(selectedCodes(), new Set(["us", ...expected]), group.id);
+      assert.equal(checkbox().checked, expected.length > 0);
+      assert.equal(checkbox().indeterminate, false);
+      checkbox().click();
       assert.deepEqual(
         selectedCodes(),
         new Set(expected.includes("us") ? [] : ["us"]),
         "clearing a group preserves other regions",
       );
+      assert.equal(checkbox().checked, false);
+      assert.equal(checkbox().indeterminate, false);
     }
     doc
-      .querySelector(
-        '[data-country-section="popular"] [data-country-group-action="all"]',
-      )
+      .querySelector('[data-country-section="popular"] [data-country-group]')
       .click();
     const expected = selectedCodes();
     doc.querySelector('[data-country-action="apply"]').click();
@@ -409,7 +404,7 @@ test("each country group selects only its allowed countries and keeps a separate
   }
 });
 
-test("regional select all follows Asia tabs and search while retaining scroll and section focus", async () => {
+test("regional checkboxes follow individual choices, Asia tabs and search while retaining scroll and focus", async () => {
   const { win, selector } = setup();
   try {
     const doc = win.document;
@@ -419,16 +414,20 @@ test("regional select all follows Asia tabs and search while retaining scroll an
       allowed: ["us", "th", "vn", "jp"],
       onApply: (codes) => (result = codes),
     });
-    const action = (section, name) =>
+    const checkbox = (section) =>
       doc.querySelector(
-        `[data-country-section="${section}"] [data-country-group-action="${name}"]`,
+        `[data-country-section="${section}"] [data-country-group]`,
       );
+    assert.equal(checkbox("popular").indeterminate, true);
+    assert.equal(checkbox("asia").checked, false);
+    assert.equal(checkbox("asia").indeterminate, false);
     doc.querySelector('[data-region="southeast_asia"]').click();
     const scroll = doc.querySelector(".picker-scroll");
     scroll.scrollTop = 300;
-    action("asia", "all").click();
+    checkbox("asia").closest("label").querySelector("span").click();
     assert.equal(scroll.scrollTop, 300);
-    assert.equal(doc.activeElement, action("asia", "clear"));
+    assert.equal(doc.activeElement, checkbox("asia"));
+    assert.equal(checkbox("asia").checked, true);
     assert.equal(
       doc
         .querySelector('[data-country-code="jp"]')
@@ -440,26 +439,37 @@ test("regional select all follows Asia tabs and search while retaining scroll an
       /3 \/ 4/,
     );
     doc.querySelector('[data-region=""]').click();
-    action("asia", "all").click();
+    assert.equal(checkbox("asia").indeterminate, true);
+    checkbox("asia").click();
     assert.match(
       doc.querySelector("#country-selection-count").textContent,
       /4 \/ 4/,
     );
+    assert.equal(checkbox("popular").checked, true);
+    doc.querySelector('[data-country-code="jp"]').click();
+    assert.equal(checkbox("asia").checked, false);
+    assert.equal(checkbox("asia").indeterminate, true);
+    assert.equal(checkbox("popular").indeterminate, true);
+    doc.querySelector('[data-country-code="jp"]').click();
+    assert.equal(checkbox("asia").checked, true);
+    assert.equal(checkbox("asia").indeterminate, false);
     doc.querySelector('[data-region="east_asia"]').click();
-    action("asia", "clear").click();
-    assert.equal(doc.activeElement, action("asia", "all"));
+    checkbox("asia").click();
+    assert.equal(doc.activeElement, checkbox("asia"));
+    assert.equal(checkbox("asia").checked, false);
     const search = doc.querySelector("#country-picker input");
     search.value = "japan";
     search.dispatchEvent(new win.Event("input"));
-    action("search", "all").click();
-    action("search", "clear").click();
+    checkbox("search").click();
+    assert.equal(checkbox("search").checked, true);
+    checkbox("search").click();
     search.value = "中国";
     search.dispatchEvent(new win.Event("input"));
-    assert.equal(action("search", "all").disabled, true);
-    assert.equal(action("search", "clear").disabled, true);
+    assert.equal(checkbox("search").disabled, true);
+    assert.equal(checkbox("search").indeterminate, false);
     search.value = "no-matching-country";
     search.dispatchEvent(new win.Event("input"));
-    assert.equal(action("search", "all").disabled, true);
+    assert.equal(checkbox("search").disabled, true);
     doc.querySelector('[data-country-action="apply"]').click();
     assert.deepEqual(new Set(result), new Set(["us", "th", "vn"]));
   } finally {

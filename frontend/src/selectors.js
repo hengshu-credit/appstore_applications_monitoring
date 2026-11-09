@@ -107,7 +107,7 @@ export function createSelectors({
     ).length;
     const complete = available.length > 0 && selected === available.length;
     const codes = available.map((c) => c.code).join(",");
-    return `<div class="picker-section-heading" data-country-section="${key}"><h3>${pickerEscape(name)}</h3>${tabs}${countrySelection ? `<div class="picker-group-actions"><button type="button" class="secondary picker-group-toggle" data-country-group="${codes}" data-country-group-action="all" ${!available.length || complete ? "disabled" : ""} aria-label="全选${pickerEscape(scope)}">全选</button><button type="button" class="secondary picker-group-toggle" data-country-group="${codes}" data-country-group-action="clear" ${selected ? "" : "disabled"} aria-label="清空${pickerEscape(scope)}">清空</button></div>` : ""}</div>`;
+    return `<div class="picker-section-heading" data-country-section="${key}"><h3>${pickerEscape(name)}</h3>${tabs}${countrySelection ? `<label class="picker-group-select"><input type="checkbox" data-country-group="${codes}" ${complete ? "checked" : ""} ${available.length ? "" : "disabled"} aria-label="全选${pickerEscape(scope)}"><span>全选</span></label>` : ""}</div>`;
   }
   function renderCountries() {
     const query = countryDialog.querySelector("input").value;
@@ -144,6 +144,15 @@ export function createSelectors({
         ? `<button type="button" class="country-option country-all" data-country-code="" aria-pressed="${!countrySingle.value}">全部国家 / 地区</button>`
         : "") + html;
     if (countrySelection) {
+      countryDialog
+        .querySelectorAll("[data-country-group]")
+        .forEach((group) => {
+          group.indeterminate =
+            !group.checked &&
+            group.dataset.countryGroup
+              .split(",")
+              .some((code) => countrySelection.selected.has(code));
+        });
       countryDialog.querySelector("#country-selection-count").textContent =
         `已选 ${countrySelection.selected.size} / ${countrySelection.allowed.size} 个地区`;
       countryDialog.querySelector('[data-country-action="apply"]').disabled =
@@ -205,6 +214,24 @@ export function createSelectors({
   countryDialog
     .querySelector("input")
     .addEventListener("input", renderCountries);
+  countryDialog.addEventListener("change", (event) => {
+    const group = event.target.closest("[data-country-group]");
+    if (!group || !countrySelection || group.disabled) return;
+    const codes = group.dataset.countryGroup.split(",").filter(Boolean);
+    codes.forEach((code) =>
+      group.checked
+        ? countrySelection.selected.add(code)
+        : countrySelection.selected.delete(code),
+    );
+    const key = group.closest("[data-country-section]").dataset.countrySection;
+    const scroll = countryDialog.querySelector(".picker-scroll");
+    const top = scroll.scrollTop;
+    renderCountries();
+    countryDialog
+      .querySelector(`[data-country-section="${key}"] [data-country-group]`)
+      ?.focus({ preventScroll: true });
+    scroll.scrollTop = top;
+  });
   countryDialog.addEventListener("click", (event) => {
     const action = event.target.closest("[data-country-action]")?.dataset
       .countryAction;
@@ -219,28 +246,6 @@ export function createSelectors({
         action === "all" ? countrySelection.allowed : [],
       );
       renderCountries();
-      return;
-    }
-    const group = event.target.closest("[data-country-group]");
-    if (group && countrySelection && !group.disabled) {
-      const codes = group.dataset.countryGroup.split(",");
-      const clear = group.dataset.countryGroupAction === "clear";
-      codes.forEach((c) =>
-        clear
-          ? countrySelection.selected.delete(c)
-          : countrySelection.selected.add(c),
-      );
-      const key = group.closest("[data-country-section]").dataset
-        .countrySection;
-      const scroll = countryDialog.querySelector(".picker-scroll");
-      const top = scroll.scrollTop;
-      renderCountries();
-      countryDialog
-        .querySelector(
-          `[data-country-section="${key}"] [data-country-group-action]:not(:disabled)`,
-        )
-        ?.focus({ preventScroll: true });
-      scroll.scrollTop = top;
       return;
     }
     const region = event.target.closest("[data-region]");
