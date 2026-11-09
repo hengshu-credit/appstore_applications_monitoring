@@ -14,16 +14,9 @@ from .catalog import listing_category
 log = logging.getLogger(__name__)
 
 
-def raw_save(folder, raw):
-    digest = hashlib.sha256(raw).hexdigest()
-    path = folder / "responses" / digest[:2] / (digest + ".gz")
-    path.parent.mkdir(exist_ok=True, parents=True)
-    if not path.exists():
-        tmp = path.with_suffix(f".{uuid.uuid4().hex}.part")
-        with gzip.open(tmp, "wb") as f:
-            f.write(raw)
-        os.replace(tmp, path)
-    return path.relative_to(folder).as_posix()
+def raw_save(cfg, raw):
+    from .objects import for_config
+    return for_config(cfg).put(raw, kind='responses', compress=True)
 
 
 def save_result(db, cfg, job, result=None, error=None, now=None):
@@ -95,10 +88,10 @@ def save_result(db, cfg, job, result=None, error=None, now=None):
                     events.append(("region_unavailable", {"confirmations": misses, "evidence": raw_path}))
             else:
                 raise ValueError(f"Unknown result outcome: {outcome}")
-            db.execute("""INSERT INTO listings VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) AS incoming
-                ON DUPLICATE KEY UPDATE state=incoming.state,checked_at=incoming.checked_at,
-                last_success=incoming.last_success,misses=incoming.misses,
-                payload=incoming.payload,digest=incoming.digest""",
+            db.execute("""INSERT INTO listings VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON DUPLICATE KEY UPDATE state=VALUES(state),checked_at=VALUES(checked_at),
+                last_success=VALUES(last_success),misses=VALUES(misses),
+                payload=VALUES(payload),digest=VALUES(digest)""",
                        (*k, state, now, last_success, misses, payload, digest))
         db.execute("""INSERT INTO requests(store,app_id,country,language,observed_at,outcome,error)
                       VALUES(%s,%s,%s,%s,%s,%s,%s)""", (*k, now, outcome, error_text))

@@ -81,10 +81,10 @@ def work(db,cfg):
         # File batches share a payload; read the uploaded bytes once, not once per receipt.
         with db.named_lock('source-claim'):
             with db:
-                first=db.execute('''SELECT * FROM collection_source_tasks WHERE enabled=1 AND due<=%s AND lease_until<=%s
+                first=db.claim('''SELECT * FROM collection_source_tasks WHERE enabled=1 AND due<=%s AND lease_until<=%s
                     AND failures<3'''+local_scope+' ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED',(now,now)).fetchone()
                 if not first:return {'processed':0}
-                rows=db.execute('''SELECT id,language,failures,JSON_EXTRACT(payload,'$.limit') requested_limit
+                rows=db.claim('''SELECT id,language,failures,JSON_EXTRACT(payload,'$.limit') requested_limit
                     FROM collection_source_tasks WHERE batch_key=%s AND enabled=1 AND due<=%s
                     AND lease_until<=%s AND failures<3 ORDER BY id LIMIT %s FOR UPDATE SKIP LOCKED''',(first['batch_key'],now,now,cfg.get('collection_batch_size',2000))).fetchall()
                 for row in rows:

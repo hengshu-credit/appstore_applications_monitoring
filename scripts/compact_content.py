@@ -16,7 +16,7 @@ def main():
     parser.add_argument('--output', default='data/exports/content-compaction-verification.json')
     args = parser.parse_args()
     cfg = load()
-    cfg['mysql']['read_timeout'] = 7200
+    cfg['oceanbase']['read_timeout'] = 7200
     db = connect(cfg)
     report = {'started': time.time(), 'tables': []}
     last_print = [0]
@@ -38,7 +38,7 @@ def main():
             report['tables'].append(result)
             Path(args.output).write_text(json.dumps(report, indent=2), encoding='utf8')
             print(json.dumps(result), flush=True)
-        report['blobs'] = db.execute('SELECT COUNT(*) bodies,SUM(raw_bytes) original_bytes,SUM(OCTET_LENGTH(body)) compressed_bytes FROM content_blobs').fetchone()
+        report['blobs'] = db.execute('SELECT COUNT(*) bodies,SUM(raw_bytes) original_bytes,SUM(OCTET_LENGTH(object_key)) reference_bytes FROM content_blobs').fetchone()
         report['finished'] = time.time()
         Path(args.output).write_text(json.dumps(report, indent=2, default=str), encoding='utf8')
         print(json.dumps(report, default=str), flush=True)

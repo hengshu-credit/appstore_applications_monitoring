@@ -49,9 +49,6 @@ def main():
     imp.add_argument("path")
     imp.add_argument("--source", required=True)
     sub.add_parser("enqueue")
-    migration = sub.add_parser("migrate-sqlite")
-    migration.add_argument("path")
-    migration.add_argument("--report", default="data/mysql-migration.json")
     add = sub.add_parser("add")
     add.add_argument("store", choices=["apple", "google"])
     add.add_argument("ids", nargs="+")
@@ -78,12 +75,10 @@ def main():
         from .console import serve
         serve(cfg, args.host, args.port)
         return 0
-    if args.command == "migrate-sqlite":
-        from .migrate import migrate
-        result = migrate(cfg, args.path, report_path=args.report)
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-        return 0
-    db = connect(cfg)
+    if args.command == "init":
+        from .objects import for_config
+        for_config(cfg).initialize()
+    db = connect(cfg, initialize=args.command == "init")
     try:
         if args.command == 'accounts':
             from .account_recovery import run as recover_account
@@ -120,7 +115,7 @@ def main():
             from .growth import backfill
             result=backfill(cfg,db,args.after_id,args.limit,args.upper_id)
         elif args.command == "init":
-            result = {"database": cfg["mysql"]["database"], "storage": "mysql"}
+            result = {"database": cfg["oceanbase"]["database"], "storage": "oceanbase"}
         elif args.command == "sync-seed":
             result = sync_seed(cfg, db)
         elif args.command == "import":

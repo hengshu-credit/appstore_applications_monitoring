@@ -6,10 +6,10 @@ from unittest.mock import patch
 from appmon import app_groups, developer_refs
 from appmon.ingest import file_hash
 from appmon.watchlist_import import prepare
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
-class DeveloperReferenceTest(MySQLTestCase):
+class DeveloperReferenceTest(OceanBaseTestCase):
     def test_numeric_ids_remain_exact_text(self):
         key=dict(store='google',app_id='com.credicuotas.wallet',country='ar',language='es')
         result=developer_refs.identity(key,{'developer_id':6942553452222258407},({},{}))

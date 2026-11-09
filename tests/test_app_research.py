@@ -11,7 +11,7 @@ from appmon.intelligence import add_observation_target,work_observations,work_wa
 from appmon.collection import work_plans
 from appmon.db import add_apps
 from appmon import charts,app_collection
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
 class StoreCapabilityTest(unittest.TestCase):
@@ -34,7 +34,7 @@ class StoreCapabilityTest(unittest.TestCase):
         for store in ('apple','google'):self.assertEqual(charts.definition(store,'new-grossing')['mode'],'derived')
 
 
-class AppResearchTest(MySQLTestCase):
+class AppResearchTest(OceanBaseTestCase):
     def test_expanded_market_failure_records_actual_web_search_source(self):
         from appmon.keywords import add_targets
         add_targets(self.db,[dict(store='apple',country='kz',language='en',keyword='test')])

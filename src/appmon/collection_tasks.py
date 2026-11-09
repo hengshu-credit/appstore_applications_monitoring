@@ -84,7 +84,9 @@ def task_query(*, kind='', store='', country='', language='', state='', q='', li
     now = time.time()
     union,args=_task_union(kind,light,bool(q),refs)
     columns='resource,id,kind,store,country,language,app_id,label,category,'+('enabled,failures,due,lease_until,has_success' if light else 'collection,group_name,depth,refresh_hours,enabled,failures,last_error,due,lease_until,success_at')
-    query = f'''SELECT task.*,CASE WHEN resource='sources' AND due IS NULL THEN 'done' WHEN enabled=0 THEN 'paused' WHEN lease_until>{now} THEN 'running'
+    # Explicit output aliases survive OceanBase pruning a UNION to one branch.
+    projection=','.join(f'task.`{column}` AS `{column}`' for column in columns.split(','))
+    query = f'''SELECT {projection},CASE WHEN resource='sources' AND due IS NULL THEN 'done' WHEN enabled=0 THEN 'paused' WHEN lease_until>{now} THEN 'running'
         WHEN failures>0 THEN 'error' WHEN COALESCE(due,0)<={now} THEN 'pending'
         ELSE 'scheduled' END task_state FROM ({union}) task ({columns})'''
     where = []
@@ -229,7 +231,7 @@ def control_tasks(db, value):
 
 
 def _control_scope(db, query, args, action, interval):
-    """Keep the identity snapshot on disk in MySQL; SQL count is independent of task count."""
+    """Keep the identity snapshot in OceanBase; SQL count is independent of task count."""
     db.execute('CREATE TEMPORARY TABLE collection_selection (resource VARCHAR(16) NOT NULL,id BIGINT NOT NULL,PRIMARY KEY(resource,id)) ENGINE=InnoDB')
     try:
         with db:

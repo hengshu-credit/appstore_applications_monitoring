@@ -4,10 +4,10 @@ from types import SimpleNamespace
 from appmon import collection_limits as limits
 from appmon.db import connect
 from appmon.stores import Client, FetchError
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
-class CollectionLimitsTest(MySQLTestCase):
+class CollectionLimitsTest(OceanBaseTestCase):
     def test_waiting_request_is_cancelled_when_task_pauses(self):
         from appmon.keywords import add_targets
         from appmon.task_logs import execution

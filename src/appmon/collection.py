@@ -76,8 +76,8 @@ def create_plan(db, value):
     name=text(value.get('name','采集计划'))
     now=time.time()
     with db:
-        db.execute('INSERT INTO collection_plans(name,specification,actions,total,created_at,updated_at) VALUES(%s,%s,%s,%s,%s,%s)',
-                   (name,dump(value),dump(result['actions']),result['total'],now,now))
+        db.execute('INSERT INTO collection_plans(name,specification,actions,total,created_at,updated_at,request_source,request_id) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)',
+                   (name,dump(value),dump(result['actions']),result['total'],now,now,None,None))
         identifier=db.cursor.lastrowid
         emit(db,'plans',identifier,'queued',f'采集计划已创建，待配置 {result["total"]} 个目标')
     return {'id':identifier,'total':result['total'],'status':'queued'}
@@ -114,15 +114,14 @@ def enqueue(db, value):
             raise ValueError('未知采集类型')
     with db.named_lock('enqueue:'+dump([source,request_id]),timeout=10):
         old = db.execute('''SELECT id,total,status,actions FROM collection_plans WHERE
-            JSON_UNQUOTE(JSON_EXTRACT(specification,'$.input_source'))=%s AND
-            JSON_UNQUOTE(JSON_EXTRACT(specification,'$.request_id'))=%s LIMIT 1''',(source,request_id)).fetchone()
+            request_source=%s AND request_id=%s LIMIT 1''',(source,request_id)).fetchone()
         if old:
             if json.loads(old['actions'])!=actions:raise ValueError('同一来源请求编号不能对应不同任务')
             return {k:old[k] for k in ('id','total','status')} | {'reused':True,'request_id':request_id}
         now=time.time()
         with db:
-            db.execute('INSERT INTO collection_plans(name,specification,actions,total,created_at,updated_at) VALUES(%s,%s,%s,%s,%s,%s)',
-                (text(value.get('name',source+' 采集请求')),dump({'input_source':source,'request_id':request_id}),dump(actions),len(actions),now,now))
+            db.execute('INSERT INTO collection_plans(name,specification,actions,total,created_at,updated_at,request_source,request_id) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)',
+                (text(value.get('name',source+' 采集请求')),dump({'input_source':source,'request_id':request_id}),dump(actions),len(actions),now,now,source,request_id))
             identifier=db.cursor.lastrowid
             emit(db,'plans',identifier,'queued',f'统一入队：{source}，{len(actions)} 个请求目标')
         return {'id':identifier,'total':len(actions),'status':'queued','reused':False,'request_id':request_id}
@@ -139,9 +138,9 @@ def configure_asset(db, action):
                 (target['refresh_hours'],target['store'],target['app_id'],target['country']))
         else:
             db.execute('''INSERT INTO app_icons(store,app_id,country,language,requested,status,refresh_hours)
-                VALUES(%s,%s,%s,%s,1,'queued',%s) AS incoming ON DUPLICATE KEY UPDATE
+                VALUES(%s,%s,%s,%s,1,'queued',%s) ON DUPLICATE KEY UPDATE
                 status=IF(app_icons.requested=0,'queued',app_icons.status),
-                due=IF(app_icons.requested=0,0,app_icons.due),requested=1,refresh_hours=LEAST(app_icons.refresh_hours,incoming.refresh_hours)''',
+                due=IF(app_icons.requested=0,0,app_icons.due),requested=1,refresh_hours=LEAST(app_icons.refresh_hours,VALUES(refresh_hours))''',
                 (target['store'],target['app_id'],target['country'],target['language'],target['refresh_hours']))
 
 
@@ -165,7 +164,7 @@ def schedule_submission(db, action, submitted_at):
 
 
 def work_plans(db, limit=20):
-    # A MySQL named lock survives the helper transactions and is released if the
+    # A separate lock transaction survives the helper transactions and is released if the
     # process disconnects. A crash between action and checkpoint safely replays it.
     try:
         with db.named_lock('collection-plans'):

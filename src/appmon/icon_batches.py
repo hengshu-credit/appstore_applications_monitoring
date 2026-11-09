@@ -49,7 +49,7 @@ def claim(db,cfg,limit,client):
     return rows
 
 
-def download(cfg,db,client,row,started,max_bytes=None,max_age_seconds=None,force=False):
+def download(cfg,db,client,row,started,max_bytes=None,max_age_seconds=None,force=False,allow_video=False):
     from .app_icons import source_url, cached_path, media_type, MAX_BYTES
     MAX_BYTES=max_bytes or MAX_BYTES
     url=source_url(row['source_url']);key=hashlib.sha256(url.encode()).hexdigest()
@@ -59,7 +59,7 @@ def download(cfg,db,client,row,started,max_bytes=None,max_age_seconds=None,force
         force=force or (row.get('checked_at') is not None and row.get('due',0)<=0)
         required=max(started if force else started-age,time.time()-age)
         path=cached_path(cfg,cached) if cached and cached['source_url']==url and cached['fetched_at']>=required else None
-        if path and path.stat().st_size<=MAX_BYTES:
+        if path:
             if getattr(client,'progress',None):client.progress('cache_hit','复用有效期内的共享图片；保留原获取时间')
             return cached
         with client.request(row['store'],'GET',url,stream=True,allow_redirects=False) as response:
@@ -69,15 +69,12 @@ def download(cfg,db,client,row,started,max_bytes=None,max_age_seconds=None,force
             for chunk in response.iter_content(65536):
                 raw.extend(chunk)
                 if len(raw)>MAX_BYTES:raise FetchError(f'图片超过{MAX_BYTES//1024**2}MiB限制；保留任务待处理')
-        mime,extension=media_type(raw);digest=hashlib.sha256(raw).hexdigest()
-        path=cfg['data_dir']/'icons'/digest[:2]/(digest+'.'+extension);path.parent.mkdir(parents=True,exist_ok=True)
-        if not path.exists():
-            temp=path.with_suffix('.'+row['token']+'.part')
-            try:temp.write_bytes(raw);os.replace(temp,path)
-            finally:temp.unlink(missing_ok=True)
-        result=dict(source_url=url,file_path=path.relative_to(cfg['data_dir']).as_posix(),mime=mime,fetched_at=time.time())
-        db.execute('''INSERT INTO icon_downloads(url_hash,source_url,file_path,mime,fetched_at) VALUES(%s,%s,%s,%s,%s) AS incoming
-            ON DUPLICATE KEY UPDATE source_url=incoming.source_url,file_path=incoming.file_path,mime=incoming.mime,fetched_at=incoming.fetched_at''',
+        mime,extension=media_type(raw,allow_video=allow_video);digest=hashlib.sha256(raw).hexdigest()
+        from .objects import for_config
+        ref=for_config(cfg).put(raw,kind='media',mime=mime,extension=extension)
+        result=dict(source_url=url,file_path=ref,mime=mime,fetched_at=time.time())
+        db.execute('''INSERT INTO icon_downloads(url_hash,source_url,file_path,mime,fetched_at) VALUES(%s,%s,%s,%s,%s)
+            ON DUPLICATE KEY UPDATE source_url=VALUES(source_url),file_path=VALUES(file_path),mime=VALUES(mime),fetched_at=VALUES(fetched_at)''',
             (key,url,result['file_path'],mime,result['fetched_at']))
         return result
 

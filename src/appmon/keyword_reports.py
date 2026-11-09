@@ -125,13 +125,8 @@ def import_report(cfg,db,value):
         if s['sheet'] in SHEETS:
             s['rejected_rows']=sum(r[0]==s['sheet'] for r in rejected)
             s['imported_keyword_rows']=sum(r[0]==s['sheet'] for r in prepared)
-    folder=Path(cfg['data_dir'])/'keyword_reports';folder.mkdir(exist_ok=True,parents=True)
-    dest=folder/(parsed['digest']+'.xlsx')
-    if not dest.exists() or hashlib.sha256(dest.read_bytes()).hexdigest()!=parsed['digest']:
-        temporary=folder/(parsed['digest']+'.'+uuid.uuid4().hex+'.part')
-        try:
-            temporary.write_bytes(raw);os.replace(temporary,dest)
-        finally:temporary.unlink(missing_ok=True)
+    from .objects import for_config
+    dest=for_config(cfg).put(raw,kind='keyword-reports',extension='xlsx',mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     filename=Path(str(value.get('filename','report.xlsx'))).name[:255]
     with db.named_lock('keyword-report:'+parsed['digest'][:40]):
         with db:
@@ -140,7 +135,7 @@ def import_report(cfg,db,value):
             if old:return old|{'duplicate':True,'rows':len(prepared),'rejected_rows':len(rejected)}
             db.execute('''INSERT INTO keyword_reports(store,app_id,country,language,digest,filename,source,observed_at,imported_at,raw_path,summary)
                 VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',(m['store'],m['app_id'],m['country'],m['language'],parsed['digest'],filename,
-                 '应用报告',at,time.time(),dest.relative_to(cfg['data_dir']).as_posix(),dump(parsed['summary'])))
+                 '应用报告',at,time.time(),dest,dump(parsed['summary'])))
             identifier=db.cursor.lastrowid
             for start in range(0,len(prepared),1000):
                 db.executemany('INSERT INTO keyword_report_rows VALUES(%s,%s,%s,%s,%s,%s,%s,%s)',[(identifier,*r) for r in prepared[start:start+1000]])

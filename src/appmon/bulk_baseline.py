@@ -35,8 +35,8 @@ def queue(db,cfg,dataset):
     if path is None:raise ValueError('尚未下载此公开数据包')
     digest=file_hash(path);now=time.time()
     db.execute('''INSERT INTO source_bulk_imports(digest,dataset,file_name,status,created_at,updated_at)
-        VALUES(%s,%s,%s,'queued',%s,%s) AS incoming ON DUPLICATE KEY UPDATE
-        status=IF(source_bulk_imports.status IN ('complete','complete_with_rejections'),source_bulk_imports.status,'queued'),error=NULL,updated_at=incoming.updated_at''',
+        VALUES(%s,%s,%s,'queued',%s,%s) ON DUPLICATE KEY UPDATE
+        status=IF(source_bulk_imports.status IN ('complete','complete_with_rejections'),source_bulk_imports.status,'queued'),error=NULL,updated_at=VALUES(updated_at)''',
         (digest,dataset,path.name,now,now))
     return {'digest':digest,'dataset':dataset}
 
@@ -57,12 +57,15 @@ def run(db,cfg,chunk_size=2000):
             with db:
                 state=db.execute('SELECT status FROM source_bulk_imports WHERE digest=%s FOR UPDATE',(job['digest'],)).fetchone()
                 if state['status']=='paused_user':raise ImportPaused()
-                if batch:db.executemany('''INSERT INTO public_app_baselines VALUES(%s,%s,%s,%s,%s,%s,%s) AS incoming
+                if job['dataset']=='descriptions':
+                    from .content_store import put
+                    batch[:]=[(dataset,store,app_id,put(db,payload),observed,imported,digest) for dataset,store,app_id,payload,observed,imported,digest in batch]
+                if batch:db.executemany('''INSERT INTO public_app_baselines VALUES(%s,%s,%s,%s,%s,%s,%s)
                     ON DUPLICATE KEY UPDATE
-                    payload=IF(public_app_baselines.source_observed_at IS NULL OR incoming.source_observed_at IS NULL OR incoming.source_observed_at>=public_app_baselines.source_observed_at,incoming.payload,public_app_baselines.payload),
-                    file_digest=IF(public_app_baselines.source_observed_at IS NULL OR incoming.source_observed_at IS NULL OR incoming.source_observed_at>=public_app_baselines.source_observed_at,incoming.file_digest,public_app_baselines.file_digest),
-                    source_observed_at=IF(public_app_baselines.source_observed_at IS NULL OR incoming.source_observed_at IS NULL OR incoming.source_observed_at>=public_app_baselines.source_observed_at,incoming.source_observed_at,public_app_baselines.source_observed_at),
-                    imported_at=incoming.imported_at''',batch)
+                    payload=IF(public_app_baselines.source_observed_at IS NULL OR VALUES(source_observed_at) IS NULL OR VALUES(source_observed_at)>=public_app_baselines.source_observed_at,VALUES(payload),public_app_baselines.payload),
+                    file_digest=IF(public_app_baselines.source_observed_at IS NULL OR VALUES(source_observed_at) IS NULL OR VALUES(source_observed_at)>=public_app_baselines.source_observed_at,VALUES(file_digest),public_app_baselines.file_digest),
+                    source_observed_at=IF(public_app_baselines.source_observed_at IS NULL OR VALUES(source_observed_at) IS NULL OR VALUES(source_observed_at)>=public_app_baselines.source_observed_at,VALUES(source_observed_at),public_app_baselines.source_observed_at),
+                    imported_at=VALUES(imported_at)''',batch)
                 db.execute("UPDATE source_bulk_imports SET processed=%s,valid=%s,rejected=%s,updated_at=%s WHERE digest=%s",(processed,valid,rejected,time.time(),job['digest']))
             batch.clear()
         try:

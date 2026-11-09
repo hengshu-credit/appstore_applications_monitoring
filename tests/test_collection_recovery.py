@@ -9,7 +9,7 @@ from appmon.db import add_apps,enqueue,claim_details
 from appmon.keywords import add_targets,work_keywords
 from appmon.keyword_stores import KeywordClient
 from appmon.target_batches import claim_targets
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
 class JpegRecoveryTest(unittest.TestCase):
@@ -21,7 +21,7 @@ class JpegRecoveryTest(unittest.TestCase):
             with self.assertRaises(FetchError):app_icons.media_type(bad)
 
 
-class CollectionRecoveryTest(MySQLTestCase):
+class CollectionRecoveryTest(OceanBaseTestCase):
     def test_admission_wait_requeues_without_new_failed_observation(self):
         identifier=add_targets(self.db,[dict(store='google',country='us',language='en',keyword='budget',depth=100)])['ids'][0]
         client=KeywordClient(self.cfg,self.db)

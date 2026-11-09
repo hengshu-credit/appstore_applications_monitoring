@@ -50,8 +50,8 @@ def save(db, cfg, name, value):
             raise ValueError('请选择有效的Google官方分类ID')
         result.update(search_terms=list(dict.fromkeys(t.strip() for t in terms)),google_categories=list(dict.fromkeys(categories)))
     with db:
-        db.execute('''INSERT INTO collection_controls VALUES(%s,%s,%s) AS incoming ON DUPLICATE KEY UPDATE
-            settings=incoming.settings,updated_at=incoming.updated_at''',(name,dump(result),time.time()))
+        db.execute('''INSERT INTO collection_controls VALUES(%s,%s,%s) ON DUPLICATE KEY UPDATE
+            settings=VALUES(settings),updated_at=VALUES(updated_at)''',(name,dump(result),time.time()))
         # Re-evaluate periodic source schedules after a configuration change.
         if name=='seed': db.execute("UPDATE schedules SET next_at=0 WHERE name='seed-sync'")
         if name=='discovery': db.execute("UPDATE schedules SET next_at=0 WHERE name LIKE 'discover:%'")

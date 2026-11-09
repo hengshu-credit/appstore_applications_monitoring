@@ -10,10 +10,10 @@ from appmon.keyword_stores import SearchResult
 from appmon.stores import Client, FetchError
 from appmon.task_logs import emit, execution, read_logs, safe_message
 from appmon.web import create_app
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
-class TaskLogTest(MySQLTestCase):
+class TaskLogTest(OceanBaseTestCase):
     def target(self, word='loan'):
         return add_targets(self.db,[dict(store='google',country='th',language='th',keyword=word)])['ids'][0]
 

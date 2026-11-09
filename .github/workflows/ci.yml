@@ -30,34 +30,45 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
         python: ['3.11', '3.12', '3.13']
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     env:
-      MYSQL_HOST: 127.0.0.1
-      MYSQL_PORT: '3306'
-      MYSQL_USER: root
-      MYSQL_PASSWORD: ci-test-password
-      MYSQL_ROOT_PASSWORD: ci-test-password
-      MYSQL_DATABASE: appmon_ci
+      OCEANBASE_DATABASE: appmon_ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - uses: shogo82148/actions-setup-mysql@v1
-        with:
-          mysql-version: '8.4'
-          root-password: ci-test-password
-          my-cnf: |
-            character-set-server=utf8mb4
-            collation-server=utf8mb4_bin
       - run: python -m pip install ".[test]"
+      - run: python scripts/configure_storage.py
+      - run: docker compose -f compose.yaml --env-file .env up -d --build app-init
+      - name: Wait for application bootstrap
+        run: |
+          id=$(docker compose -f compose.yaml ps -aq app-init)
+          code=$(docker wait "$id")
+          test "$code" = 0
       - run: python -m compileall -q src tests
       - run: python -m unittest discover -s tests -v
-      - run: python scripts/create_ci_database.py
       - run: appmon init
       - run: appmon status
       - run: appmon keywords import examples/keywords-sea.json
       - run: appmon keywords list
       - run: appmon keywords app google com.example.app
+      - if: always()
+        run: docker compose -f compose.yaml --env-file .env down -v
+  windows-client:
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.12', '3.13']
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install ".[test]"
+      - run: python -m compileall -q src tests
+      # OceanBase server runs on Linux. Run all server integration tests above;
+      # retain the portable client/parser suite on Windows without substituting MySQL.
+      - run: python scripts/run_client_tests.py

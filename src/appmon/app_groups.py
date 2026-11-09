@@ -134,8 +134,8 @@ def import_references(db, rows):
         m=market(row);state=row.get('source_status')
         if state not in ('on','off','error'):continue
         prepared.append((*(m[k] for k in ('store','app_id','country','language')),state,str(row.get('source_generated_at') or '')[:120],time.time()))
-    if prepared:db.executemany('''INSERT INTO app_reference_states VALUES(%s,%s,%s,%s,%s,%s,%s) AS incoming
-        ON DUPLICATE KEY UPDATE state=incoming.state,observed_text=incoming.observed_text,imported_at=incoming.imported_at''',prepared)
+    if prepared:db.executemany('''INSERT INTO app_reference_states VALUES(%s,%s,%s,%s,%s,%s,%s)
+        ON DUPLICATE KEY UPDATE state=VALUES(state),observed_text=VALUES(observed_text),imported_at=VALUES(imported_at)''',prepared)
     return len(prepared)
 
 
@@ -227,8 +227,8 @@ def adjust_member(db, identifier, member_id, value, actor):
         if revision != (old['revision'] if old else 0):
             raise ValueError('此行已更新，请刷新后再调整')
         db.execute('''INSERT INTO app_group_adjustments(member_id,status_override,permission_overrides,revision,updated_by,updated_at)
-            VALUES(%s,%s,%s,%s,%s,%s) AS incoming ON DUPLICATE KEY UPDATE status_override=incoming.status_override,
-            permission_overrides=incoming.permission_overrides,revision=incoming.revision,updated_by=incoming.updated_by,updated_at=incoming.updated_at''',
+            VALUES(%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE status_override=VALUES(status_override),
+            permission_overrides=VALUES(permission_overrides),revision=VALUES(revision),updated_by=VALUES(updated_by),updated_at=VALUES(updated_at)''',
             (member_id, status, dump(permissions), revision + 1, actor, time.time()))
     return {'revision': revision + 1}
 

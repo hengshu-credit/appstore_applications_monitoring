@@ -36,8 +36,8 @@ def start(db):
     def write(rows):
         with db:
             db.executemany('''INSERT INTO observation_targets(kind,store,app_id,country,language,collection,category,depth,refresh_hours)
-                VALUES('chart',%s,'',%s,%s,%s,%s,50,24) AS incoming ON DUPLICATE KEY UPDATE
-                enabled=1,depth=GREATEST(observation_targets.depth,incoming.depth)''',rows)
+                VALUES('chart',%s,'',%s,%s,%s,%s,50,24) ON DUPLICATE KEY UPDATE
+                enabled=1,depth=GREATEST(observation_targets.depth,VALUES(depth))''',rows)
     with db.named_lock('global-top50-start',timeout=30):
         old=settings(db)
         if old.get('enabled') and old.get('signature')==signature:return old|{'reused':True}
@@ -49,8 +49,8 @@ def start(db):
                'chart_targets':counts,'request_regions':{'google':len(CATALOG['countries']),'apple':len(APPLE_COUNTRIES)},
                'started_at':now,'review_depth':500,'keyword_depth':200,'video_policy':'source_links_only',
                'source_gaps':['历史评论受来源窗口限制','关键词先跟踪应用名，不代表完整索引词库','下载和收入等商业数据仍需相应来源权限与额度']}
-        db.execute('''INSERT INTO collection_controls VALUES(%s,%s,%s) AS incoming
-            ON DUPLICATE KEY UPDATE settings=incoming.settings,updated_at=incoming.updated_at''',(CONTROL,dump(value),now))
+        db.execute('''INSERT INTO collection_controls VALUES(%s,%s,%s)
+            ON DUPLICATE KEY UPDATE settings=VALUES(settings),updated_at=VALUES(updated_at)''',(CONTROL,dump(value),now))
         from .task_logs import emit
         for store,count in counts.items():
             emit(db,'top50_intake','chart','queued','全球 Top50 榜单目标已入队',details={'store':store,'tasks':count})
@@ -94,17 +94,17 @@ def sync(db,cfg,limit=20):
                     if apps:
                         now=time.time()
                         db.executemany('''INSERT INTO chart_enrichment_apps(store,app_id,country,language,last_run_id,first_seen,last_seen)
-                            VALUES(%s,%s,%s,%s,%s,%s,%s) AS incoming ON DUPLICATE KEY UPDATE
-                            last_run_id=incoming.last_run_id,last_seen=incoming.last_seen''',
+                            VALUES(%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE
+                            last_run_id=VALUES(last_run_id),last_seen=VALUES(last_seen)''',
                             [(*app,target['latest_success_id'],now,now) for app in apps])
                         db.executemany('''INSERT INTO watchlist(store,app_id,country,language,group_name,refresh_hours,enabled,created_at)
                             VALUES(%s,%s,%s,%s,'全球榜单 Top50',24,1,%s) ON DUPLICATE KEY UPDATE id=watchlist.id''',[(*app,now) for app in apps])
                         db.executemany('''INSERT INTO jobs(store,app_id,country,language) VALUES(%s,%s,%s,%s)
                             ON DUPLICATE KEY UPDATE app_id=jobs.app_id''',apps)
                         db.executemany('''INSERT INTO observation_targets(kind,store,app_id,country,language,depth,refresh_hours)
-                            VALUES('reviews',%s,%s,%s,%s,500,24) AS incoming ON DUPLICATE KEY UPDATE
-                            due=IF(incoming.depth>observation_targets.depth AND observation_targets.failures=0,LEAST(observation_targets.due,UNIX_TIMESTAMP()),observation_targets.due),
-                            depth=GREATEST(observation_targets.depth,incoming.depth)''',apps)
+                            VALUES('reviews',%s,%s,%s,%s,500,24) ON DUPLICATE KEY UPDATE
+                            due=IF(VALUES(depth)>observation_targets.depth AND observation_targets.failures=0,LEAST(observation_targets.due,UNIX_TIMESTAMP()),observation_targets.due),
+                            depth=GREATEST(observation_targets.depth,VALUES(depth))''',apps)
                         if target['store']=='google':
                             db.executemany('''INSERT INTO app_permission_targets(store,app_id,country) VALUES(%s,%s,%s)
                                 ON DUPLICATE KEY UPDATE id=app_permission_targets.id''',[(s,a,c) for s,a,c,_ in apps])
@@ -124,9 +124,9 @@ def sync(db,cfg,limit=20):
                         except ValueError:continue
                         words.append((s,c,l,word['keyword'],200,24))
                     if words:
-                        db.executemany('''INSERT INTO keyword_targets(store,country,language,keyword,depth,refresh_hours) VALUES(%s,%s,%s,%s,%s,%s) AS incoming
-                            ON DUPLICATE KEY UPDATE due=IF(incoming.depth>keyword_targets.depth AND keyword_targets.failures=0,LEAST(keyword_targets.due,UNIX_TIMESTAMP()),keyword_targets.due),
-                            depth=GREATEST(keyword_targets.depth,incoming.depth)''',list(dict.fromkeys(words)))
+                        db.executemany('''INSERT INTO keyword_targets(store,country,language,keyword,depth,refresh_hours) VALUES(%s,%s,%s,%s,%s,%s)
+                            ON DUPLICATE KEY UPDATE due=IF(VALUES(depth)>keyword_targets.depth AND keyword_targets.failures=0,LEAST(keyword_targets.due,UNIX_TIMESTAMP()),keyword_targets.due),
+                            depth=GREATEST(keyword_targets.depth,VALUES(depth))''',list(dict.fromkeys(words)))
                     if apps:
                         app_ids=[app[1] for app in apps];marks=','.join('%s' for _ in app_ids)
                         for resource,table,extra in [('watchlist','watchlist',''),('targets','observation_targets'," AND kind='reviews'"),

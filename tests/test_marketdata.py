@@ -10,10 +10,10 @@ from fastapi.testclient import TestClient
 from appmon import marketdata_source as af, data_sources
 from appmon.web import create_app
 from appmon.collection_limits import save as save_limits
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
-class MarketDataTest(MySQLTestCase):
+class MarketDataTest(OceanBaseTestCase):
     def plan(self, **kwargs):
         value = dict(start_date='2025-01-01', end_date='2025-02-01',
                      stop_at=(datetime.now(timezone.utc)+timedelta(days=2)).isoformat(),
@@ -98,8 +98,7 @@ class MarketDataTest(MySQLTestCase):
         self.assertEqual(len([x for x in calls if x[0]=='/products/123']),1)
         self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM apps').fetchone()['n'],1)
         for artifact in report['artifacts']:
-            with gzip.open(af.artifact_path(self.db,self.cfg,artifact['id']),'rt',encoding='utf-8') as stream:
-                self.assertIsInstance(json.load(stream),(dict,list))
+            self.assertIsInstance(json.loads(af.artifact_path(self.db,self.cfg,artifact['id'])),(dict,list))
             self.assertNotIn('fixture-token',artifact['provenance'])
         before=len(calls)
         af.work(self.cfg,self.db)
@@ -205,5 +204,4 @@ class MarketDataTest(MySQLTestCase):
     def test_api_archive_retains_exact_response_bytes(self):
         raw=b'{ "downloads": 1, "revenue": "0.20" }\n'
         identifier=af.archive(self.db,self.cfg,'estimates',json.loads(raw),{'run_id':1},1,raw_bytes=raw)
-        with gzip.open(af.artifact_path(self.db,self.cfg,identifier),'rb') as stream:
-            self.assertEqual(stream.read(),raw)
+        self.assertEqual(af.artifact_path(self.db,self.cfg,identifier),raw)

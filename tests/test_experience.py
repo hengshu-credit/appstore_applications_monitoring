@@ -9,11 +9,11 @@ from appmon.db import add_apps
 from appmon.keywords import add_targets, work_keywords
 from appmon.stores import FetchError
 from appmon.web import create_app
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 PNG=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l1cAAAAASUVORK5CYII=')
 
-class ExperienceTest(MySQLTestCase):
+class ExperienceTest(OceanBaseTestCase):
     def test_automatic_locale_and_store_scope_paginate_without_loss(self):
         self.assertEqual(locales.language_for('google','kz'),'kk')
         self.assertEqual(locales.language_for('apple','kz'),'ru')

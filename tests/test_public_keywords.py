@@ -6,7 +6,7 @@ from pathlib import Path
 from appmon import public_keywords as pk
 from appmon.catalog import APPLE_COUNTRIES
 from appmon.locales import PREFERENCES
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
 class PublicKeywordTest(unittest.TestCase):
@@ -94,7 +94,7 @@ class PublicKeywordTest(unittest.TestCase):
                 pk.import_release(None, folder)
 
 
-class PublicKeywordImportTest(MySQLTestCase):
+class PublicKeywordImportTest(OceanBaseTestCase):
     def test_import_is_idempotent_market_specific_and_does_not_create_jobs(self):
         folder = self.folder / 'release'
         jobs = pk.make_jobs(['us', 'th'], ['suggest'], 1)

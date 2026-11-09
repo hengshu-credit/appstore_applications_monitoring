@@ -1,20 +1,13 @@
-# 本地实时开发服务
+# 本地开发
 
-前端地址为 http://127.0.0.1:5173 ，后端为 http://127.0.0.1:8765 。前端使用 Vite，修改 JS 后自动重新加载页面，CSS 可热更新；后端使用 Uvicorn reload，修改 `src/` 下 Python 后自动重启 API。
-
-切换时只替换前端和 API，MySQL 数据、采集进程、已有端口和账户保持原配置。
+先安装 `.[test]`，运行 `python scripts/configure_storage.py`，再执行：
 
 ```powershell
-docker compose --profile console stop frontend web
-docker compose -f compose.dev.yaml --profile console up -d --no-deps web frontend
-docker compose -f compose.dev.yaml --profile console logs --tail 50 web frontend
+docker compose -f compose.dev.yaml --env-file .env --profile console --profile keywords up -d --build
 ```
 
-前端依赖在专用 Docker volume 中安装；首次启动会执行 `npm ci`。新增依赖或修改 lockfile 后，重新启动前端服务安装新依赖。Python 依赖变化仍需要重建后端镜像。
+后端源文件挂载并由 Uvicorn 重载；前端 Vite 独立运行。数据库为 OceanBase，素材为 SeaweedFS。端口及密钥均从 `.env` 读取。环境变量仅接受 `OCEANBASE_*` 和 `S3_*`，不回退到旧 `MYSQL_*` 配置。
 
-恢复生产预览：
+完整后端测试：`python -m unittest discover -s tests -v`。只运行不需要服务的跨平台测试：`python scripts/run_client_tests.py`。
 
-```powershell
-docker compose -f compose.dev.yaml --profile console stop frontend web
-docker compose --profile console up -d --build --no-deps web frontend
-```
+数据不再写入旧 `data/mysql`。旧目录不会自动删除，当前服务也不会读取它。

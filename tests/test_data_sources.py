@@ -4,7 +4,7 @@ import requests
 from fastapi.testclient import TestClient
 from appmon import data_sources
 from appmon.web import create_app
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
 class Response:
@@ -13,7 +13,7 @@ class Response:
     def json(self):return self.value
 
 
-class SourceAccountsTest(MySQLTestCase):
+class SourceAccountsTest(OceanBaseTestCase):
     def test_directory_has_separate_encrypted_configuration_and_session(self):
         def directory_login(client,saved):
             self.assertEqual(saved['email'],'directory@example.com')

@@ -4,9 +4,9 @@ from appmon.config import load
 from appmon.db import Database
 
 cfg = load()
-if os.environ.get("CI") != "true" or cfg["mysql"]["database"] != "appmon_ci":
+if os.environ.get("CI") != "true" or cfg["oceanbase"]["database"] != "appmon_ci":
     raise RuntimeError("This helper is restricted to the appmon_ci database in CI")
-options = dict(cfg["mysql"])
+options = dict(cfg["oceanbase"])
 options.pop("database")
 db = Database(options)
 try:

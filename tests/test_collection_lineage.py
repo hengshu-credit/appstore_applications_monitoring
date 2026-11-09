@@ -12,10 +12,10 @@ from appmon.stores import Client
 from appmon.web import create_app
 from appmon.dispatcher import dispatch_once
 from appmon import pipelines
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
-class CollectionLineageTest(MySQLTestCase):
+class CollectionLineageTest(OceanBaseTestCase):
     def test_three_tasks_one_http_are_counted_on_the_correct_edges(self):
         from test_google_batches import response
         pipelines.save(self.db,self.cfg,'pool',{'enabled':False})

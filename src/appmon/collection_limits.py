@@ -33,8 +33,8 @@ def save(db, cfg, value):
         low, high = (60, 86400) if key == 'cooldown_seconds' else (0.1, 3600)
         if type(v) not in (int,float) or not math.isfinite(v) or not low <= v <= high:
             raise ValueError(f'{key} 须在 {low}–{high} 秒之间')
-    db.execute('''INSERT INTO collection_controls VALUES(%s,%s,%s) AS incoming
-        ON DUPLICATE KEY UPDATE settings=incoming.settings,updated_at=incoming.updated_at''',
+    db.execute('''INSERT INTO collection_controls VALUES(%s,%s,%s)
+        ON DUPLICATE KEY UPDATE settings=VALUES(settings),updated_at=VALUES(updated_at)''',
         (NAME, dump(result), time.time()))
     return result
 
@@ -59,8 +59,8 @@ def admission(db, cfg, store, ticket=None):
         delay = max(0, *(r['next_at']-now for r in rows))
         if ticket:
             db.execute('DELETE FROM collection_request_waiters WHERE expires_at<=%s',(now,))
-            db.execute('''INSERT INTO collection_request_waiters(token,store,expires_at) VALUES(%s,%s,%s) AS incoming
-                ON DUPLICATE KEY UPDATE expires_at=incoming.expires_at''',(ticket,store,now+30))
+            db.execute('''INSERT INTO collection_request_waiters(token,store,expires_at) VALUES(%s,%s,%s)
+                ON DUPLICATE KEY UPDATE expires_at=VALUES(expires_at)''',(ticket,store,now+30))
             if not delay:
                 rates={r['name'][5:]:r['next_at'] for r in db.execute("SELECT name,next_at FROM schedules WHERE name IN ('rate:apple','rate:google')").fetchall()}
                 eligible=[s for s in ('apple','google') if rates.get(s,0)<=now]
@@ -100,8 +100,8 @@ def cooldown(db, cfg, store, retry_after):
     with db:
         # Shared IP protection: a rejection from either store cools all workers.
         for key in ('rate:global', 'rate:'+store):
-            db.execute('''INSERT INTO schedules VALUES(%s,%s) AS incoming
-                ON DUPLICATE KEY UPDATE next_at=GREATEST(schedules.next_at,incoming.next_at)''',
+            db.execute('''INSERT INTO schedules VALUES(%s,%s)
+                ON DUPLICATE KEY UPDATE next_at=GREATEST(schedules.next_at,VALUES(next_at))''',
                 (key,time.time()+delay))
     return delay
 

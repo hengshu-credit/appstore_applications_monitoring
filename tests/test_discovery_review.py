@@ -10,12 +10,12 @@ from appmon.db import connect
 from appmon.keywords import add_targets
 from appmon.intelligence import add_observation_target
 from appmon.collection import work_plans
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 from test_discovery import workbook_bytes
 from appmon.keyword_stores import parse_apple
 
 
-class DiscoveryReviewTest(MySQLTestCase):
+class DiscoveryReviewTest(OceanBaseTestCase):
     def setUp(self):
         super().setUp();self.m=dict(store='google',country='us',language='en')
 
@@ -104,9 +104,11 @@ class DiscoveryReviewTest(MySQLTestCase):
         raw=workbook_bytes([['\u200bhidden',1,1,1]])
         value={'store':'apple','app_id':'123','country':'cn','language':'zh-cn','content_base64':base64.b64encode(raw).decode()}
         result=kr.import_report(self.cfg,self.db,value)
-        path=self.cfg['data_dir']/self.db.execute('SELECT raw_path FROM keyword_reports WHERE id=%s',(result['id'],)).fetchone()['raw_path']
-        path.write_bytes(b'partial')
-        self.assertTrue(kr.import_report(self.cfg,self.db,value)['duplicate']);self.assertEqual(path.read_bytes(),raw)
+        from appmon.objects import for_config
+        objects=for_config(self.cfg)
+        ref=self.db.execute('SELECT raw_path FROM keyword_reports WHERE id=%s',(result['id'],)).fetchone()['raw_path']
+        objects.client.put_object(Bucket=objects.bucket,Key=objects.key(ref),Body=b'partial')
+        self.assertTrue(kr.import_report(self.cfg,self.db,value)['duplicate']);self.assertEqual(objects.get(ref),raw)
         rejected=kr.rejections(self.db,result['id']);self.assertEqual(rejected['total'],1)
         self.assertEqual(rejected['items'][0]['payload']['values'][0],'\u200bhidden')
         kr.promote(self.db,{'report_id':result['id'],'sheet':'ASO关键词','source_rows':[3]})

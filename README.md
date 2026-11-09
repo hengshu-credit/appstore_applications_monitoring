@@ -1,173 +1,80 @@
 # 衡枢·观星
 
-平台入口与职责见 [工作区结构](docs/platform-structure.md)：监控、分析、管理三个分区，应用分组承载跨国家的组合看板。
+Google Play / Apple App Store 应用、关键词、榜单及地区可用性监控平台。
 
-新增：[应用分组看板](docs/app-groups.md)。可将多家商店、多个国家的一批 APP 组成监控组合，集中查看国家分布、上下架事件、权限、关键词、榜单、评分及已取得的下载/收入指标。
+## 存储架构
 
-新增：[公开金融借贷与 ASO 扩词](docs/public-keyword-expansion.md)。逐国采集搜索联想、金融应用商店文案、官网与广告平台公开案例，保存原文证据和失败清单，幂等导入现有候选词库。
+运行时仅使用 **OceanBase + SeaweedFS**。OceanBase 承担账户权限、应用目录、任务租约和历史分析；SeaweedFS 保存完整正文、原始响应、图片、视频及导出文件。SeaweedFS 的目录元数据也存入 OceanBase 的独立 `seaweedfs` 数据库。
 
-新增：[分类观察名单](docs/watchlist-import.md)，支持双商店、跨国家分页查看和现金贷分类标记。数据接入采用中性标识，连接配置保存在服务器私有目录。
+- OceanBase CE 4.4.2.1，使用 MySQL 协议客户端；这不需要 MySQL 服务。
+- 任务队列按候选键分页并逐条加锁，避免 OceanBase 的 `LIMIT … SKIP LOCKED` 提前返回空结果。
+- 关键词排名、榜单明细、每日指标、事件、请求和采集日志使用列式表；任务和配置使用行式表。所有表采用 Zstd 压缩。
+- 正文按 SHA256 寻址、无损 Zstd 压缩。图片和视频保留原始字节；同内容共享对象。
+- 对象先上传成功，才提交数据库引用。事务回滚可能留下孤立对象，但不会提交悬空引用。当前不自动删除孤立对象。
+- 本版本是新的存储格式，不接受旧版备份，不提供 MySQL/本地素材回退。历史数据目录不自动删除。
 
-新增：[市场数据 试用期 API 采集与 CSV 归档](docs/market-data.md)，支持加密账密/Token 配置、分页续采、额度退避、截止时间与归档下载。
+## 单机启动
 
-新增：[离线备份、空库恢复与 Docker Compose 离线部署](docs/offline-deployment.md)。采集中心支持跨页全选暂停/恢复、所有商店统一请求间隔与共享冷却配置。
-
-星河璀璨，万象浮沉。
-
-Google Play / Apple App Store 应用池监控平台。
-
-支持首次启动注册超级管理员、外部用户账号密码注册登录、恢复码找回与账密修改。超管可配置普通用户/会员及单用户的页面和操作权限、会员到期时间。详见 [账户与权限](docs/accounts-and-permissions.md)。
-
-新增榜单历史比较、每日公开指标与增长发现、多国家关键词覆盖榜、开源候选词库，以及外部报告应用报告的预览/导入/选词追踪。新增“全球排行榜”同页查看多国多榜，并支持多报告关键词去重汇总。入口为“榜单中心”“全球排行榜”和“关键词中心”；详细数据口径、来源研究与报告实测见 [榜单增长与关键词发现](docs/discovery-and-keywords.md)。
-
-复盘优化增加了排行榜行列布局、筛选记忆、关键词去重追踪与完整分页、历史指标回放、Apple搜索名称修复及官方周/月热度接入。已完成实屏和窄屏检查；授权数据依赖与剩余模块见 [复盘与修正记录](docs/discovery-review.md)。
-
-全球榜单应用名采用固定两行省略与悬停全文，点击榜单标题可进入完整榜单及应用资料页。见 [榜单排版与详情入口](docs/chart-detail.md)。
-
-新增“上下架观察”、库外商店搜索入库、可悬停/键盘查看的监控图表和丰富的应用详情。指标来源、开源研究、指标口径及实现边界见 [衡枢·观星监控研究与实现](docs/monitoring-design.md)。
-
-现已增加**独立前端项目 `frontend/` + Python HTTP API + 重点池采集 worker**。前端展示应用池、关键词、榜单、ASO 核查、竞品、评论、素材变更和告警；Python 负责抓取、调度、MySQL 存储及数据接口。主题参考天枢，支持预设/自定义、深浅色和布局配置，矩形组件统一直角。详见 [控制台使用与边界](docs/console.md)、[前端项目](frontend/README.md)、[开发规范](docs/frontend-guidelines.md)。
-
-国家与应用分类已改为分组搜索选择器，分类按两商店官方ID独立管理并兼容历史数据；全站离线嵌入阿里妈妈方圆体VF SemiBold。见 [国家、分类与字体说明](docs/store-catalog.md)。
-
-顶部商店与语言已统一为下拉选择，商店显示 logo 与名称，侧栏采用统一线性图标。所有采集目标和基础流程可在 [统一采集中心](docs/collection-center.md) 管理。
-
-应用详情支持当前市场的一键采集及榜单/关键词排名汇总；Apple 市场扩展为175项，榜单中心提供七种直接或明确标注的派生榜单。详见 [应用研究与榜单口径](docs/app-research.md)。
-
-新增事件中心、ASO版本化草稿、评论记录归档、竞品集合、开发者下钻和采集计划/质量中心，并扩展应用库高级筛选与批量操作。页面设计、证据来源与采集方案见 [研究工作台设计](docs/platform-research-and-design.md)。
+需要 Linux Docker 引擎；Windows 开发通过 Docker Desktop 的 Linux 引擎运行。OceanBase 必须使用命名卷，不要绑定 Windows 文件夹。请为 OceanBase 预留至少当前配置的 6 GiB 内存以及数据/日志空间；此单机拓扑不提供主机级高可用。
 
 ```powershell
-# 后端 API：在仓库根目录运行
+python scripts/configure_storage.py
+docker compose -f compose.yaml --env-file .env --profile console --profile keywords up -d --build
+```
+
+初始化脚本只生成本机 `.env` 和 `data/runtime/` 私有配置，不输出密钥。Compose 按 OceanBase → 元数据库 → 已认证的 SeaweedFS → 应用表/对象桶顺序启动。首次启动可能需要数分钟。
+
+前端默认 `http://127.0.0.1:5173`，API `http://127.0.0.1:8765/health`。新库通过前端初始化管理员。默认端口：OceanBase 2881、SeaweedFS S3 8333；均只绑定回环地址。
+
+线上对象下载需将 `S3_PUBLIC_ENDPOINT` 设置为浏览器可访问的 HTTPS 地址，并由代理转发 S3 请求。修改外部域名后必须重新生成签名，不要修改已签名 URL 的主机或路径。桶必须从创建时启用认证；添加服务器密钥不能自动纠正既有匿名桶的权限。
+
+## 开发与测试
+
+```powershell
 .\.venv\Scripts\python.exe -m pip install ".[test]"
-.\.venv\Scripts\python.exe -m appmon web --port 8765
-# 另一个终端启动重点池采集、关键词、榜单、评论、告警和导出
-.\.venv\Scripts\python.exe -m appmon console daemon
-# 前端：在 frontend 目录运行 npm ci，再运行 npm run dev
-```
-
-前端入口 `http://127.0.0.1:5173/`，API 健康检查 `http://127.0.0.1:8765/health`。首次启动会幂等新增控制台表，保留原应用池及历史。没有运行 worker 时仍可查看已有数据，但新建/刷新任务和导出会等待处理。
-
-远程仓库：[hengshu-credit/appstore_applications_monitoring](https://github.com/hengshu-credit/appstore_applications_monitoring)（私有）。[查看远程 CI](https://github.com/hengshu-credit/appstore_applications_monitoring/actions/workflows/ci.yml)。
-
-本地仓库：`E:\workspace\appstore_applications_monitoring`。源码、上游研究副本、压缩原始数据、数据库、历史快照均在本目录。
-
-实现的是**全球已知应用 ID 池的全量导入和可持续扩充，以及可配置地区的增量监控**。公开接口和 AppGoblin 历史数据无法证明覆盖全球所有应用。默认详情地区为 `us`、Google 语言为 `en`，Apple 使用该地区接口返回的默认语言；这不是所有国家逐一验证。更改 `config.toml` 中的 `countries` 后重新 `enqueue` 即可扩展地区。
-
-应用运行时只使用 **MySQL**。本机地址为 `127.0.0.1:3307`，库名 `appstore_applications_monitoring`，应用用户 `appmon`。凭据在 Git 忽略的 `.env` 中，通过 `MYSQL_HOST/PORT/DATABASE/USER/PASSWORD` 配置；程序不会回退到 SQLite。MySQL 数据文件绑定在本仓库 `data/mysql/`，与本机其他项目的 MySQL 实例隔离。
-
-## 研究与数据
-
-- [七个仓库的用途、复用决定和容量分析](docs/research.md)
-- [上游代码版本记录](docs/upstream-manifest.json)
-- [逐文件行数、时间范围和校验值](docs/data-manifest.json)
-- [MySQL 迁移和验收记录](docs/mysql-verification.md)
-- [首次基线的历史验收记录](docs/verification.md)
-- 数据来源：[appgoblin-data 开源仓库](https://github.com/appgoblin-dev/appgoblin-data)，CC BY 4.0；**Data provided by AppGoblin. https://github.com/appgoblin-dev/appgoblin-data**
-
-公开主数据包共 **5,440,809 行**：Google 3,044,766，Apple 2,396,043。源记录更新日期范围是 **2025-04-08 至 2025-11-17**。文件名称中的 `live` 仅描述上游导出时的状态，导入后不会自动标记为当前在架。此项目可以导入合法取得的新版 TSV/XZ，并保留开源数据的许可与署名。
-
-## 安装与运行
-
-Python 3.11+、MySQL 8.4。本机已经建立独立 `.venv`，不再继承系统 Python 的其他项目依赖。
-
-```powershell
-cd E:\workspace\appstore_applications_monitoring
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install .
-# 本机 .env 已配置随机密码；全新部署先复制 .env.example 并设置密码。
-docker compose -f compose.yaml --env-file .env up -d mysql --wait
-.\.venv\Scripts\python.exe -m appmon init
-```
-
-使用本次已经下载的数据（导入按文件 SHA256 去重，可以重复执行）：
-
-```powershell
-.\.venv\Scripts\python.exe -m appmon import data\raw\store_apps.tsv.xz --source appgoblin-public-baseline
-.\.venv\Scripts\python.exe -m appmon import data\raw\live_store_apps.tsv.xz --source appgoblin-public-live-baseline
-.\.venv\Scripts\python.exe -m appmon enqueue
-.\.venv\Scripts\python.exe -m appmon status
-```
-
-从 GitHub 同步种子池时，`sync-seed` 查询最新目录树，校验下载大小、Git blob SHA1，并记录 SHA256；源文件没有变化时跳过重复导入；同一文件的导入使用 MySQL 命名锁，避免多个进程重复累计断点。它不保证上游每日发布新数据。
-
-```powershell
-.\.venv\Scripts\python.exe -m appmon sync-seed
-.\.venv\Scripts\python.exe -m appmon enqueue
-.\.venv\Scripts\python.exe -m appmon discover
-.\.venv\Scripts\python.exe -m appmon run --limit 200
-.\.venv\Scripts\python.exe -m appmon daemon
-```
-
-`daemon` 是持续进程：每日检查种子、按地区检查榜单/分类页/关键词/已验证开发者，循环处理到期任务；Ctrl+C 停止。关闭进程不会删除队列，未完成租约到期后可再次领取。**24 小时是成功任务的期望复查间隔，不代表百万应用每天都能查完**。请看研究报告中的吞吐计算。默认顺序 worker 适合本地建立基线、验证和运行小规模重点池；全池每日刷新需要有足够吞吐的授权批量源和分布式存储/调度。
-
-本机网络需要代理时，可在启动该进程的 PowerShell 中设置 `HTTPS_PROXY` / `HTTP_PROXY`。不要把代理密码写入仓库。本次已验证的本地代理为 `http://127.0.0.1:7897`；此地址只适用于当前电脑，Docker 容器中的 localhost 不是宿主机。配置中的 TLS 1.2 上限用于本机代理的兼容问题，证书校验仍开启；其他网络可删除 `tls_maximum_version` 使用运行时默认 TLS。
-
-要只执行一轮，使用 `run --limit N`。要先验证指定应用，可在大池入队前执行：
-
-```powershell
-.\.venv\Scripts\python.exe -m appmon add google com.whatsapp com.google.android.youtube
-.\.venv\Scripts\python.exe -m appmon add apple 310633997 544007664
-.\.venv\Scripts\python.exe -m appmon run --limit 4
-```
-
-已有任务不会被 `add` 重置；更新遵守现有到期时间。抓取失败或发现源失败返回非零退出码；错误保留在数据库中。
-
-## 持续部署
-
-```powershell
-docker compose -f compose.yaml --env-file .env up -d --build
-docker compose -f compose.yaml logs --tail 100 -f monitor
-docker compose -f compose.yaml stop monitor
-```
-
-Compose 中的 MySQL 已实际启动并配置自动重启，持久化在 `data/mysql/`；监控 daemon 尚未启动。Windows 前台运行可用 `scripts/start.ps1`。任务通过 `FOR UPDATE SKIP LOCKED` 领取，限速记录通过行锁串行更新，同一 MySQL 数据库可以协调多个 worker。跨主机部署还需共享原始响应存储并配置网络访问；本机数据库端口仅绑定 127.0.0.1。
-
-## 数据模型与查看
-
-新增：[多国家、多语言关键词排名追踪](docs/keywords.md)。可批量维护词库、定期保存双商店有序搜索快照，并通过 `appmon keywords app` 反查应用在各关键词/地区的排名、变化与历史。见 [真实采集验收](docs/keyword-verification.md)。
-
-| 位置/表 | 含义 |
-|---|---|
-| `upstream/` | 七个仓库的研究副本；数据仓库的大文件在 `data/raw/` |
-| `data/raw/` | 三份原始 XZ 和校验清单，保留原始指标、日期、开发者等字段 |
-| MySQL `appstore_applications_monitoring` | InnoDB、utf8mb4，所有时间戳采用 UTC epoch；数据文件在 `data/mysql/` |
-| `apps` | `(store, app_id)` 唯一，全局 ID 池；名称、分类、首次/最近发现时间和首个来源 |
-| `imports` | 文件 SHA256、处理进度、有效/拒绝/新增行数、完成状态；每 5000 行原子提交 |
-| `jobs` | `(store, app_id, country, language)` 任务，租约 token、到期时间、重试次数 |
-| `listings` | 每地区最近一次有效观察、可用状态和最后成功时间；网络错误不覆盖它 |
-| `snapshots` | 内容变化时保存归一化详情版本，包括名称/版本/开发者/评分/价格/描述等 |
-| `events` | 首次验证、字段变更、地区不可用、重新出现；变更包含旧值/新值 |
-| `requests` | 每次详情尝试的结果；失败单独统计，不能误报为下架 |
-| `discovery_runs` | 每个发现源结果、发现数、新增数、失败信息 |
-| `data/responses/` | 内容寻址的 gzip 原始响应，便于重放与审计 |
-| `migration_progress` | 一次性迁移的内容指纹、分表断点及校验状态 |
-
-新增 ID 可通过 `apps.first_seen` 查询；`first_verified` 仅说明本系统首次验证，并不代表应用刚发布。缺失至少三次、每次间隔至少 24 小时才标记 `region_unavailable`；所有这些结论限定在查询地区，不能推断全球下架。403/429/5xx、JSON 异常、解析器错误和 TLS/超时只触发退避，保留历史有效状态。
-
-```powershell
-.\.venv\Scripts\python.exe -m appmon status --output data\status.json
-.\.venv\Scripts\python.exe -m appmon export events data\exports\events.jsonl
-.\.venv\Scripts\python.exe -m appmon export apps data\exports\apps.jsonl
+python scripts/configure_storage.py
+docker compose -f compose.dev.yaml --env-file .env --profile console --profile keywords up -d --build
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-原始响应和请求日志默认保留，长期监控需规划磁盘和归档。数据库导出采用流式 JSONL；百万行导出需预留空间。MySQL 备份应使用 `mysqldump --single-transaction` 或数据库一致性备份工具；不要直接复制运行中的 `data/mysql/` 目录。
+测试使用真实 OceanBase 和 SeaweedFS，在随机测试数据库及独立对象前缀中运行，不使用 MySQL 或 SQLite 冒充运行时。CI 的 Linux Python 3.11/3.12/3.13 执行全部集成测试；Windows 执行独立的客户端/解析测试。本机 Windows 可以连接 Docker Linux 服务运行全部集成测试。
 
-## 旧库迁移
+## 数据与采集
 
-本机现有数据已迁入 MySQL。2026-11-02 已按用户要求删除旧 SQLite 备份 `data/legacy/monitor.sqlite3.bak`，不再保留该本地回退文件。全表核对结果见 `docs/mysql-migration.json`。
+公开应用基线来源为 [AppGoblin](https://github.com/appgoblin-dev/appgoblin-data)，CC BY 4.0。**Data provided by AppGoblin. https://github.com/appgoblin-dev/appgoblin-data**。
 
 ```powershell
-# 示例：需要自行提供旧库文件；本机旧备份已删除。仅用于空目标库的首次迁移或中断续传。
-.\.venv\Scripts\python.exe -m appmon migrate-sqlite path\to\legacy.sqlite3 --report data\mysql-migration.json
+appmon import data/raw/store_apps.tsv.xz --source appgoblin-public-baseline
+appmon enqueue
+appmon status
+appmon keywords import examples/keywords-sea.json
 ```
 
-迁移工具只读打开 SQLite，按主键批量复制，数据与断点在同一个 MySQL 事务提交；源文件 SHA256 不同会拒绝续传，已有业务数据的非迁移目标会拒绝覆盖。全部表每个字段的有序 SHA256 和精确行数相符后，才解除运行时迁移锁。`sqlite3` 只存在于这个一次性兼容导入工具中。
+应用 ID 保留大小写和前导零。国家和语言独立，不将某个地区不可见推断为全球下架。网络错误保留上次有效状态；重复缺失按配置确认。没有运行采集 worker 时，可以查看数据，但不会自动更新。公开接口和历史基线不能证明覆盖全球所有应用。
 
-本地测试会使用 `.env` 的 `MYSQL_ROOT_PASSWORD` 创建独立随机测试库，结束时删除该测试库，不清理业务库；测试需要真实 MySQL，不会静默跳过或使用 SQLite 模拟。
+素材仅从已允许的商店 CDN 地址下载，不把任意 URL 当作代理。视频只归档允许 CDN 的直接媒体地址，不下载或转码第三方视频平台页面。`archive_videos` 可控制视频采集，视频封面与视频文件分别存储。
 
-## Git 与 CI
+## 备份和恢复
 
-代码、研究文档、数据校验清单纳入版本管理；大数据、数据库、上游副本、环境和临时文件通过 `.gitignore` 排除，物理位置仍在此仓库下。`.github/workflows/ci.yml` 配置 Linux/Windows × Python 3.11/3.12/3.13 的安装、编译、真实 MySQL 8.4 集成测试及 CLI 检查。
+备份包含 OceanBase 表、当前数据库命名空间下的所有对象、配置和必要本地密钥；恢复要求空数据库、空对象前缀和空数据目录。对象内容和文件清单均校验，恢复完成后采集保持暂停。
 
-远程仓库为 `https://github.com/hengshu-credit/appstore_applications_monitoring`，默认分支 `master`。后续代码直接在 `master` 上修改和提交，不自行创建功能分支或开发 worktree，详见 [AGENTS.md](AGENTS.md)。提交前检查上一 SHA 的远程 CI 和已报告问题，修复失败并完成相关本地检查。推送后报告本次 SHA、CI 链接和已知状态，不等待本次 CI；留到下次提交前核对。本地测试成功或推送成功不能代替远程 CI 通过。
+```powershell
+# 先停止 API 和所有采集写入端，再执行：
+appmon backup data/backups/backup.zip --writers-stopped
+# 使用独立新数据库配置恢复：
+appmon --config restore.toml restore data/backups/backup.zip
+```
+
+完整操作说明见 [离线部署](docs/offline-deployment.md)、[内容存储](docs/content-storage.md)、[本地开发](docs/local-development.md)。不要直接复制运行中的数据库卷。
+
+## 扩展
+
+先增加 SeaweedFS Volume Server 并设置故障域/副本策略，再按容量需求对稳定数据卷启用纠删码；单机多个容器不等于多机容灾。OceanBase、SeaweedFS Master 和 Filer 的高可用需一起规划。本仓库默认 Compose 为单机启动和验收配置；正式集群使用经资源及故障恢复验证的部署。
+
+## 功能文档
+
+[工作区结构](docs/platform-structure.md) · [应用分组](docs/app-groups.md) · [关键词追踪](docs/keywords.md) · [数据源](docs/data-source-configuration.md) · [账户权限](docs/accounts-and-permissions.md) · [采集中心](docs/collection-center.md) · [市场数据](docs/market-data.md) · [前端开发规范](docs/frontend-guidelines.md)
+
+早期 `mysql-*` / `sqlite-*` 验收文档仅是历史记录，不适用于当前运行时。
+
+远程仓库：[hengshu-credit/appstore_applications_monitoring](https://github.com/hengshu-credit/appstore_applications_monitoring)。[CI](https://github.com/hengshu-credit/appstore_applications_monitoring/actions/workflows/ci.yml)。

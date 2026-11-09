@@ -19,7 +19,7 @@ from appmon.analytics import import_ad_observations, import_ad_reports
 from appmon.alerts import add_rule, evaluate
 from appmon.exports import request_export, work_export
 from appmon.web import create_app
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
 class ObservationParsersTest(unittest.TestCase):
@@ -50,7 +50,7 @@ class ObservationParsersTest(unittest.TestCase):
         self.assertEqual(len(rows), 1)
 
 
-class IntelligenceTest(MySQLTestCase):
+class IntelligenceTest(OceanBaseTestCase):
     def target(self, **kwargs):
         return add_observation_target(self.db, dict(kind="chart", store="google", country="us", language="en", refresh_hours=1) | kwargs)["id"]
 
@@ -144,7 +144,9 @@ class IntelligenceTest(MySQLTestCase):
         request = request_export(self.db, "apps", {"store": "apple"})
         result = work_export(self.cfg, self.db)
         self.assertEqual(result["rows"], 1)
-        rows = (self.folder / "exports" / (request["id"] + ".jsonl")).read_text(encoding="utf-8").splitlines()
+        from appmon.objects import for_config
+        ref=self.db.execute('SELECT object_key FROM exports WHERE id=%s',(request['id'],)).fetchone()['object_key']
+        rows = for_config(self.cfg).get(ref).decode('utf8').splitlines()
         self.assertEqual(json.loads(rows[0])["app_id"], "123")
         for kind, filters in (("jobs;DROP TABLE apps", {}), ("apps", {"unknown": "x"}), ("apps", {"store": []})):
             with self.assertRaises(ValueError):
@@ -186,7 +188,10 @@ class IntelligenceTest(MySQLTestCase):
         result = client.post('/api/exports', json={"kind": "apps"}).json()
         self.assertEqual(client.get('/api/exports/'+result['id']+'/download').status_code, 409)
         work_export(self.cfg, self.db)
-        download = client.get('/api/exports/'+result['id']+'/download')
+        redirect = client.get('/api/exports/'+result['id']+'/download',follow_redirects=False)
+        self.assertEqual(redirect.status_code,307)
+        import requests
+        download = requests.get(redirect.headers['location'],timeout=10)
         self.assertEqual(download.status_code, 200)
         self.assertEqual(json.loads(download.text)["app_id"], "123")
         self.assertEqual(client.get('/').status_code, 404)  # Python serves data only.

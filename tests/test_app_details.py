@@ -4,10 +4,10 @@ from datetime import datetime, timezone
 
 from appmon import app_details, app_groups, auth
 from appmon.db import dump
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
-class AppDetailRowsTest(MySQLTestCase):
+class AppDetailRowsTest(OceanBaseTestCase):
     def test_unregistered_apps_remain_unknown_and_reads_create_no_tasks(self):
         targets=[dict(store='google',app_id='com.example.loan',country=c,language='en') for c in ('th','vn')]
         result=app_details.rows(self.db,self.cfg,targets)['items']

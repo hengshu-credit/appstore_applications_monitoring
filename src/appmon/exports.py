@@ -1,4 +1,4 @@
-"""Disk-backed, leased exports with bounded memory and atomic publication."""
+"""Leased exports with bounded local staging and atomic object publication."""
 import json
 import os
 import time
@@ -25,7 +25,7 @@ def request_export(db, kind, filters):
 
 def work_export(cfg, db):
     with db:
-        row = db.execute("SELECT * FROM exports WHERE status IN ('queued','running') AND lease_until<=%s ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED", (time.time(),)).fetchone()
+        row = db.claim("SELECT * FROM exports WHERE status IN ('queued','running') AND lease_until<=%s ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED", (time.time(),)).fetchone()
         if not row:
             return {"processed": 0}
         token = uuid.uuid4().hex
@@ -50,8 +50,9 @@ def work_export(cfg, db):
             owner = db.execute("SELECT token FROM exports WHERE id=%s FOR UPDATE", (row["id"],)).fetchone()
             if owner["token"] != token:
                 raise RuntimeError("Export lease replaced")
-            os.replace(temp, folder / f"{row['id']}.jsonl")
-            db.execute("UPDATE exports SET status='ready',rows_written=%s,finished_at=%s,lease_until=0,token=NULL WHERE id=%s", (count, time.time(), row["id"]))
+            from .objects import for_config
+            ref=for_config(cfg).put_file(temp)
+            db.execute("UPDATE exports SET status='ready',rows_written=%s,finished_at=%s,object_key=%s,lease_until=0,token=NULL WHERE id=%s", (count, time.time(), ref, row["id"]))
     except Exception as exc:
         db.execute("UPDATE exports SET status='error',error=%s,lease_until=0,token=NULL WHERE id=%s AND token=%s", (type(exc).__name__, row["id"], token))
         raise

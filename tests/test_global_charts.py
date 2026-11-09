@@ -3,10 +3,10 @@ import time
 from appmon import global_charts
 from appmon.intelligence import add_observation_target, claim_observation
 from appmon.collection import work_plans
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
-class GlobalChartsTest(MySQLTestCase):
+class GlobalChartsTest(OceanBaseTestCase):
     def test_country_boards_preserve_each_rank_and_report_missing_and_stale_separately(self):
         now=time.time()
         for country,position,at in [('us',1,now),('jp',7,now-3*86400)]:

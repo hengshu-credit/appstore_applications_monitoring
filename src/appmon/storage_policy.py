@@ -37,7 +37,7 @@ def archive_raw(db,cfg,store,app_ids,raw):
             ','.join('%s' for _ in ids)+') LIMIT 1',(store,*ids)).fetchone())
     if not allowed:return ''
     from .monitor import raw_save
-    return raw_save(cfg['data_dir'],raw)
+    return raw_save(cfg,raw)
 
 
 def storage_guard(db,cfg):
@@ -48,8 +48,8 @@ def storage_guard(db,cfg):
     from .collection_limits import settings,save
     if not settings(db,cfg)['paused']:
         save(db,cfg,{'paused':True})
-        db.execute('''INSERT INTO collection_controls VALUES('storage-guard',%s,%s) AS incoming
-            ON DUPLICATE KEY UPDATE settings=incoming.settings,updated_at=incoming.updated_at''',
+        db.execute('''INSERT INTO collection_controls VALUES('storage-guard',%s,%s)
+            ON DUPLICATE KEY UPDATE settings=VALUES(settings),updated_at=VALUES(updated_at)''',
             (dump({'free_bytes':free,'minimum_bytes':threshold,'reason':'磁盘余量不足，采集自动暂停；扩容后可恢复'}),time.time()))
         from .task_logs import emit
         emit(db,'pipelines','pool','storage_paused','磁盘余量不足，已自动暂停采集；现有结果和任务进度保留','warning')

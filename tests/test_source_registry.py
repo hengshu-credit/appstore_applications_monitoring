@@ -4,10 +4,10 @@ from fastapi.testclient import TestClient
 from appmon import source_registry,data_sources
 from appmon.source_profiles import profile
 from appmon.web import create_app
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
-class SourceRegistryTest(MySQLTestCase):
+class SourceRegistryTest(OceanBaseTestCase):
     def test_legacy_bindings_roundtrip_and_admin_edits_are_not_overwritten(self):
         rows=source_registry.report(self.db,self.cfg)
         self.assertEqual(next(r for r in rows if r['id']=='community')['origin'],'https://community.example')

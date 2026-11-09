@@ -2,10 +2,10 @@ import csv,json,lzma,time
 from unittest.mock import patch
 from appmon import bulk_baseline,initial_capacity,source_registry
 from appmon.db import add_apps
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
-class BulkBaselineTest(MySQLTestCase):
+class BulkBaselineTest(OceanBaseTestCase):
     def write_file(self):
         root=self.cfg['data_dir']/'raw';root.mkdir()
         path=root/'live_store_apps.tsv.xz'

@@ -1,14 +1,14 @@
 import hashlib
 import json
-import zlib
+import zstandard
 from unittest.mock import patch
 
 from appmon import content_compaction, content_store, collection_limits, scoped_views
 from appmon.db import add_apps, connect
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
-class ContentStoreTest(MySQLTestCase):
+class ContentStoreTest(OceanBaseTestCase):
     def seed(self):
         add_apps(self.db, [('apple','1000','样本',None)], 'fixture')
         bodies = [json.dumps({'name':'样本','developer':'完整开发者','developer_id':123,'rating':4.8,
@@ -45,7 +45,7 @@ class ContentStoreTest(MySQLTestCase):
         page=scoped_views.apps(self.db,store='apple',country='us',language='en',min_rating=4,developer='完整开发者',pricing='free')
         self.assertEqual(page['items'][0]['payload'],json.loads(bodies[1]))
         self.assertLess(sum(len(r['payload']) for r in physical),sum(len(r['payload']) for r in before['snapshots'])/10)
-        self.db.execute("UPDATE snapshots SET observed_at=999 WHERE id=1")
+        self.db.execute("UPDATE snapshots SET observed_at=999 ORDER BY id LIMIT 1")
         with self.assertRaisesRegex(ValueError,'manifest mismatch'):content_compaction.verify(self.db,self.cfg,'snapshots')
 
     def test_transaction_rollback_and_corruption_fail_closed(self):
@@ -59,8 +59,11 @@ class ContentStoreTest(MySQLTestCase):
             ref=content_store.put(self.db,text)
         info=content_store.marker(ref)
         self.assertEqual(content_store.load_many(self.db.connection,{info['sha256']:info['bytes']},cache=False)[info['sha256']],text)
-        self.db.execute('UPDATE content_blobs SET body=%s',(b'broken',))
-        with self.assertRaises((ValueError,zlib.error)):content_store.load_many(self.db.connection,{info['sha256']:info['bytes']},cache=False)
+        from appmon.objects import store
+        objects=store(self.db.database)
+        row=self.db.execute('SELECT object_key FROM content_blobs').fetchone()
+        objects.client.put_object(Bucket=objects.bucket,Key=objects.key(row['object_key']),Body=b'broken',Metadata={'raw-bytes':str(info['bytes']),'sha256':info['sha256'],'codec':'identity'})
+        with self.assertRaises((ValueError,zstandard.ZstdError)):content_store.load_many(self.db.connection,{info['sha256']:info['bytes']},cache=False)
         self.db.execute('DELETE FROM content_blobs')
         with self.assertRaisesRegex(ValueError,'Missing'):content_store.load_many(self.db.connection,{info['sha256']:info['bytes']},cache=False)
 

@@ -24,10 +24,10 @@ def record(db, job, payload, observed_at, raw_path):
                   currency=payload.get('currency'), has_ads=payload.get('has_ads'), has_iap=payload.get('has_iap'),raw_path=raw_path)
     columns=','.join(fields); marks=','.join('%s' for _ in fields)
     # A delayed worker cannot replace a newer daily observation.
-    updates=','.join(f'{k}=IF(incoming.observed_at>=app_metrics_daily.observed_at,incoming.{k},app_metrics_daily.{k})'
+    updates=','.join(f'{k}=IF(VALUES(observed_at)>=app_metrics_daily.observed_at,VALUES({k}),app_metrics_daily.{k})'
                      for k in fields if k not in ('store','app_id','country','language','day','observed_at'))
-    db.execute(f'''INSERT INTO app_metrics_daily({columns}) VALUES({marks}) AS incoming ON DUPLICATE KEY UPDATE
-        {updates}, observed_at=GREATEST(app_metrics_daily.observed_at,incoming.observed_at)''',tuple(fields.values()))
+    db.execute(f'''INSERT INTO app_metrics_daily({columns}) VALUES({marks}) ON DUPLICATE KEY UPDATE
+        {updates}, observed_at=GREATEST(app_metrics_daily.observed_at,VALUES(observed_at))''',tuple(fields.values()))
 
 
 def cutoff(value=None):
@@ -50,9 +50,8 @@ def backfill(cfg,db,after_id=0,limit=500,upper_id=None):
             if existing and existing['observed_at']>=row['observed_at']:skipped+=1;continue
             if row['store']=='google' and payload.get('installs_reported') is None:
                 try:
-                    raw=(root/row['raw_path']).resolve()
-                    if not raw.is_relative_to(root):raise ValueError('invalid path')
-                    with gzip.open(raw,'rb') as stream:body=stream.read(8_000_001)
+                    from .objects import for_config
+                    body=for_config(cfg).get(row['raw_path'], max_bytes=8_000_000)
                     if len(body)>8_000_000:raise ValueError('response too large')
                     from appgoblin_play_scraper.features.app import parse_dom
                     parsed=parse_dom(body.decode('utf-8'),row['app_id'],'https://play.google.com/store/apps/details?id='+row['app_id'])

@@ -48,11 +48,11 @@ def add_targets(db, values, merge_existing=False):
     with db:
         for target in targets:
             # Reimports update settings, preserving pause state, history and due time.
-            update = ('due=IF(incoming.depth>keyword_targets.depth OR incoming.refresh_hours<keyword_targets.refresh_hours,LEAST(keyword_targets.due,UNIX_TIMESTAMP()),keyword_targets.due),'
-                      'depth=GREATEST(keyword_targets.depth,incoming.depth),refresh_hours=LEAST(keyword_targets.refresh_hours,incoming.refresh_hours)'
-                      if merge_existing else 'depth=incoming.depth,refresh_hours=incoming.refresh_hours')
+            update = ('due=IF(VALUES(depth)>keyword_targets.depth OR VALUES(refresh_hours)<keyword_targets.refresh_hours,LEAST(keyword_targets.due,UNIX_TIMESTAMP()),keyword_targets.due),'
+                      'depth=GREATEST(keyword_targets.depth,VALUES(depth)),refresh_hours=LEAST(keyword_targets.refresh_hours,VALUES(refresh_hours))'
+                      if merge_existing else 'depth=VALUES(depth),refresh_hours=VALUES(refresh_hours)')
             db.execute('''INSERT INTO keyword_targets(store,country,language,keyword,depth,refresh_hours)
-                VALUES(%s,%s,%s,%s,%s,%s) AS incoming
+                VALUES(%s,%s,%s,%s,%s,%s)
                 ON DUPLICATE KEY UPDATE '''+update,
                        tuple(target.values()))
             row = db.execute('''SELECT id FROM keyword_targets
@@ -74,7 +74,7 @@ def claim_target(db, lease_seconds, now=None, target_id=None, refresh=False):
         where += " AND id=%s"
         args.append(target_id)
     with db:
-        row = db.execute(f'''SELECT * FROM keyword_targets WHERE {where}
+        row = db.claim(f'''SELECT * FROM keyword_targets WHERE {where}
             ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED''', args).fetchone()
         if row is None:
             return None

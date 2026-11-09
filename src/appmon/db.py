@@ -1,4 +1,4 @@
-"""MySQL 8.4 persistence; no SQLite storage fallback."""
+"""OceanBase persistence using its MySQL wire protocol."""
 import json
 import time
 import uuid
@@ -11,6 +11,7 @@ APP_KEY = 'store VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, app
 REGION = 'country CHAR(2) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, language VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL'
 ENGINE = ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin'
 TABLES = {
+    'advisory_mutexes': 'name VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY',
     'apps': f'''{APP_KEY}, name TEXT, category TEXT, first_seen DOUBLE NOT NULL,
         last_seen DOUBLE NOT NULL, source TEXT NOT NULL, PRIMARY KEY(store,app_id),
         INDEX apps_store_category(store,category(64))''',
@@ -71,7 +72,11 @@ class Database:
         self.connection = pymysql.connect(**options, charset='utf8mb4', autocommit=True,
                                           cursorclass=ContentCursor)
         self.cursor = None
+        self._primary_keys = {}
         self.execute('SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED')
+        if 'OceanBase' not in self.execute('SELECT VERSION() v').fetchone()['v']:
+            self.connection.close()
+            raise RuntimeError('OceanBase is required; MySQL runtime is not supported')
 
     def execute(self, sql, args=None):
         if self.cursor is not None:
@@ -79,6 +84,16 @@ class Database:
         self.cursor = self.connection.cursor()
         self.cursor.execute(sql, args)
         return self.cursor
+
+    def primary_keys(self, table):
+        if table not in self._primary_keys:
+            rows = self.execute(f"SHOW KEYS FROM `{table}` WHERE Key_name='PRIMARY'").fetchall()
+            self._primary_keys[table] = [r['Column_name'] for r in sorted(rows, key=lambda r:r['Seq_in_index'])]
+        return self._primary_keys[table]
+
+    def claim(self, sql, args=None):
+        from .queue_claims import select
+        return select(self, sql, args)
 
     def executemany(self, sql, rows):
         if self.cursor is not None:
@@ -123,13 +138,30 @@ class Database:
     @contextmanager
     def named_lock(self, resource, timeout=0):
         name = 'appmon:' + hashlib.sha256((self.database + ':' + resource).encode()).hexdigest()[:56]
-        acquired = self.execute('SELECT GET_LOCK(%s,%s) acquired', (name,timeout)).fetchone()['acquired']
-        if acquired != 1:
-            raise RuntimeError('Another process is already importing this dataset')
+        # Use a separate transaction: helpers may commit the caller's connection
+        # while the resource lock must remain held across those commits.
+        guard = pymysql.connect(**self.options, charset='utf8mb4', autocommit=True,
+                                cursorclass=pymysql.cursors.DictCursor)
         try:
+            with guard.cursor() as cursor:
+                cursor.execute('SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED')
+                cursor.execute('SET ob_trx_timeout=3600000000')
+                cursor.execute('SELECT name FROM advisory_mutexes WHERE name=%s',(name,))
+                if cursor.fetchone() is None:
+                    cursor.execute('INSERT IGNORE INTO advisory_mutexes(name) VALUES(%s)',(name,))
+                deadline=time.monotonic()+timeout
+                while True:
+                    guard.begin()
+                    cursor.execute('SELECT name FROM advisory_mutexes WHERE name=%s FOR UPDATE SKIP LOCKED',(name,))
+                    if cursor.fetchone() is not None:break
+                    guard.rollback()
+                    if time.monotonic()>=deadline:
+                        raise RuntimeError('Another process is already importing this dataset')
+                    time.sleep(min(0.05,max(0,deadline-time.monotonic())))
             yield
         finally:
-            self.execute('SELECT RELEASE_LOCK(%s)', (name,))
+            try:guard.rollback()
+            finally:guard.close()
 
     def __enter__(self):
         self.begin()
@@ -139,44 +171,12 @@ class Database:
         self.rollback() if kind else self.commit()
 
 
-def connect(cfg, *, initialize=True, allow_migration=False):
-    db = Database(cfg['mysql'])
+def connect(cfg, *, initialize=False, allow_migration=False):
+    db = Database(cfg['oceanbase'])
     try:
         if initialize:
             for table, columns in TABLES.items():
-                storage=' ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8' if table=='public_app_baselines' else ''
-                db.execute(f'CREATE TABLE IF NOT EXISTS `{table}` ({columns}){ENGINE}{storage}')
-            if not db.execute("SHOW COLUMNS FROM app_media_assets LIKE 'manual_paused'").fetchone():
-                with db.named_lock('media-pause-column',timeout=30):
-                    if not db.execute("SHOW COLUMNS FROM app_media_assets LIKE 'manual_paused'").fetchone():
-                        db.execute('ALTER TABLE app_media_assets ADD COLUMN manual_paused BOOLEAN NOT NULL DEFAULT FALSE')
-            if not db.execute("SHOW COLUMNS FROM collection_logs LIKE 'details'").fetchone():
-                # Multiple services may initialize concurrently on deployment.
-                name='appmon:log-details-migration'
-                if db.execute('SELECT GET_LOCK(%s,30) acquired',(name,)).fetchone()['acquired']!=1:
-                    raise RuntimeError('Log schema migration lock unavailable')
-                try:
-                    if not db.execute("SHOW COLUMNS FROM collection_logs LIKE 'details'").fetchone():
-                        db.execute('ALTER TABLE collection_logs ADD COLUMN details LONGTEXT NULL')
-                finally:db.execute('SELECT RELEASE_LOCK(%s)',(name,))
-            for table,name,columns in [('apps','apps_store_category','store,category(64)'),
-                                       ('collection_logs','log_source_time','resource,created_at'),
-                                       ('requests','request_observed','observed_at'),
-                                       ('app_icons','icon_source_queue','requested,enabled,source_url(191),due,lease_until'),
-                                       ('jobs','jobs_retry','failures,due,lease_until'),
-                                       ('keyword_targets','target_retry','enabled,failures,due,lease_until'),
-                                       ('observation_targets','target_retry','enabled,failures,due,lease_until'),
-                                       ('observation_targets','observation_latest','kind,latest_success_id,store'),
-                                       ('app_permission_targets','target_retry','enabled,failures,due,lease_until'),
-                                       ('keyword_runs','keyword_observed','observed_at'),
-                                       ('observation_runs','observation_observed','observed_at'),
-                                       ('app_permission_runs','permission_observed','observed_at'),
-                                       ('jobs','jobs_market_due','store,country,language,due,lease_until'),
-                                       ('requests','requests_app','store,app_id,country,language,id')]:
-                if not db.execute(f"SHOW INDEX FROM {table} WHERE Key_name=%s",(name,)).fetchone():
-                    with db.named_lock(name):
-                        if not db.execute(f"SHOW INDEX FROM {table} WHERE Key_name=%s",(name,)).fetchone():
-                            db.execute(f'ALTER TABLE {table} ADD INDEX {name}({columns})')
+                db.execute(create_table_sql(table, if_not_exists=True))
             from .auth import initialize as initialize_auth
             initialize_auth(db)
         if not allow_migration:
@@ -205,6 +205,20 @@ TABLES.update(GROUP_TABLES)
 from .content_store import TABLES as CONTENT_TABLES
 TABLES.update(CONTENT_TABLES)
 
+# Final OceanBase schema indexes (no historical ALTER path).
+for _table, _name, _columns in [('apps', 'apps_store_category', 'store,category(64)'), ('collection_logs', 'log_source_time', 'resource,created_at'), ('requests', 'request_observed', 'observed_at'), ('app_icons', 'icon_source_queue', 'requested,enabled,source_url(191),due,lease_until'), ('jobs', 'jobs_retry', 'failures,due,lease_until'), ('keyword_targets', 'target_retry', 'enabled,failures,due,lease_until'), ('observation_targets', 'target_retry', 'enabled,failures,due,lease_until'), ('observation_targets', 'observation_latest', 'kind,latest_success_id,store'), ('app_permission_targets', 'target_retry', 'enabled,failures,due,lease_until'), ('keyword_runs', 'keyword_observed', 'observed_at'), ('observation_runs', 'observation_observed', 'observed_at'), ('app_permission_runs', 'permission_observed', 'observed_at'), ('jobs', 'jobs_market_due', 'store,country,language,due,lease_until'), ('requests', 'requests_app', 'store,app_id,country,language,id')]:
+    if _name not in TABLES[_table]:
+        TABLES[_table] += ", INDEX " + _name + "(" + _columns + ")"
+
+
+COLUMN_TABLES = frozenset(('keyword_ranks','observation_items','app_metrics_daily','events','requests','collection_logs'))
+
+
+def create_table_sql(table, *, if_not_exists=False):
+    layout = ' WITH COLUMN GROUP (each column)' if table in COLUMN_TABLES else ''
+    return ('CREATE TABLE '+('IF NOT EXISTS ' if if_not_exists else '')+
+            f"`{table}` ({TABLES[table]}){ENGINE} COMPRESSION='zstd_1.3.8'"+layout)
+
 
 def add_apps(db, rows, source, now=None):
     now = time.time() if now is None else now
@@ -214,10 +228,10 @@ def add_apps(db, rows, source, now=None):
     # No INSERT IGNORE: invalid/truncated input must fail, not be silently altered.
     added = db.executemany('''INSERT INTO apps VALUES(%s,%s,%s,%s,%s,%s,%s)
         ON DUPLICATE KEY UPDATE app_id=apps.app_id''', values).rowcount
-    db.executemany('''INSERT INTO apps VALUES(%s,%s,%s,%s,%s,%s,%s) AS incoming
-        ON DUPLICATE KEY UPDATE last_seen=incoming.last_seen,
-        name=COALESCE(NULLIF(apps.name,''),NULLIF(incoming.name,'')),
-        category=COALESCE(NULLIF(apps.category,''),NULLIF(incoming.category,''))''', values)
+    db.executemany('''INSERT INTO apps VALUES(%s,%s,%s,%s,%s,%s,%s)
+        ON DUPLICATE KEY UPDATE last_seen=VALUES(last_seen),
+        name=COALESCE(NULLIF(apps.name,''),NULLIF(VALUES(name),'')),
+        category=COALESCE(NULLIF(apps.category,''),NULLIF(VALUES(category),''))''', values)
     return added
 
 
@@ -241,7 +255,7 @@ def claim(db, countries, language, lease_seconds, now=None):
     now = time.time() if now is None else now
     placeholders = ','.join('%s' for _ in countries)
     with db:
-        row = db.execute(f'''SELECT * FROM jobs WHERE due<=%s AND lease_until<=%s
+        row = db.claim(f'''SELECT * FROM jobs WHERE due<=%s AND lease_until<=%s
             AND country IN ({placeholders}) AND language=%s
             AND NOT EXISTS (SELECT 1 FROM watchlist w WHERE w.store=jobs.store AND w.app_id=jobs.app_id
                 AND w.country=jobs.country AND w.language=jobs.language) ORDER BY due LIMIT 1
@@ -284,12 +298,12 @@ def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=Fa
         first=None
         if retry:
             retry_source=source.replace('jobs j','jobs j FORCE INDEX (jobs_retry)')
-            first=db.execute(f'SELECT {columns} FROM {retry_source} WHERE {where} AND j.failures>0 ORDER BY j.due LIMIT 1 FOR UPDATE SKIP LOCKED',args).fetchone()
+            first=db.claim(f'SELECT {columns} FROM {retry_source} WHERE {where} AND j.failures>0 ORDER BY j.due LIMIT 1 FOR UPDATE SKIP LOCKED',args).fetchone()
         elif mode=='scheduled':
-            first=db.execute(f'SELECT {columns} FROM {source} WHERE {where} AND j.failures=0 AND j.due>0 ORDER BY j.due LIMIT 1 FOR UPDATE SKIP LOCKED',args).fetchone()
+            first=db.claim(f'SELECT {columns} FROM {source} WHERE {where} AND j.failures=0 AND j.due>0 ORDER BY j.due LIMIT 1 FOR UPDATE SKIP LOCKED',args).fetchone()
         if not first:
             retry=False;mode='fresh'
-            first = db.execute(f'SELECT {columns} FROM {source} WHERE {where} ORDER BY j.due LIMIT 1 FOR UPDATE SKIP LOCKED',args).fetchone()
+            first = db.claim(f'SELECT {columns} FROM {source} WHERE {where} ORDER BY j.due LIMIT 1 FOR UPDATE SKIP LOCKED',args).fetchone()
         if not first:
             return []
         jobs = [first]
@@ -300,7 +314,7 @@ def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=Fa
                 remaining=batch_limit-len(jobs)
                 if not remaining:break
                 fill_source=source.replace('jobs j','jobs j FORCE INDEX (jobs_retry)') if extra==' AND j.failures>0' else source
-                jobs += list(db.execute(f'''SELECT {columns} FROM {fill_source} WHERE {where}
+                jobs += list(db.claim(f'''SELECT {columns} FROM {fill_source} WHERE {where}
                     AND j.store=%s AND j.country=%s AND j.language=%s AND j.app_id<>%s AND {retry_condition('j.')}'''+extra+'''
                     ORDER BY j.due LIMIT %s FOR UPDATE SKIP LOCKED''',
                     (*args,first['store'],first['country'],first['language'],first['app_id'],NETWORK_ERRORS,remaining)).fetchall())
@@ -328,7 +342,7 @@ def reserve(db, name, interval, now=None):
 def status(db):
     now = time.time()
     return {
-        'at': now, 'storage': 'mysql',
+        'at': now, 'storage': 'oceanbase',
         'server_version': db.execute('SELECT VERSION() version').fetchone()['version'],
         'pool': list(db.execute('SELECT store,count(*) count FROM apps GROUP BY store')),
         'jobs': db.execute('''SELECT count(*) total,

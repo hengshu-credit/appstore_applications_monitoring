@@ -10,7 +10,7 @@ from appmon.review_desk import desk, review_history
 from appmon.insights import event_feed, add_annotation, save_comparison, comparison_detail, developers, developer_apps
 from appmon.collection import preview_plan, create_plan, work_plans, quality
 from appmon.web import create_app
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
 class MetadataRulesTest(unittest.TestCase):
@@ -32,7 +32,7 @@ class MetadataRulesTest(unittest.TestCase):
         with self.assertRaises(ValueError):check_metadata('google',{'keywords':'private'})
 
 
-class WorkbenchTest(MySQLTestCase):
+class WorkbenchTest(OceanBaseTestCase):
     def seed_listing(self,app_id='123',**updates):
         now=time.time();store=updates.pop('store','apple');country=updates.pop('country','us');language=updates.pop('language','en')
         p={'name':'Observed app','description':'Observed description','category':'Finance','version':'1',

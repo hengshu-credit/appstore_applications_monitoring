@@ -140,21 +140,8 @@ def client_for(db, cfg):
 def archive(db, cfg, kind, value, provenance, records, csv_text=False, raw_bytes=None):
     raw = raw_bytes if isinstance(raw_bytes, bytes) else value.encode('utf-8') if csv_text else dump(value).encode('utf-8')
     digest = hashlib.sha256(raw).hexdigest()
-    folder = Path(cfg['data_dir']) / 'public-sources' / 'marketdata'
-    folder.mkdir(parents=True, exist_ok=True)
-    disk_check(folder, cfg.get('min_free_gb', 2))
-    path = folder / (digest + ('.csv.gz' if csv_text else '.json.gz'))
-    if not path.exists():
-        # Unique temporary file supports concurrent CSV imports safely.
-        import uuid
-        temp = path.with_name(path.name + '.' + uuid.uuid4().hex + '.part')
-        try:
-            with gzip.open(temp, 'wb') as stream:
-                stream.write(raw)
-            temp.replace(path)
-        finally:
-            temp.unlink(missing_ok=True)
-    relative = path.relative_to(Path(cfg['data_dir'])).as_posix()
+    from .objects import for_config
+    relative=for_config(cfg).put(raw,kind='marketdata',mime='text/csv' if csv_text else 'application/json',compress=True)
     return db.execute('''INSERT INTO marketdata_artifacts(sha256,path,kind,provenance,records,created_at)
         VALUES(%s,%s,%s,%s,%s,%s)''', (digest, relative, kind, dump(provenance), records, time.time())).lastrowid
 
@@ -163,11 +150,8 @@ def artifact_path(db, cfg, identifier):
     row = db.execute('SELECT * FROM marketdata_artifacts WHERE id=%s', (identifier,)).fetchone()
     if not row:
         raise ValueError('归档不存在')
-    root = Path(cfg['data_dir']).resolve()
-    path = (root / row['path']).resolve()
-    if not path.is_relative_to(root / 'public-sources' / 'marketdata') or not path.is_file():
-        raise ValueError('归档文件不可用')
-    return path
+    from .objects import for_config
+    return for_config(cfg).get(row['path'])
 
 
 def enqueue(db, run_id, kind, path, params=None):
@@ -270,8 +254,7 @@ def catalog(db, cfg, run_id, kind):
     row = db.execute("SELECT artifact_id FROM marketdata_jobs WHERE run_id=%s AND kind=%s AND status='done' ORDER BY id DESC LIMIT 1", (run_id, kind)).fetchone()
     if not row:
         return None
-    with gzip.open(artifact_path(db, cfg, row['artifact_id']), 'rt', encoding='utf-8') as stream:
-        return json.load(stream)
+    return json.loads(artifact_path(db, cfg, row['artifact_id']))
 
 
 def objects(value):
@@ -328,8 +311,8 @@ def import_products(db, products):
         if store and valid_id(store, identifier):
             rows.append((store, identifier, p.get('name'), None))
             if re.fullmatch(r'[1-9][0-9]{0,19}',str(p.get('id',''))):links.append((str(p['id']),store,identifier))
-    if links:db.executemany('''INSERT INTO marketdata_product_links VALUES(%s,%s,%s) AS incoming
-        ON DUPLICATE KEY UPDATE store=incoming.store,app_id=incoming.app_id''',links)
+    if links:db.executemany('''INSERT INTO marketdata_product_links VALUES(%s,%s,%s)
+        ON DUPLICATE KEY UPDATE store=VALUES(store),app_id=VALUES(app_id)''',links)
     return add_apps(db, rows, 'marketdata') if rows else 0
 
 
@@ -429,7 +412,7 @@ def work(cfg, db, limit=5):
     result = dict(processed=0, error=0)
     try:
         with db.named_lock('marketdata-worker'):
-            db.execute("INSERT INTO schedules VALUES('marketdata-heartbeat',%s) AS incoming ON DUPLICATE KEY UPDATE next_at=incoming.next_at", (time.time(),))
+            db.execute("INSERT INTO schedules VALUES('marketdata-heartbeat',%s) ON DUPLICATE KEY UPDATE next_at=VALUES(next_at)", (time.time(),))
             for _ in range(limit):
                 db.execute("UPDATE marketdata_runs SET status='expired' WHERE status IN ('running','paused') AND stop_at<=%s", (time.time(),))
                 run = db.execute("SELECT * FROM marketdata_runs WHERE status='running' ORDER BY id LIMIT 1").fetchone()

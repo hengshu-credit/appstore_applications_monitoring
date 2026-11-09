@@ -1,4 +1,4 @@
-"""Image-only archives for group applications and latest chart members."""
+"""Lossless image/video objects for group applications and latest chart members."""
 import hashlib
 import json
 import time
@@ -8,7 +8,7 @@ from .storage_policy import media_allowed,media_predicate
 from .collection_batch import touch
 
 FIELDS={'screenshots':'应用截图','ipad_screenshots':'iPad 截图','appletv_screenshots':'Apple TV 截图',
-        'header_image':'宣传图','video_image':'视频封面'}
+        'header_image':'宣传图','video_image':'视频封面','video':'视频','preview_video':'预览视频'}
 
 
 def remember(db,cfg,job,payload):
@@ -19,6 +19,7 @@ def remember(db,cfg,job,payload):
                tuple(job[k] for k in ('store','app_id','country','language')))
     count=0
     for field,label in FIELDS.items():
+        if field in ('video','preview_video') and not cfg.get('archive_videos',True):continue
         if field not in payload:continue
         values=payload[field] or []
         if isinstance(values,str):values=[values]
@@ -114,7 +115,8 @@ def work(cfg,db,client):
     client.request_guard=guard
     try:
         guard()
-        result=download(cfg,db,client,row,now,max_bytes=16*1024*1024)
+        video=row['label'] in ('视频','预览视频')
+        result=download(cfg,db,client,row,now,max_bytes=(128 if video else 16)*1024*1024,allow_video=video)
         guard()
         with db:
             saved=db.execute('''UPDATE app_media_assets SET file_path=%s,mime=%s,checked_at=%s,due=%s,

@@ -3,10 +3,10 @@ import time
 from appmon import charts
 from appmon.intelligence import add_observation_target
 from appmon.monitor import raw_save
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
-class ChartDetailTest(MySQLTestCase):
+class ChartDetailTest(OceanBaseTestCase):
     def seed(self):
         at=time.time()-100
         target=add_observation_target(self.db,dict(kind='chart',store='apple',country='cn',language='zh-cn',collection='top-paid'))['id']
@@ -46,7 +46,7 @@ class ChartDetailTest(MySQLTestCase):
         at=self.seed()
         raw={'feed':{'entry':[{'id':{'attributes':{'im:id':'1'}},'im:price':{'attributes':{'amount':'6.00','currency':'CNY'}},
             'category':{'attributes':{'im:id':'6014','label':'Games'}}}]}}
-        path=raw_save(self.cfg['data_dir'],json.dumps(raw).encode())
+        path=raw_save(self.cfg,json.dumps(raw).encode())
         self.db.execute("UPDATE observation_runs SET source='apple-rss-chart',raw_path=%s",(path,))
         result=charts.detail(self.db,'apple','cn','zh-cn','top-paid',cfg=self.cfg)
         row=result['items'][0]

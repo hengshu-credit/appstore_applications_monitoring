@@ -122,7 +122,7 @@ def work(cfg, db, limit=5, client=None):
                 cooldown=db.execute("SELECT MAX(next_at) at FROM schedules WHERE name IN ('rate:global','rate:google')").fetchone()['at']
                 if cooldown and cooldown>time.time()+5:break
             with db:
-                row=db.execute('''SELECT * FROM app_permission_targets WHERE enabled=1 AND due<=%s AND lease_until<=%s
+                row=db.claim('''SELECT * FROM app_permission_targets WHERE enabled=1 AND due<=%s AND lease_until<=%s
                     ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED''',(time.time(),time.time())).fetchone()
                 if not row:break
                 token=uuid.uuid4().hex

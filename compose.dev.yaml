@@ -12,10 +12,22 @@ services:
     extends:
       file: compose.yaml
       service: keywords
-  mysql:
+  oceanbase:
     extends:
       file: compose.yaml
-      service: mysql
+      service: oceanbase
+  storage-init:
+    extends:
+      file: compose.yaml
+      service: storage-init
+  seaweedfs:
+    extends:
+      file: compose.yaml
+      service: seaweedfs
+  app-init:
+    extends:
+      file: compose.yaml
+      service: app-init
   web:
     extends:
       file: compose.yaml
@@ -27,6 +39,7 @@ services:
     volumes:
       - ./src:/app/src:ro
   frontend:
+    profiles: [console]
     image: node:22-alpine
     working_dir: /app/frontend
     restart: unless-stopped
@@ -44,3 +57,6 @@ services:
       - web
 volumes:
   frontend_dev_modules:
+  oceanbase_data:
+  oceanbase_config:
+  seaweed_data:

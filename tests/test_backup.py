@@ -7,17 +7,17 @@ from appmon.db import Database, TABLES, add_apps
 from appmon.content_store import TABLES as CONTENT_TABLES
 from appmon.data_sources import cipher
 from decimal import Decimal
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
-class BackupTest(MySQLTestCase):
-    def test_restore_previous_format_initializes_empty_adjustment_table(self):
+class BackupTest(OceanBaseTestCase):
+    def test_reject_previous_format_without_touching_destination(self):
         add_apps(self.db,[('google','com.legacy.app','Legacy',None)],'fixture')
         current=self.folder/'current.zip';legacy=self.folder/'legacy.zip'
         backup(self.cfg,current,Path(__file__).parents[1]/'config.toml')
         removed={'app_group_adjustments', *CONTENT_TABLES}
         with zipfile.ZipFile(current) as original,zipfile.ZipFile(legacy,'w') as out:
-            manifest=verify(original);self.assertEqual(manifest['format'],3)
+            manifest=verify(original);self.assertEqual(manifest['format'],4)
             manifest['format']=1
             for table in removed:
                 del manifest['tables'][table];del manifest['files']['tables/'+table+'.jsonl']
@@ -25,12 +25,11 @@ class BackupTest(MySQLTestCase):
             for name in manifest['files']:out.writestr(name,original.read(name))
         name='appmon_test_legacy_'+uuid.uuid4().hex
         self.admin.execute(f'CREATE DATABASE `{name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin')
-        target=self.cfg|{'mysql':self.options|{'database':name},'data_dir':self.folder/'legacy-data'}
+        target=self.cfg|{'oceanbase':self.options|{'database':name},'data_dir':self.folder/'legacy-data'}
         try:
-            self.assertTrue(restore(target,legacy)['restored']);db=Database(target['mysql'])
-            try:
-                self.assertEqual(db.execute('SELECT name FROM apps').fetchone()['name'],'Legacy')
-                self.assertEqual(db.execute('SELECT COUNT(*) n FROM app_group_adjustments').fetchone()['n'],0)
+            with self.assertRaises(ValueError):restore(target,legacy)
+            db=Database(target['oceanbase'])
+            try:self.assertEqual(db.execute('SHOW TABLES').fetchall(),[])
             finally:db.close()
         finally:self.admin.execute(f'DROP DATABASE `{name}`')
 
@@ -55,10 +54,10 @@ class BackupTest(MySQLTestCase):
             self.assertEqual(set(manifest['tables']),set(TABLES))
         name='appmon_test_restore_'+uuid.uuid4().hex
         self.admin.execute(f'CREATE DATABASE `{name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin')
-        target=self.cfg|{'mysql':self.options|{'database':name},'data_dir':self.folder/'target'}
+        target=self.cfg|{'oceanbase':self.options|{'database':name},'data_dir':self.folder/'target'}
         try:
             self.assertTrue(restore(target,dest)['restored'])
-            db=Database(target['mysql'])
+            db=Database(target['oceanbase'])
             try:
                 self.assertEqual(db.execute('SELECT name FROM apps').fetchone()['name'],'多语言 ไทย')
                 self.assertEqual(db.execute('SELECT payload FROM listings').fetchone()['payload'],original)

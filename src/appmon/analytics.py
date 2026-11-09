@@ -107,6 +107,6 @@ def import_ad_reports(db, rows):
     with db:
         if prepared:
             db.executemany('''INSERT INTO ad_reports(fingerprint,report_date,app_id,country,campaign,keyword,impressions,taps,installs,spend,currency,source,imported_at)
-                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) AS incoming ON DUPLICATE KEY UPDATE
-                impressions=incoming.impressions,taps=incoming.taps,installs=incoming.installs,spend=incoming.spend,imported_at=incoming.imported_at''', prepared)
+                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE
+                impressions=VALUES(impressions),taps=VALUES(taps),installs=VALUES(installs),spend=VALUES(spend),imported_at=VALUES(imported_at)''', prepared)
     return {"received": len(rows), "processed": len(prepared)}

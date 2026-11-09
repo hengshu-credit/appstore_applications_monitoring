@@ -159,9 +159,8 @@ def detail(db,store,country,language,collection='top-free',category='',as_of=Non
     current=report['latest_success']
     if cfg and store=='apple' and current and current['source']=='apple-rss-chart' and current.get('raw_path'):
         try:
-            root=Path(cfg['data_dir']).resolve();raw=(root/current['raw_path']).resolve()
-            if not raw.is_relative_to(root):raise ValueError('Invalid response path')
-            with gzip.open(raw,'rb') as stream:content=stream.read(8_000_001)
+            from .objects import for_config
+            content=for_config(cfg).get(current['raw_path'], max_bytes=8_000_000)
             if len(content)>8_000_000:raise ValueError('Chart response too large')
             entries=json.loads(content).get('feed',{}).get('entry',[])
             if isinstance(entries,dict):entries=[entries]

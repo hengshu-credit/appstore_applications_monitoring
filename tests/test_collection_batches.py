@@ -10,10 +10,10 @@ from appmon.collection_tasks import list_tasks, control_tasks
 from appmon.keywords import add_targets, work_keywords
 from appmon.stores import Client, Result, FetchError
 from appmon import collection_limits as limits, pipelines
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
-class CollectionBatchTest(MySQLTestCase):
+class CollectionBatchTest(OceanBaseTestCase):
     def seed(self, size=105):
         add_apps(self.db,[('apple',str(1000+i),None,None) for i in range(size)],'test')
         enqueue(self.db,['us'],'en')
@@ -86,8 +86,9 @@ class CollectionBatchTest(MySQLTestCase):
 
     def test_categories_keep_all_types_and_states_when_list_is_drilled_down(self):
         add_targets(self.db,[dict(store='google',country='us',language='en',keyword=f'word {i}') for i in range(3)])
-        self.db.execute('UPDATE keyword_targets SET enabled=0 WHERE id=1')
-        self.db.execute('UPDATE keyword_targets SET failures=2 WHERE id=2')
+        self.db.execute('UPDATE keyword_targets SET enabled=0 ORDER BY id LIMIT 1')
+        second=self.db.execute('SELECT id FROM keyword_targets ORDER BY id LIMIT 1 OFFSET 1').fetchone()['id']
+        self.db.execute('UPDATE keyword_targets SET failures=2 WHERE id=%s',(second,))
         source_states = [('aso_popularity','pending',1,0),('aso_import','paused',0,0),('aso_report','done',1,None)]
         self.db.executemany('''INSERT INTO collection_source_tasks
             (store,app_id,country,language,kind,label,payload,batch_key,source,request_id,created_at,enabled,due)
@@ -118,7 +119,7 @@ class CollectionBatchTest(MySQLTestCase):
     def test_bulk_interval_and_retry_are_set_based_and_keep_history_and_pause(self):
         add_targets(self.db,[dict(store='google',country='us',language='en',keyword=f'word {i}') for i in range(150)])
         self.db.execute('UPDATE keyword_targets SET failures=1,latest_success_id=123')
-        self.db.execute('UPDATE keyword_targets SET enabled=0 WHERE id=1')
+        self.db.execute('UPDATE keyword_targets SET enabled=0 ORDER BY id LIMIT 1')
         with patch.object(self.db,'execute',wraps=self.db.execute) as calls:
             result=control_tasks(self.db,{'scope':'filtered','filters':{'kind':'keywords'},'action':'interval','refresh_hours':168})
         self.assertEqual(result['updated'],150)

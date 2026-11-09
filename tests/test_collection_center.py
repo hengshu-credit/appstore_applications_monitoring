@@ -8,10 +8,10 @@ from appmon.intelligence import watch, add_observation_target, work_watchlist
 from appmon.keywords import add_targets
 from appmon.monitor import save_result, work
 from appmon.stores import Result
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
-class CollectionCenterTest(MySQLTestCase):
+class CollectionCenterTest(OceanBaseTestCase):
     def test_card_success_coverage_is_separate_from_status_and_survives_state_drilldown(self):
         self.seed()
         self.db.execute("UPDATE keyword_targets SET latest_success_id=99,failures=2,last_error='HTTP 429'")

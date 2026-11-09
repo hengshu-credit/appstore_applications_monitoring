@@ -67,7 +67,7 @@ def choose(db, cfg):
         for lane in lanes:
             if ready(db,cfg,lane,time.time()):
                 db.execute("UPDATE schedules SET next_at=%s WHERE name='dispatch:turn'",(turn+1,))
-                db.execute('INSERT INTO schedules VALUES(%s,%s) AS incoming ON DUPLICATE KEY UPDATE next_at=incoming.next_at',
+                db.execute('INSERT INTO schedules VALUES(%s,%s) ON DUPLICATE KEY UPDATE next_at=VALUES(next_at)',
                            ('dispatch:'+lane,turn+1))
                 return lane
     return None
@@ -117,12 +117,12 @@ def run_batch(db, cfg, lane):
 
 def dispatch_once(db, cfg, worker_id):
     name = 'collector:'+worker_id
-    db.execute('INSERT INTO schedules VALUES(%s,%s) AS incoming ON DUPLICATE KEY UPDATE next_at=incoming.next_at',(name,time.time()))
+    db.execute('INSERT INTO schedules VALUES(%s,%s) ON DUPLICATE KEY UPDATE next_at=VALUES(next_at)',(name,time.time()))
     lane = choose(db,cfg)
     if lane is None:
         return {'processed':0,'lane':None}
     result = run_batch(db,cfg,lane)
-    db.execute('INSERT INTO schedules VALUES(%s,%s) AS incoming ON DUPLICATE KEY UPDATE next_at=incoming.next_at',(name,time.time()))
+    db.execute('INSERT INTO schedules VALUES(%s,%s) ON DUPLICATE KEY UPDATE next_at=VALUES(next_at)',(name,time.time()))
     return result | {'lane':lane}
 
 

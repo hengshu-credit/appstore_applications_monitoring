@@ -7,11 +7,11 @@ from appmon.db import add_apps,enqueue,claim
 from appmon.monitor import save_result
 from appmon.stores import Result,Client
 from appmon.collection_limits import blocked,settings,admission
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 from test_experience import PNG
 
 
-class StoragePolicyTest(MySQLTestCase):
+class StoragePolicyTest(OceanBaseTestCase):
     def setUp(self):
         super().setUp()
         self.cfg.update(raw_response_scope='groups',media_scope='groups_and_current_charts')

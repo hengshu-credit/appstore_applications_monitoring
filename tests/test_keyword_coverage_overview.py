@@ -4,10 +4,10 @@ from appmon import auth, keyword_discovery as kd
 from appmon.keywords import add_targets, claim_target, save_search
 from appmon.keyword_stores import SearchResult
 from appmon.web import create_app
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
-class KeywordCoverageOverviewTest(MySQLTestCase):
+class KeywordCoverageOverviewTest(OceanBaseTestCase):
     def test_empty_overview_requires_keyword_read_access(self):
         client = TestClient(create_app(self.cfg))
         path = '/api/discovery/keywords/overview'

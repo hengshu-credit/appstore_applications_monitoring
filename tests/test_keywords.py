@@ -10,7 +10,7 @@ from appmon.keyword_stores import KeywordClient, SearchResult, parse_apple, pars
 from appmon.keywords import (add_targets, app_coverage, claim_target, history, ranks,
                             save_search, set_enabled, validate_target, work_keywords)
 from appmon.stores import FetchError
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
 def google_page(ids, exact=None, dataset="ds:4"):
@@ -69,7 +69,7 @@ class SearchParserTest(unittest.TestCase):
                 validate_target(base | change)
 
 
-class KeywordTest(MySQLTestCase):
+class KeywordTest(OceanBaseTestCase):
     def seed_keyword(self, **kwargs):
         base = dict(store="google", country="th", language="th", keyword="เงินกู้", refresh_hours=1)
         return add_targets(self.db, [base | kwargs])["ids"][0]
@@ -106,7 +106,8 @@ class KeywordTest(MySQLTestCase):
         self.assertEqual([r["status"] for r in rows],
                          ["observed", "observed", "not_observed", "error", "observed", "observed"])
         self.assertEqual(self.db.execute("SELECT count(*) n FROM keyword_runs").fetchone()["n"], 6)
-        self.assertTrue((self.folder / rows[0]["raw_path"]).exists())
+        from appmon.objects import for_config
+        self.assertTrue(for_config(self.cfg).get(rows[0]["raw_path"]))
 
     def test_targets_isolate_store_country_language_and_reimport_preserves_history(self):
         targets = [self.seed_keyword(), self.seed_keyword(country="vn", language="vi"),
@@ -192,8 +193,8 @@ class KeywordTest(MySQLTestCase):
 
     def test_cli_multilingual_json_redirected_to_gbk_console(self):
         self.seed_keyword()
-        env = dict(os.environ, MYSQL_DATABASE=self.database_name, MYSQL_USER="root",
-                   MYSQL_PASSWORD=self.options["password"], PYTHONIOENCODING="gbk")
+        env = dict(os.environ, OCEANBASE_DATABASE=self.database_name, OCEANBASE_USER=self.options["user"],
+                   OCEANBASE_PASSWORD=self.options["password"], PYTHONIOENCODING="gbk")
         process = subprocess.run([sys.executable, "-m", "appmon", "keywords", "list"],
                                  env=env, capture_output=True, check=True)
         self.assertEqual(json.loads(process.stdout.decode("utf-8"))[0]["keyword"], "เงินกู้")

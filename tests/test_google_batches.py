@@ -17,7 +17,7 @@ from appmon.keywords import add_targets, work_keywords
 from appmon.intelligence import add_observation_target, work_observations
 from appmon.collection_tasks import control_tasks
 from appmon.target_batches import claim_targets
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 FIXTURES=json.loads((Path(__file__).parent/'fixtures/google_batch.json').read_text(encoding='utf-8'))
 
@@ -124,7 +124,7 @@ class GoogleBatchParserTest(unittest.TestCase):
         self.assertEqual(len(requested),4)
 
 
-class GoogleBatchWorkerTest(MySQLTestCase):
+class GoogleBatchWorkerTest(OceanBaseTestCase):
     def test_chart_worker_keeps_every_requested_item_and_target_interval(self):
         for collection,depth,interval in [('top-free',100,6),('top-paid',5,48)]:
             add_observation_target(self.db,dict(kind='chart',store='google',country='us',language='en',category='GAME',
@@ -184,8 +184,9 @@ class GoogleBatchWorkerTest(MySQLTestCase):
 
     def test_claims_are_disjoint_market_scoped_and_skip_paused_and_leased(self):
         add_targets(self.db,[dict(store='google',country=c,language='en',keyword=f'word {i}') for c in ['us','gb'] for i in range(25)])
-        self.db.execute('UPDATE keyword_targets SET enabled=0 WHERE id=1')
-        self.db.execute('UPDATE keyword_targets SET lease_until=%s WHERE id=2',(time.time()+300,))
+        self.db.execute('UPDATE keyword_targets SET enabled=0 ORDER BY id LIMIT 1')
+        second=self.db.execute('SELECT id FROM keyword_targets ORDER BY id LIMIT 1 OFFSET 1').fetchone()['id']
+        self.db.execute('UPDATE keyword_targets SET lease_until=%s WHERE id=%s',(time.time()+300,second))
         def claim_one(_):
             db=connect(self.cfg,initialize=False)
             try:return claim_targets(db,'keyword_targets',600,20)

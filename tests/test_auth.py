@@ -7,10 +7,10 @@ from fastapi.testclient import TestClient
 from appmon import auth
 from appmon.db import connect
 from appmon.web import create_app
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
-class AccountTest(MySQLTestCase):
+class AccountTest(OceanBaseTestCase):
     def client(self):
         return TestClient(create_app(self.cfg))
 

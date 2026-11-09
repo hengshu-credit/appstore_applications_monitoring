@@ -7,10 +7,10 @@ from appmon.db import add_apps,enqueue,connect
 from appmon.keywords import add_targets
 from appmon.monitor import work
 from appmon.stores import Client
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
-class CollectionSchedulingTest(MySQLTestCase):
+class CollectionSchedulingTest(OceanBaseTestCase):
     def test_focus_lanes_get_priority_without_starving_or_idling_the_pool(self):
         add_apps(self.db,[('apple','1000',None,None)],'fixture');enqueue(self.db,['us'],'en')
         pipelines.save(self.db,self.cfg,'pool',{'enabled':True})

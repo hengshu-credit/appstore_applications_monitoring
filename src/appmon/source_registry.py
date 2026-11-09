@@ -103,4 +103,4 @@ def save_ads(db,cfg,value,only_missing=False):
         with db.named_lock('data-sources-key'):
             encryption=cipher(cfg,create=not db.execute('SELECT 1 FROM source_accounts LIMIT 1').fetchone())
         secret=encryption.encrypt(dump({'access_token':token,'ad_account_id':account}).encode()).decode()
-        db.execute("INSERT INTO source_accounts(provider,secret,status,updated_at) VALUES('apple_ads',%s,'saved',%s) AS incoming ON DUPLICATE KEY UPDATE secret=incoming.secret,status='saved',updated_at=incoming.updated_at",(secret,time.time()))
+        db.execute("INSERT INTO source_accounts(provider,secret,status,updated_at) VALUES('apple_ads',%s,'saved',%s) ON DUPLICATE KEY UPDATE secret=VALUES(secret),status='saved',updated_at=VALUES(updated_at)",(secret,time.time()))

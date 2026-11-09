@@ -8,7 +8,7 @@ from appmon.keyword_stores import KeywordClient
 from appmon.google_rpc import parse_frames
 from appmon.pagination import PageWindow
 from test_google_batches import response
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 from appmon.intelligence import add_observation_target, work_observations
 
 
@@ -142,7 +142,7 @@ class CollectionDepthTest(unittest.TestCase):
         self.assertEqual(window.end,'source_exhausted')
 
 
-class CollectionDepthPersistenceTest(MySQLTestCase):
+class CollectionDepthPersistenceTest(OceanBaseTestCase):
     def test_page_failure_preserves_the_previous_complete_review_snapshot(self):
         target=dict(kind='reviews',store='google',country='us',language='en',app_id='com.example.app',depth=100)
         identifier=add_observation_target(self.db,target)['id'];client=ObservationClient(self.cfg,self.db)

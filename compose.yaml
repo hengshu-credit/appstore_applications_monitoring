@@ -1,30 +1,62 @@
 name: appstore-applications-monitoring
 services:
-  mysql:
-    image: mysql:8.4.6
+  oceanbase:
+    image: oceanbase/oceanbase-ce:4.4.2.1-101000022026050611
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:${MYSQL_PORT:-3307}:3306"
+    ports: ["127.0.0.1:${OCEANBASE_PORT:-2881}:2881"]
+    mem_limit: ${OCEANBASE_CONTAINER_MEMORY_LIMIT:-8g}
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
-      MYSQL_ROOT_HOST: "%"
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-appstore_applications_monitoring}
-      MYSQL_USER: ${MYSQL_USER:-appmon}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
-    command:
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_bin
-      - --innodb-buffer-pool-size=512M
-      - --max-allowed-packet=64M
-      - --skip-log-bin
+      MODE: MINI
+      OB_TENANT_NAME: appmon
+      OB_DATABASE: ${OCEANBASE_DATABASE:-appstore_applications_monitoring}
+      OB_TENANT_PASSWORD: ${OCEANBASE_PASSWORD:?Run scripts/configure_storage.py}
+      OB_SYS_PASSWORD: ${OCEANBASE_SYS_PASSWORD:?Run scripts/configure_storage.py}
+      OB_MEMORY_LIMIT: ${OCEANBASE_MEMORY_LIMIT:-6G}
+      OB_DATAFILE_SIZE: ${OCEANBASE_DATAFILE_SIZE:-5G}
+      OB_LOG_DISK_SIZE: ${OCEANBASE_LOG_DISK_SIZE:-5G}
     volumes:
-      - ./data/mysql:/var/lib/mysql
+      - oceanbase_data:/root/ob
+      - oceanbase_config:/root/.obd/cluster
     healthcheck:
-      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql -h 127.0.0.1 -u $$MYSQL_USER -D $$MYSQL_DATABASE -e 'SELECT 1' >/dev/null"]
-      interval: 5s
+      test: ["CMD-SHELL", "MYSQL_PWD=$$OB_TENANT_PASSWORD obclient -h 127.0.0.1 -P2881 -uroot@appmon -e 'SELECT 1' >/dev/null"]
+      interval: 10s
       timeout: 5s
-      retries: 30
-      start_period: 30s
+      retries: 60
+      start_period: 90s
+  storage-init:
+    build: .
+    image: ${APPMON_BACKEND_IMAGE:-appmon-backend:local}
+    env_file: .env
+    environment:
+      OCEANBASE_HOST: oceanbase
+      OCEANBASE_PORT: "2881"
+    command: ["python", "-m", "appmon.storage_init"]
+    depends_on:
+      oceanbase:
+        condition: service_healthy
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.52
+    restart: unless-stopped
+    command: ["server", "-ip=${SEAWEEDFS_ADVERTISE_HOST:-seaweedfs}", "-ip.bind=0.0.0.0", "-dir=/data", "-s3", "-s3.config=/etc/seaweedfs/s3.json", "-master.volumeSizeLimitMB=1024", "-volume.max=100"]
+    ports:
+      - "${STORAGE_BIND_ADDRESS:-127.0.0.1}:${S3_PORT:-8333}:8333"
+    volumes:
+      - seaweed_data:/data
+      - ./data/runtime/filer.toml:/etc/seaweedfs/filer.toml:ro
+      - ./data/runtime/s3.json:/etc/seaweedfs/s3.json:ro
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
+  app-init:
+    extends:
+      service: storage-init
+    environment:
+      S3_ENDPOINT: http://seaweedfs:8333
+    command: ["python", "-m", "appmon.storage_init", "--application"]
+    volumes: ["./config.toml:/app/config.toml:ro"]
+    depends_on:
+      seaweedfs:
+        condition: service_started
   monitor:
     image: ${APPMON_BACKEND_IMAGE:-appmon-backend:local}
     build: .
@@ -35,19 +67,24 @@ services:
       - ./config.toml:/app/config.toml:ro
     environment:
       PYTHONUNBUFFERED: "1"
-      MYSQL_HOST: mysql
-      MYSQL_PORT: "3306"
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-appstore_applications_monitoring}
-      MYSQL_USER: ${MYSQL_USER:-appmon}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+      OCEANBASE_HOST: oceanbase
+      OCEANBASE_PORT: "2881"
+      OCEANBASE_DATABASE: ${OCEANBASE_DATABASE:-appstore_applications_monitoring}
+      OCEANBASE_USER: ${OCEANBASE_USER:-root@appmon}
+      OCEANBASE_PASSWORD: ${OCEANBASE_PASSWORD:?Set OCEANBASE_PASSWORD in .env}
       HTTP_PROXY: ${APPMON_HTTP_PROXY:-}
       HTTPS_PROXY: ${APPMON_HTTPS_PROXY:-}
-      NO_PROXY: localhost,127.0.0.1,mysql,web,frontend
+      NO_PROXY: localhost,127.0.0.1,oceanbase,seaweedfs,web,frontend
+      S3_ENDPOINT: http://seaweedfs:8333
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://127.0.0.1:8333}
+      S3_BUCKET: ${S3_BUCKET:-appmon}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?Run scripts/configure_storage.py}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?Run scripts/configure_storage.py}
       APPLE_ADS_ACCESS_TOKEN: ${APPLE_ADS_ACCESS_TOKEN:-}
       APPLE_ADS_AD_ACCOUNT_ID: ${APPLE_ADS_AD_ACCOUNT_ID:-}
     depends_on:
-      mysql:
-        condition: service_healthy
+      app-init:
+        condition: service_completed_successfully
     logging:
       driver: json-file
       options:
@@ -82,3 +119,8 @@ services:
       - "${APPMON_BIND_ADDRESS:-127.0.0.1}:${APPMON_FRONTEND_PORT:-5173}:80"
     depends_on:
       - web
+
+volumes:
+  oceanbase_data:
+  oceanbase_config:
+  seaweed_data:

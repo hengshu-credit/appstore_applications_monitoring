@@ -1,0 +1,12 @@
+name: appmon-storage-volume
+services:
+  volume:
+    image: chrislusf/seaweedfs:4.52
+    restart: unless-stopped
+    command: ["volume", "-dir=/data", "-ip=${VOLUME_ADVERTISE_HOST:?Set this node private IP}", "-ip.bind=0.0.0.0", "-mserver=${SEAWEEDFS_MASTERS:?Set reachable private master addresses}", "-max=${VOLUME_MAX:-100}", "-dataCenter=${VOLUME_DATACENTER:-dc1}", "-rack=${VOLUME_RACK:-rack1}"]
+    ports:
+      - "${VOLUME_BIND_ADDRESS:-127.0.0.1}:8080:8080"
+      - "${VOLUME_BIND_ADDRESS:-127.0.0.1}:18080:18080"
+    volumes: ["volume_data:/data"]
+volumes:
+  volume_data:

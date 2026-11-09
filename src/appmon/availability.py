@@ -48,8 +48,8 @@ def record_daily(db, now=None):
             markets.setdefault(key, {})[row['state']] = {'count': row['count'], 'fresh': int(row['fresh'] or 0)}
         for key, counts in markets.items():
             db.execute('''INSERT INTO availability_daily(store,country,language,day,observed_at,counts)
-                VALUES(%s,%s,%s,%s,%s,%s) AS incoming ON DUPLICATE KEY UPDATE
-                observed_at=incoming.observed_at,counts=incoming.counts''', (*key, int(now//86400)*86400, now, dump(counts)))
+                VALUES(%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE
+                observed_at=VALUES(observed_at),counts=VALUES(counts)''', (*key, int(now//86400)*86400, now, dump(counts)))
         db.execute("UPDATE schedules SET next_at=%s WHERE name='availability-rollup'", (now+3600,))
     return len(markets)
 

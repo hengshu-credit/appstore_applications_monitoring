@@ -50,8 +50,8 @@ def prepare(value):
 
 
 def save(db, rows):
-    db.executemany('''INSERT INTO app_metric_facts VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) AS incoming
-        ON DUPLICATE KEY UPDATE value=incoming.value,currency=incoming.currency,imported_at=incoming.imported_at''',rows)
+    db.executemany('''INSERT INTO app_metric_facts VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        ON DUPLICATE KEY UPDATE value=VALUES(value),currency=VALUES(currency),imported_at=VALUES(imported_at)''',rows)
     return {'facts':len(rows)}
 
 

@@ -3,11 +3,11 @@ from unittest.mock import patch
 from appmon import app_icons,icon_batches,app_groups
 from appmon.db import connect
 from appmon.task_logs import Execution,BatchProgress
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 import test_request_coalescing as helpers
 
 
-class CollectionCostTest(MySQLTestCase):
+class CollectionCostTest(OceanBaseTestCase):
     def icon(self,app_id,country='us',hours=168):
         app_icons.remember(self.db,'apple',app_id,country,'en','https://is1.mzstatic.com/shared.png')
         self.db.execute("UPDATE app_icons SET requested=1,refresh_hours=%s WHERE app_id=%s AND country=%s",(hours,app_id,country))

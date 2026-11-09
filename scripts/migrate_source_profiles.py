@@ -19,7 +19,7 @@ def identifier(value):
 
 
 def migrate(cfg, manifest):
-    db=Database(cfg['mysql']);root=Path(cfg['data_dir']).resolve()
+    db=Database(cfg['oceanbase']);root=Path(cfg['data_dir']).resolve()
     try:
         with db.named_lock('source-identifier-migration'):
             mapping=manifest.get('tables',{})

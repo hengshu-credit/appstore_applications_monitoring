@@ -1,4 +1,4 @@
-"""One-way, resumable legacy SQLite -> MySQL import; SQLite is opened read-only."""
+"""One-way, resumable standalone SQLite -> OceanBase import; SQLite is opened read-only."""
 import hashlib
 import json
 import sqlite3
@@ -28,13 +28,13 @@ def migrate(cfg, source_path, *, batch_size=5000, report_path=None):
     source = sqlite3.connect(source_path.as_uri() + "?mode=ro", uri=True)
     source.row_factory = sqlite3.Row
     source.execute("BEGIN")
-    target = connect(cfg, allow_migration=True)
-    report = {"storage": "mysql", "source_sha256": source_sha, "started": time.time(), "tables": {}}
+    target = connect(cfg, initialize=True, allow_migration=True)
+    report = {"storage": "oceanbase", "source_sha256": source_sha, "started": time.time(), "tables": {}}
     # Freeze the historical schema. Additive console/keyword tables never existed
     # in the original SQLite source and must not become migration prerequisites.
     names = ["apps", "imports", "jobs", "listings", "snapshots", "events", "requests", "schedules", "discovery_runs"]
     try:
-        lock_name = "appmon:migrate:" + hashlib.sha256(cfg["mysql"]["database"].encode()).hexdigest()[:32]
+        lock_name = "appmon:migrate:" + hashlib.sha256(cfg["oceanbase"]["database"].encode()).hexdigest()[:32]
         lock = target.execute("SELECT GET_LOCK(%s,0) acquired", (lock_name,)).fetchone()
         if lock["acquired"] != 1:
             raise RuntimeError("Another migration is running")
@@ -102,4 +102,5 @@ def migrate(cfg, source_path, *, batch_size=5000, report_path=None):
         return report
     finally:
         source.close()
-        target.close()  # Releases the server advisory lock even on interruption.
+        try:target.execute('SELECT RELEASE_LOCK(%s)',(lock_name,))
+        finally:target.close()

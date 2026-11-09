@@ -9,7 +9,7 @@ from appmon.db import add_apps,dump
 from appmon.intelligence import watch
 from appmon.stores import FetchError
 from appmon.web import create_app
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
 def permission_bytes(value):
@@ -34,7 +34,7 @@ class GroupRulesTest(unittest.TestCase):
             with self.assertRaises(ValueError):metric_facts.prepare({'rows':[row|change]})
 
 
-class GroupDashboardTest(MySQLTestCase):
+class GroupDashboardTest(OceanBaseTestCase):
     def test_yesterday_reviews_count_publication_date_in_the_member_market(self):
         from datetime import timedelta
         from appmon.intelligence import add_observation_target

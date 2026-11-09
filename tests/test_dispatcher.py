@@ -14,11 +14,11 @@ from appmon.db import connect
 from appmon.google_rpc import rpc_many
 from appmon.stores import Client
 from appmon.keyword_stores import SearchResult
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 from test_google_batches import response, FIXTURES
 
 
-class DispatcherTest(MySQLTestCase):
+class DispatcherTest(OceanBaseTestCase):
     def setUp(self):
         super().setUp()
         pipelines.save(self.db,self.cfg,'pool',{'enabled':False})

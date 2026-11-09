@@ -14,7 +14,7 @@ from appmon.stores import Result, FetchError
 from appmon.keywords import add_targets, claim_target, save_search
 from appmon.keyword_stores import SearchResult
 from appmon.web import create_app
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
 def workbook_bytes(extra_rows=None):
@@ -35,7 +35,7 @@ def workbook_bytes(extra_rows=None):
     return stream.getvalue()
 
 
-class DiscoveryTest(MySQLTestCase):
+class DiscoveryTest(OceanBaseTestCase):
     def setUp(self):
         super().setUp();self.m=dict(store='google',app_id='com.example.test',country='us',language='en')
 
@@ -136,7 +136,7 @@ class DiscoveryTest(MySQLTestCase):
         self.assertEqual(report['counts']['unique_keywords'],2)
 
 
-class ChartHistoryTest(MySQLTestCase):
+class ChartHistoryTest(OceanBaseTestCase):
     def test_history_has_no_future_leak_and_does_not_infer_exit_from_shallower_results(self):
         from appmon.intelligence import add_observation_target
         t=add_observation_target(self.db,dict(kind='chart',store='google',country='us',language='en',collection='top-free'))['id']

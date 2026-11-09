@@ -28,15 +28,17 @@ def main():
     backend='appmon-backend:'+tag;frontend='appmon-frontend:'+tag
     run('docker','build','-t',backend,'.')
     run('docker','build','-t',frontend,'frontend')
-    run('docker','pull','mysql:8.4.6')
+    storage_images=['oceanbase/oceanbase-ce:4.4.2.1-101000022026050611','chrislusf/seaweedfs:4.52']
+    for image in storage_images:run('docker','pull',image)
     with tempfile.TemporaryDirectory(dir=output.parent) as temp:
         stage=Path(temp)
-        run('docker','image','save','-o',str(stage/'images.tar'),backend,frontend,'mysql:8.4.6')
-        for name in ('compose.yaml','config.toml','.env.example'):
+        run('docker','image','save','-o',str(stage/'images.tar'),backend,frontend,*storage_images)
+        for name in ('compose.yaml','compose.volume.yaml','compose.storage-network.yaml','config.toml','.env.example'):
             shutil.copyfile(ROOT/name,stage/name)
+        shutil.copyfile(ROOT/'scripts/configure_storage.py',stage/'configure_storage.py')
         shutil.copyfile(ROOT/'docs/offline-deployment.md',stage/'README.md')
         (stage/'release.env').write_text(f'APPMON_BACKEND_IMAGE={backend}\nAPPMON_FRONTEND_IMAGE={frontend}\n',encoding='utf-8')
-        images=json.loads(subprocess.check_output(['docker','image','inspect',backend,frontend,'mysql:8.4.6'],text=True))
+        images=json.loads(subprocess.check_output(['docker','image','inspect',backend,frontend,*storage_images],text=True))
         (stage/'release.json').write_text(json.dumps(dict(source_commit=sha,working_tree_changes=dirty,
             images=[{k:i[k] for k in ('Id','RepoTags','Architecture','Os')} for i in images]),indent=2),encoding='utf-8')
         with zipfile.ZipFile(output,'x',zipfile.ZIP_DEFLATED,compresslevel=1) as archive:

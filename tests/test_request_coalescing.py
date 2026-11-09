@@ -8,7 +8,7 @@ from appmon.rpc_coalescer import RpcCoalescer, LookupCoalescer
 from appmon.google_rpc import rpc_many
 from appmon.stores import Client, FetchError, Result
 from appmon import app_icons, keyword_discovery
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 from test_experience import PNG
 from appmon.db import connect
 
@@ -76,7 +76,7 @@ class RpcCoalescingTest(unittest.TestCase):
         self.assertEqual(sum(map(len,results)),26)
 
 
-class IconBatchTest(MySQLTestCase):
+class IconBatchTest(OceanBaseTestCase):
     def test_two_thousand_receipts_share_one_download(self):
         self.db.executemany('''INSERT INTO app_icons(store,app_id,country,language,source_url,requested)
             VALUES('apple',%s,'us','en','https://is1.mzstatic.com/shared.png',1)''',[(str(10000+i),) for i in range(2000)])

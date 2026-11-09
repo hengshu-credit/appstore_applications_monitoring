@@ -73,7 +73,7 @@ def save(db,cfg,value,provider="community"):
         saved={'email':email,'password':password,'cookies':[]}
         if provider=='marketdata':saved['access_token']=token
         secret=encryption.encrypt(dump(saved).encode()).decode()
-        db.execute("INSERT INTO source_accounts(provider,secret,status,updated_at) VALUES(%s,%s,'saved',%s) AS incoming ON DUPLICATE KEY UPDATE secret=incoming.secret,status='saved',checked_at=NULL,retry_after=0,updated_at=incoming.updated_at",(provider,secret,time.time()))
+        db.execute("INSERT INTO source_accounts(provider,secret,status,updated_at) VALUES(%s,%s,'saved',%s) ON DUPLICATE KEY UPDATE secret=VALUES(secret),status='saved',checked_at=NULL,retry_after=0,updated_at=VALUES(updated_at)",(provider,secret,time.time()))
     return authorize(db,cfg,provider)
 
 

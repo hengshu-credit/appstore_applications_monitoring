@@ -8,11 +8,11 @@ from fastapi.testclient import TestClient
 from appmon import source_tasks as queue, collection, collection_tasks, collection_lineage, pipelines
 from appmon.dispatcher import dispatch_once
 from appmon.web import create_app
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 from test_discovery import workbook_bytes
 
 
-class SourceQueueTest(MySQLTestCase):
+class SourceQueueTest(OceanBaseTestCase):
     def setUp(self):
         super().setUp()
         pipelines.save(self.db,self.cfg,'pool',{'enabled':False})

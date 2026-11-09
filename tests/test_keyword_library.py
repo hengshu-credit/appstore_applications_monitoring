@@ -3,10 +3,10 @@ import hashlib
 import json
 from appmon import keyword_library as kl, keyword_reports as kr, keyword_discovery as kd
 from test_discovery import workbook_bytes
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
-class KeywordLibraryTest(MySQLTestCase):
+class KeywordLibraryTest(OceanBaseTestCase):
     def setUp(self):
         super().setUp()
         self.m = dict(store='apple', app_id='123', country='cn', language='zh-cn')

@@ -65,7 +65,7 @@ def import_candidates(db, value):
         for start in range(0,len(prepared),1000):
             db.executemany('''INSERT INTO keyword_candidates(store,country,language,keyword,source_key,source,source_url,
                 license_name,attribution,corpus_frequency,source_period,imported_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                AS incoming ON DUPLICATE KEY UPDATE corpus_frequency=incoming.corpus_frequency,imported_at=incoming.imported_at''',prepared[start:start+1000])
+                ON DUPLICATE KEY UPDATE corpus_frequency=VALUES(corpus_frequency),imported_at=VALUES(imported_at)''',prepared[start:start+1000])
     return {'processed':len(prepared),'markets':len(scope),'queued':0,'note':'候选词已入库；选择需要的词后再创建追踪，未自动启动全量采集'}
 
 
@@ -89,11 +89,13 @@ def import_frequency(db,value):
             except requests.RequestException as exc: raise ValueError('开源词库下载失败：'+type(exc).__name__) from exc
             content=r.text
             # Oversized source files retain the original full parsing path without
-            # exceeding MySQL's packet budget merely to populate this cache.
+            # exceeding the configured source-size budget merely to populate this cache.
             if len(content.encode())<=8*1024*1024:
-                db.execute('''INSERT INTO immutable_sources VALUES(%s,%s,%s,%s) AS incoming
-                    ON DUPLICATE KEY UPDATE content=incoming.content,sha256=incoming.sha256,fetched_at=incoming.fetched_at''',
-                    (source_key,content,hashlib.sha256(content.encode()).hexdigest(),time.time()))
+                from .content_store import put
+                reference=put(db,content)
+                db.execute('''INSERT INTO immutable_sources VALUES(%s,%s,%s,%s)
+                    ON DUPLICATE KEY UPDATE content=VALUES(content),sha256=VALUES(sha256),fetched_at=VALUES(fetched_at)''',
+                    (source_key,reference,hashlib.sha256(content.encode()).hexdigest(),time.time()))
     words=[]
     for line in content.splitlines():
         term,_,frequency=line.rpartition(' ')

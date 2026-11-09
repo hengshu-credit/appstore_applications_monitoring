@@ -141,7 +141,7 @@ def selected_groups(db, value):
     if not isinstance(value, list) or not value or any(not isinstance(g, str) or len(g) > 16 for g in value):
         raise ValueError('请选择至少一个有效用户组')
     groups = sorted(set(value))
-    rows = db.execute('SELECT role FROM auth_roles WHERE role IN %s FOR SHARE', (tuple(groups),)).fetchall()
+    rows = db.execute('SELECT role FROM auth_roles WHERE role IN %s FOR UPDATE', (tuple(groups),)).fetchall()
     if groups != sorted(r['role'] for r in rows):
         raise ValueError('所选用户组无效')
     return groups

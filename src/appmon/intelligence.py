@@ -40,9 +40,9 @@ def watch(db, value, merge_existing=False):
     interval = hours(value.get("refresh_hours", 24))
     with db:
         add_apps(db, [(m["store"], m["app_id"], None, None)], "watchlist")
-        update = 'refresh_hours=LEAST(watchlist.refresh_hours,incoming.refresh_hours)' if merge_existing else 'group_name=incoming.group_name,refresh_hours=incoming.refresh_hours'
+        update = 'refresh_hours=LEAST(watchlist.refresh_hours,VALUES(refresh_hours))' if merge_existing else 'group_name=VALUES(group_name),refresh_hours=VALUES(refresh_hours)'
         db.execute('''INSERT INTO watchlist(store,app_id,country,language,group_name,refresh_hours,created_at)
-            VALUES(%s,%s,%s,%s,%s,%s,%s) AS incoming ON DUPLICATE KEY UPDATE '''+update,
+            VALUES(%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE '''+update,
                    (m["store"], m["app_id"], m["country"], m["language"], group, interval, time.time()))
         db.execute('''INSERT INTO jobs(store,app_id,country,language) VALUES(%s,%s,%s,%s)
             ON DUPLICATE KEY UPDATE app_id=jobs.app_id''',
@@ -80,12 +80,12 @@ def add_observation_target(db, value, preserve_existing=False, merge_existing=Fa
     interval = hours(value.get("refresh_hours", 24))
     identity = (kind, m["store"], m["app_id"], m["country"], m["language"], collection, category)
     with db:
-        update='id=observation_targets.id' if preserve_existing else 'depth=incoming.depth,refresh_hours=incoming.refresh_hours'
+        update='id=observation_targets.id' if preserve_existing else 'depth=VALUES(depth),refresh_hours=VALUES(refresh_hours)'
         if merge_existing:
-            update=('due=IF(incoming.depth>observation_targets.depth OR incoming.refresh_hours<observation_targets.refresh_hours,LEAST(observation_targets.due,UNIX_TIMESTAMP()),observation_targets.due),'
-                    'depth=GREATEST(observation_targets.depth,incoming.depth),refresh_hours=LEAST(observation_targets.refresh_hours,incoming.refresh_hours)')
+            update=('due=IF(VALUES(depth)>observation_targets.depth OR VALUES(refresh_hours)<observation_targets.refresh_hours,LEAST(observation_targets.due,UNIX_TIMESTAMP()),observation_targets.due),'
+                    'depth=GREATEST(observation_targets.depth,VALUES(depth)),refresh_hours=LEAST(observation_targets.refresh_hours,VALUES(refresh_hours))')
         db.execute('''INSERT INTO observation_targets(kind,store,app_id,country,language,collection,category,depth,refresh_hours)
-            VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) AS incoming
+            VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON DUPLICATE KEY UPDATE '''+update,
                    (*identity, depth, interval))
         row = db.execute('''SELECT id FROM observation_targets WHERE kind=%s AND store=%s AND app_id=%s
@@ -100,7 +100,7 @@ def claim_observation(db, lease_seconds, now=None, target_id=None, refresh=False
     if not refresh:where+=' AND due<=%s';args.append(now)
     if target_id is not None:where+=' AND id=%s';args.append(target_id)
     with db:
-        row = db.execute('SELECT * FROM observation_targets WHERE '+where+' ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED',args).fetchone()
+        row = db.claim('SELECT * FROM observation_targets WHERE '+where+' ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED',args).fetchone()
         if not row:
             return None
         row["token"] = uuid.uuid4().hex
@@ -148,9 +148,9 @@ def save_observation(db, cfg, target, result=None, error=None, now=None):
                 db.executemany("INSERT INTO observation_items VALUES(%s,%s,%s,%s)",
                                [(run_id,item['id'],i,dump(item)) for i,item in enumerate(result.items,1)])
             if target['kind']=='reviews' and result.items:
-                db.executemany('''INSERT INTO reviews VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) AS incoming
-                        ON DUPLICATE KEY UPDATE rating=incoming.rating,content=incoming.content,title=incoming.title,
-                        version=incoming.version,published_at=incoming.published_at,last_seen=incoming.last_seen,payload=incoming.payload''',
+                db.executemany('''INSERT INTO reviews VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        ON DUPLICATE KEY UPDATE rating=VALUES(rating),content=VALUES(content),title=VALUES(title),
+                        version=VALUES(version),published_at=VALUES(published_at),last_seen=VALUES(last_seen),payload=VALUES(payload)''',
                     [(target['store'],target['app_id'],target['country'],target['language'],item['id'],
                       item['rating'],item.get('content',''),item.get('title'),item.get('version'),item.get('published_at'),now,now,dump(item))
                      for item in result.items])

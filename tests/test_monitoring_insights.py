@@ -5,7 +5,7 @@ from appmon.db import add_apps, dump
 from appmon.keywords import add_targets
 from appmon.keyword_stores import SearchResult
 from appmon.stores import Result, FetchError
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
 class MonitoringRulesTest(unittest.TestCase):
@@ -26,7 +26,7 @@ class MonitoringRulesTest(unittest.TestCase):
             with self.assertRaises(ValueError):app_discovery.identity('apple',url)
 
 
-class MonitoringDataTest(MySQLTestCase):
+class MonitoringDataTest(OceanBaseTestCase):
     def test_availability_snapshots_are_scoped_throttled_and_do_not_backfill(self):
         now=time.time();m=dict(store='apple',country='us',language='en')
         add_apps(self.db,[('apple','123','Example',None)],'test')

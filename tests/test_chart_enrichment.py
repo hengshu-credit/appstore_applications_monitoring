@@ -3,10 +3,10 @@ from unittest.mock import patch
 from appmon import chart_enrichment as enrichment, app_groups, storage_policy
 from appmon.catalog import CATALOG,APPLE_COUNTRIES
 from appmon.db import dump
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
-class ChartEnrichmentTest(MySQLTestCase):
+class ChartEnrichmentTest(OceanBaseTestCase):
     def prepare(self,rows,run=1):
         target=self.db.execute("SELECT id FROM observation_targets WHERE kind='chart' LIMIT 1").fetchone()
         if not target:

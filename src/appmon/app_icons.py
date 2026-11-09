@@ -1,4 +1,4 @@
-"""Bounded, leased local caching of public store icons; no arbitrary URL proxy."""
+"""Bounded, leased S3 archiving of public store icons; no arbitrary URL proxy."""
 import time
 from urllib.parse import urlsplit,urlunsplit
 from .intelligence import market
@@ -17,7 +17,9 @@ def source_url(value):
     except ValueError:return None
 
 
-def media_type(raw):
+def media_type(raw, allow_video=False):
+    if allow_video and len(raw)>16 and raw[4:8]==b'ftyp':return 'video/mp4','mp4'
+    if allow_video and raw.startswith(bytes.fromhex('1a45dfa3')):return 'video/webm','webm'
     if raw.startswith(b'\x89PNG\r\n\x1a\n') and len(raw)>=32 and b'IEND' in raw[-16:]:return 'image/png','png'
     if jpeg_complete(raw):return 'image/jpeg','jpg'
     if raw[:4]==b'RIFF' and raw[8:12]==b'WEBP' and len(raw)>=20:return 'image/webp','webp'
@@ -64,20 +66,20 @@ def remember(db,store,app_id,country,language,url,name=None):
     url=source_url(url)
     if not url:return False
     db.execute('''INSERT INTO app_icons(store,app_id,country,language,name,source_url,source_updated)
-        VALUES(%s,%s,%s,%s,%s,%s,%s) AS incoming ON DUPLICATE KEY UPDATE
-        status=IF(app_icons.requested=1 AND NOT(app_icons.source_url<=>incoming.source_url),'queued',app_icons.status),
-        due=IF(app_icons.requested=1 AND NOT(app_icons.source_url<=>incoming.source_url),0,app_icons.due),
-        token=IF(NOT(app_icons.source_url<=>incoming.source_url),NULL,app_icons.token),
-        lease_until=IF(NOT(app_icons.source_url<=>incoming.source_url),0,app_icons.lease_until),
-        source_url=incoming.source_url,source_updated=incoming.source_updated,name=COALESCE(incoming.name,app_icons.name)''',
+        VALUES(%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE
+        status=IF(app_icons.requested=1 AND NOT(app_icons.source_url<=>VALUES(source_url)),'queued',app_icons.status),
+        due=IF(app_icons.requested=1 AND NOT(app_icons.source_url<=>VALUES(source_url)),0,app_icons.due),
+        token=IF(NOT(app_icons.source_url<=>VALUES(source_url)),NULL,app_icons.token),
+        lease_until=IF(NOT(app_icons.source_url<=>VALUES(source_url)),0,app_icons.lease_until),
+        source_url=VALUES(source_url),source_updated=VALUES(source_updated),name=COALESCE(VALUES(name),app_icons.name)''',
         (store,app_id,country,language,name,url,time.time()))
     return True
 
 
 def cached_path(cfg,row):
     if not row.get('file_path'):return None
-    folder=(cfg['data_dir']/'icons').resolve();path=(cfg['data_dir']/row['file_path']).resolve()
-    return path if path.is_relative_to(folder) and path.is_file() else None
+    from .objects import for_config
+    return row['file_path'] if for_config(cfg).exists(row['file_path']) else None
 
 
 def request_icon(db,cfg,value,force=False):

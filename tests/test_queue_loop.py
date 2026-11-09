@@ -12,10 +12,10 @@ from appmon.keywords import add_targets
 from appmon.stores import Client
 from appmon.web import create_app
 from test_google_batches import response, FIXTURES
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
-class QueueLoopTest(MySQLTestCase):
+class QueueLoopTest(OceanBaseTestCase):
     def setUp(self):
         super().setUp()
         pipelines.save(self.db,self.cfg,'pool',{'enabled':False})

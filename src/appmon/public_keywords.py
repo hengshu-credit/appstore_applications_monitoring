@@ -438,7 +438,7 @@ def import_release(db, output):
         with db:
             db.executemany('''INSERT INTO keyword_candidates(store,country,language,keyword,source_key,source,source_url,
                 license_name,attribution,corpus_frequency,source_period,imported_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                AS incoming ON DUPLICATE KEY UPDATE imported_at=incoming.imported_at''', prepared[start:start+1000])
+                ON DUPLICATE KEY UPDATE imported_at=VALUES(imported_at)''', prepared[start:start+1000])
     result = dict(processed_source_records=len(prepared), release_terms=len(identities), groups=len(groups), queued=0)
     atomic_json(output / 'import.json', result)
     return result

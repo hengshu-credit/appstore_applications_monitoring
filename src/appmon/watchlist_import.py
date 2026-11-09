@@ -67,8 +67,8 @@ def import_watchlists(db, cfg, snapshots, source_hashes):
             chunk = values[offset:offset+500]
             add_apps(db, [(r['store'],r['app_id'],r['name'],None) for r in chunk], 'watchlist-import')
             db.executemany('''INSERT INTO watchlist(store,app_id,country,language,group_name,refresh_hours,enabled,created_at)
-                VALUES(%s,%s,%s,%s,%s,24,1,%s) AS incoming ON DUPLICATE KEY UPDATE
-                group_name=incoming.group_name,enabled=1''',
+                VALUES(%s,%s,%s,%s,%s,24,1,%s) ON DUPLICATE KEY UPDATE
+                group_name=VALUES(group_name),enabled=1''',
                 [(*(r[k] for k in ('store','app_id','country','language')),GROUP,now) for r in chunk])
             db.executemany('''INSERT INTO jobs(store,app_id,country,language,due) VALUES(%s,%s,%s,%s,0)
                 ON DUPLICATE KEY UPDATE app_id=jobs.app_id''',

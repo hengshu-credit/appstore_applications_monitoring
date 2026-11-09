@@ -15,24 +15,29 @@ from appmon.monitor import save_result, work
 from appmon.stores import Client, FetchError, Result
 
 
-class MySQLTestCase(unittest.TestCase):
+class OceanBaseTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cfg = load(Path(__file__).parents[1] / 'config.toml')
-        cls.options = dict(cfg['mysql'])
-        cls.options.update(user='root', password=os.environ.get('MYSQL_ROOT_PASSWORD', ''))
+        cls.options = dict(cfg['oceanbase'])
+        cls.options.update(user=os.environ.get('OCEANBASE_USER','root@appmon'), password=os.environ.get('OCEANBASE_ROOT_PASSWORD', ''))
         admin_options = dict(cls.options)
         admin_options.pop('database')
         cls.admin = Database(admin_options)
         cls.database_name = 'appmon_test_' + uuid.uuid4().hex
         cls.admin.execute(f'CREATE DATABASE `{cls.database_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin')
         cls.options['database'] = cls.database_name
-        bootstrap = connect({'mysql': cls.options})
+        bootstrap = connect({'oceanbase': cls.options}, initialize=True)
         bootstrap.close()
+        from appmon.objects import store
+        store(cls.database_name).initialize()
 
     @classmethod
     def tearDownClass(cls):
         assert cls.database_name.startswith('appmon_test_')
+        from appmon.objects import store
+        objects=store(cls.database_name)
+        for ref in objects.inventory():objects.client.delete_object(Bucket=objects.bucket,Key=objects.key(ref))
         cls.admin.execute(f'DROP DATABASE `{cls.database_name}`')
         cls.admin.close()
 
@@ -44,16 +49,19 @@ class MySQLTestCase(unittest.TestCase):
         # Baseline fixtures do not inherit the deployment's opt-in archive scope.
         # Restricted retention is exercised explicitly in test_storage_policy.
         self.cfg.update(raw_response_scope='all',media_scope='all')
-        self.cfg['mysql'] = self.options
+        self.cfg['oceanbase'] = self.options
         self.cfg['source_profiles'] = {
             'community': {'origin':'https://community.example','hosts':['community.example']},
             'directory': {'origin':'https://www.directory.example','hosts':['www.directory.example','developers.directory.example','directory.example']},
             'marketdata': {'origin':'https://market.example/v2','hosts':['market.example']},
             'web_feed': {'origin':'https://feed.example/rss','hosts':['feed.example']},
         }
-        self.db = connect(self.cfg, allow_migration=True)
-        for table in TABLES:
-            self.db.execute(f'TRUNCATE TABLE `{table}`')
+        self.db = connect(self.cfg, initialize=False, allow_migration=True)
+        with self.db:
+            for table in TABLES:self.db.execute(f'DELETE FROM `{table}`')
+        from appmon.objects import store
+        objects=store(self.database_name)
+        for ref in objects.inventory():objects.client.delete_object(Bucket=objects.bucket,Key=objects.key(ref))
         from appmon.auth import initialize
         initialize(self.db)
 
@@ -73,7 +81,7 @@ class MySQLTestCase(unittest.TestCase):
         self.temp.cleanup()
 
 
-class MonitorTest(MySQLTestCase):
+class MonitorTest(OceanBaseTestCase):
     def seed(self):
         with self.db:
             add_apps(self.db, [("google", "com.example.app", "Old", None)], "test", 10)

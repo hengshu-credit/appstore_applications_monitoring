@@ -6,7 +6,7 @@ from appmon.catalog import category_id, listing_category, category_aliases, cate
 from appmon.db import add_apps
 from appmon.intelligence import add_observation_target
 from appmon.web import create_app
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
 class CatalogTest(unittest.TestCase):
@@ -43,7 +43,7 @@ class CatalogTest(unittest.TestCase):
         self.assertTrue(any(not c['apple_supported'] for c in catalog['countries']))
 
 
-class CatalogDatabaseTest(MySQLTestCase):
+class CatalogDatabaseTest(OceanBaseTestCase):
     def test_counts_and_filters_match_legacy_and_numeric_records_without_double_counting(self):
         rows=[('apple','101','A','finance'),('apple','102','B','6015'),('apple','103','C','Finance'),
               ('apple','104','D','game_puzzle'),('apple','105','E',None),('apple','106','F','not-a-category'),

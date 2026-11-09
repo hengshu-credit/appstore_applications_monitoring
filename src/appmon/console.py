@@ -24,7 +24,7 @@ def run_once(cfg, db, limit=5, include_icons=True):
         result['icons'] = work_icons(cfg, db, limit)
     from .availability import record_daily
     result["availability_markets"] = record_daily(db)
-    db.execute("INSERT INTO schedules VALUES('console-heartbeat',%s) AS incoming ON DUPLICATE KEY UPDATE next_at=incoming.next_at", (time.time(),))
+    db.execute("INSERT INTO schedules VALUES('console-heartbeat',%s) ON DUPLICATE KEY UPDATE next_at=VALUES(next_at)", (time.time(),))
     return result
 
 
@@ -52,7 +52,7 @@ def maintenance_once(cfg, db):
     evaluate(db)
     work_export(cfg,db)
     record_daily(db)
-    db.execute("INSERT INTO schedules VALUES('console-heartbeat',%s) AS incoming ON DUPLICATE KEY UPDATE next_at=incoming.next_at",(time.time(),))
+    db.execute("INSERT INTO schedules VALUES('console-heartbeat',%s) ON DUPLICATE KEY UPDATE next_at=VALUES(next_at)",(time.time(),))
 
 
 def worker(cfg):

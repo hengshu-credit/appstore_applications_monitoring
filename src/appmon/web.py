@@ -10,8 +10,9 @@ from contextlib import asynccontextmanager
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request, Query, Body
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 import pymysql
+from botocore.exceptions import BotoCoreError, ClientError
 
 from .db import connect
 from .ingest import valid_id
@@ -47,7 +48,7 @@ def create_app(cfg):
         finally:db.close()
         yield
 
-    app = FastAPI(title="衡枢·观星 API", version="0.4.0", lifespan=lifespan,
+    app = FastAPI(title="衡枢·观星 API", version="0.5.0", lifespan=lifespan,
                   docs_url=None, redoc_url=None, openapi_url=None)
 
     @app.middleware("http")
@@ -92,6 +93,11 @@ def create_app(cfg):
     async def database_error(request, exc):
         return JSONResponse({"detail": "数据库查询失败或超时，请缩小筛选范围或查看服务日志"}, status_code=503)
 
+    @app.exception_handler(BotoCoreError)
+    @app.exception_handler(ClientError)
+    async def object_storage_error(request, exc):
+        return JSONResponse({"detail": "对象存储暂不可用，请稍后重试"}, status_code=503)
+
     def database():
         db = connect(cfg, initialize=False)
         try:
@@ -123,14 +129,16 @@ def create_app(cfg):
         row=db.execute('SELECT * FROM app_icons WHERE id=%s',(identifier,)).fetchone()
         path=app_icons.cached_path(cfg,row) if row else None
         if path is None:raise HTTPException(404,'图标正在采集或尚不可用')
-        return FileResponse(path,media_type=row['mime'])
+        from .objects import for_config
+        return RedirectResponse(for_config(cfg).url(path),status_code=307) if row['mime'].startswith('video/') else Response(for_config(cfg).get(path,max_bytes=16*1024*1024),media_type=row['mime'])
 
     @api.get('/media/{identifier}')
     def media_file(identifier:int,db=DB):
         row=db.execute('SELECT * FROM app_media_assets WHERE id=%s',(identifier,)).fetchone()
         path=app_icons.cached_path(cfg,row) if row else None
         if path is None:raise HTTPException(404,'图片正在采集或尚不可用')
-        return FileResponse(path,media_type=row['mime'])
+        from .objects import for_config
+        return RedirectResponse(for_config(cfg).url(path),status_code=307) if row['mime'].startswith('video/') else Response(for_config(cfg).get(path,max_bytes=16*1024*1024),media_type=row['mime'])
 
     @api.get("/openapi.json")
     def schema():
@@ -381,7 +389,8 @@ def create_app(cfg):
     def marketdata_download(identifier:int,db=DB):
         from fastapi.responses import FileResponse
         path=marketdata.artifact_path(db,cfg,identifier)
-        return FileResponse(path,filename=path.name,media_type='application/gzip')
+        import gzip
+        return Response(gzip.compress(path,mtime=0),media_type='application/gzip',headers={'Content-Disposition':f'attachment; filename=archive-{identifier}.gz'})
 
     @api.post('/data-sources/app-metrics')
     def source_metrics(value:dict=Body(...),db=DB):return data_sources.app_metrics(db,cfg,value.get('store'),value.get('app_id'),value.get('provider','auto'))
@@ -613,10 +622,11 @@ def create_app(cfg):
     def export_download(identifier: str, db=DB):
         if not re.fullmatch(r"[0-9a-f]{32}", identifier):
             raise HTTPException(404)
-        row = db.execute("SELECT status FROM exports WHERE id=%s", (identifier,)).fetchone()
+        row = db.execute("SELECT status,object_key FROM exports WHERE id=%s", (identifier,)).fetchone()
         if not row or row["status"] != "ready":
             raise HTTPException(409, "导出尚未就绪")
-        return FileResponse(cfg["data_dir"] / "exports" / f"{identifier}.jsonl", filename=f"{identifier}.jsonl", media_type="application/x-ndjson")
+        from .objects import for_config
+        return RedirectResponse(for_config(cfg).url(row['object_key']),status_code=307)
 
     @api.get("/ads")
     def ads(store:str="all",db=DB):
@@ -801,5 +811,5 @@ def create_app(cfg):
     @app.get("/health")
     def health(db=DB):
         db.execute("SELECT 1")
-        return {"status": "ok", "version": "0.4.0"}
+        return {"status": "ok", "version": "0.5.0"}
     return app

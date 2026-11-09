@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from appmon.source_profiles import profile
 from appmon.data_sources import cipher
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
 class SourceProfilesTest(unittest.TestCase):
@@ -17,7 +17,7 @@ class SourceProfilesTest(unittest.TestCase):
         with self.assertRaises(ValueError):profile({'source_profiles':{'x':{'origin':'https://data.example','hosts':['other.example']}}},'x')
 
 
-class SourceMigrationTest(MySQLTestCase):
+class SourceMigrationTest(OceanBaseTestCase):
     def test_migration_preserves_secrets_rows_and_archive_bytes_and_is_repeatable(self):
         path=Path(__file__).parents[1]/'scripts/migrate_source_profiles.py'
         spec=importlib.util.spec_from_file_location('source_migration',path)

@@ -6,7 +6,7 @@ from appmon.intelligence import watch
 from appmon.db import add_apps
 from appmon.web import create_app
 from fastapi.testclient import TestClient
-from test_monitor import MySQLTestCase
+from test_monitor import OceanBaseTestCase
 
 
 def snapshots():
@@ -31,7 +31,7 @@ class WatchlistValidationTest(unittest.TestCase):
             with self.assertRaises(ValueError):watchlist_import.prepare(value)
 
 
-class WatchlistImportTest(MySQLTestCase):
+class WatchlistImportTest(OceanBaseTestCase):
     def test_detail_task_filters_apply_before_count_and_pagination(self):
         for country,language in [('us','en'),('th','th')]:
             watch(self.db,dict(store='google',app_id='com.loan.example',country=country,language=language,group_name='贷款'))
