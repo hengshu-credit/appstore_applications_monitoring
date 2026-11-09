@@ -312,6 +312,7 @@ test("filter country selection reuses the dialog without changing header market"
       onApply: (v) => (value = v),
     });
     const dialog = win.document.querySelector("#country-picker");
+    assert.equal(dialog.querySelector("[data-country-group-action]"), null);
     assert.equal(
       dialog.querySelector('[data-country-code="cn"]').disabled,
       true,
@@ -327,6 +328,140 @@ test("filter country selection reuses the dialog without changing header market"
     });
     dialog.querySelector('[data-country-code=""]').click();
     assert.equal(value, "");
+  } finally {
+    await win.happyDOM.close();
+  }
+});
+
+test("each country group selects only its allowed countries and keeps a separate clear action", async () => {
+  const { win, selector } = setup();
+  try {
+    const doc = win.document;
+    const allowed = catalog.countries
+      .filter((c) => c.apple_supported)
+      .map((c) => c.code);
+    let result;
+    await selector.chooseCountries({
+      selected: [],
+      allowed,
+      onApply: (codes) => (result = codes),
+    });
+    const groups = [
+      {
+        id: "popular",
+        countries: catalog.countries.filter((c) =>
+          catalog.popular.includes(c.code),
+        ),
+      },
+      ...catalog.continents.map((c) => ({
+        id: c.id,
+        countries: catalog.countries.filter((row) => row.continent === c.id),
+      })),
+    ];
+    const selectedCodes = () =>
+      new Set(
+        [
+          ...doc.querySelectorAll('[data-country-code][aria-pressed="true"]'),
+        ].map((b) => b.dataset.countryCode),
+      );
+    for (const group of groups) {
+      doc.querySelector('[data-country-action="clear"]').click();
+      doc.querySelector('[data-country-code="us"]').click();
+      const expected = group.countries
+        .filter((c) => allowed.includes(c.code))
+        .map((c) => c.code);
+      const all = () =>
+        doc.querySelector(
+          `[data-country-section="${group.id}"] [data-country-group-action="all"]`,
+        );
+      const clear = () =>
+        doc.querySelector(
+          `[data-country-section="${group.id}"] [data-country-group-action="clear"]`,
+        );
+      assert.equal(all().textContent, "全选");
+      assert.equal(clear().textContent, "清空");
+      all().click();
+      assert.deepEqual(selectedCodes(), new Set(["us", ...expected]), group.id);
+      assert.equal(all().disabled, true);
+      all().click();
+      assert.deepEqual(
+        selectedCodes(),
+        new Set(["us", ...expected]),
+        "repeated select all must not clear the group",
+      );
+      clear().click();
+      assert.deepEqual(
+        selectedCodes(),
+        new Set(expected.includes("us") ? [] : ["us"]),
+        "clearing a group preserves other regions",
+      );
+    }
+    doc
+      .querySelector(
+        '[data-country-section="popular"] [data-country-group-action="all"]',
+      )
+      .click();
+    const expected = selectedCodes();
+    doc.querySelector('[data-country-action="apply"]').click();
+    assert.deepEqual(new Set(result), expected);
+  } finally {
+    await win.happyDOM.close();
+  }
+});
+
+test("regional select all follows Asia tabs and search while retaining scroll and section focus", async () => {
+  const { win, selector } = setup();
+  try {
+    const doc = win.document;
+    let result;
+    await selector.chooseCountries({
+      selected: ["us"],
+      allowed: ["us", "th", "vn", "jp"],
+      onApply: (codes) => (result = codes),
+    });
+    const action = (section, name) =>
+      doc.querySelector(
+        `[data-country-section="${section}"] [data-country-group-action="${name}"]`,
+      );
+    doc.querySelector('[data-region="southeast_asia"]').click();
+    const scroll = doc.querySelector(".picker-scroll");
+    scroll.scrollTop = 300;
+    action("asia", "all").click();
+    assert.equal(scroll.scrollTop, 300);
+    assert.equal(doc.activeElement, action("asia", "clear"));
+    assert.equal(
+      doc
+        .querySelector('[data-country-code="jp"]')
+        .getAttribute("aria-pressed"),
+      "false",
+    );
+    assert.match(
+      doc.querySelector("#country-selection-count").textContent,
+      /3 \/ 4/,
+    );
+    doc.querySelector('[data-region=""]').click();
+    action("asia", "all").click();
+    assert.match(
+      doc.querySelector("#country-selection-count").textContent,
+      /4 \/ 4/,
+    );
+    doc.querySelector('[data-region="east_asia"]').click();
+    action("asia", "clear").click();
+    assert.equal(doc.activeElement, action("asia", "all"));
+    const search = doc.querySelector("#country-picker input");
+    search.value = "japan";
+    search.dispatchEvent(new win.Event("input"));
+    action("search", "all").click();
+    action("search", "clear").click();
+    search.value = "中国";
+    search.dispatchEvent(new win.Event("input"));
+    assert.equal(action("search", "all").disabled, true);
+    assert.equal(action("search", "clear").disabled, true);
+    search.value = "no-matching-country";
+    search.dispatchEvent(new win.Event("input"));
+    assert.equal(action("search", "all").disabled, true);
+    doc.querySelector('[data-country-action="apply"]').click();
+    assert.deepEqual(new Set(result), new Set(["us", "th", "vn"]));
   } finally {
     await win.happyDOM.close();
   }

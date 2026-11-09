@@ -110,6 +110,21 @@
   margin: 0;
   font-size: 15px;
 }
+.picker-section-labels {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+  gap: 8px 16px;
+}
+.picker-group-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
 .country-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -199,11 +214,12 @@
   max-height: 46dvh;
 }
 .selection-dialog .picker-section-heading .picker-group-toggle {
+  width: auto;
   height: 30px;
   min-height: 30px;
   padding: 0 8px;
   font-size: 12px;
-  margin-left: auto;
+  white-space: nowrap;
 }
 .choice-check {
   margin-left: auto;

@@ -100,24 +100,26 @@ export function createSelectors({
         : getMarket().country === c.code;
     return `<button type="button" class="country-option" data-country-code="${c.code}" aria-pressed="${selected}" ${disabled ? "disabled" : ""} title="${pickerEscape(c.name + " · " + c.english + " (" + c.code.toUpperCase() + ")" + (disabled ? " · 所选商店暂不支持此地区" : ""))}"><img class="country-flag" src="/flags/${c.code}.svg" alt="" loading="lazy"><span>${pickerEscape(c.name)}</span><small>${c.code.toUpperCase()}</small>${countrySelection ? '<span class="choice-check" aria-hidden="true">✓</span>' : ""}</button>`;
   }
-  function selectionHeading(name, rows) {
+  function selectionHeading(name, rows, key, tabs = "") {
     const available = rows.filter((c) => countrySelection?.allowed.has(c.code));
-    const complete =
-      available.length &&
-      available.every((c) => countrySelection.selected.has(c.code));
-    return `<h3>${pickerEscape(name)}</h3>${countrySelection ? `<button type="button" class="secondary picker-group-toggle" data-country-group="${available.map((c) => c.code).join(",")}" ${available.length ? "" : "disabled"} aria-label="${complete ? "取消选择" : "全选"}${pickerEscape(name)}">${complete ? "清空此地区" : "全选此地区"}</button>` : ""}`;
+    const selected = available.filter((c) =>
+      countrySelection.selected.has(c.code),
+    ).length;
+    const complete = available.length > 0 && selected === available.length;
+    const codes = available.map((c) => c.code).join(",");
+    return `<div class="picker-section-heading" data-country-section="${key}"><div class="picker-section-labels"><h3>${pickerEscape(name)}</h3>${tabs}</div>${countrySelection ? `<div class="picker-group-actions"><button type="button" class="secondary picker-group-toggle" data-country-group="${codes}" data-country-group-action="all" ${!available.length || complete ? "disabled" : ""} aria-label="全选${pickerEscape(name)}">全选</button><button type="button" class="secondary picker-group-toggle" data-country-group="${codes}" data-country-group-action="clear" ${selected ? "" : "disabled"} aria-label="清空${pickerEscape(name)}">清空</button></div>` : ""}</div>`;
   }
   function renderCountries() {
     const query = countryDialog.querySelector("input").value;
     let html = "";
     if (query.trim()) {
       const matches = catalog.countries.filter((c) => matchesCountry(c, query));
-      html = `${countrySelection ? `<div class="picker-section-heading">${selectionHeading("搜索结果", matches)}</div>` : ""}<div class="country-grid">${matches.map(countryButton).join("")}</div>${matches.length ? "" : '<p class="empty">未找到匹配地区</p>'}`;
+      html = `${countrySelection ? selectionHeading("搜索结果", matches, "search") : ""}<div class="country-grid">${matches.map(countryButton).join("")}</div>${matches.length ? "" : '<p class="empty">未找到匹配地区</p>'}`;
     } else {
       const popular = catalog.popular
         .map((code) => catalog.countries.find((c) => c.code === code))
         .filter(Boolean);
-      html = `<div class="picker-section-heading">${selectionHeading("热门地区", popular)}</div><div class="country-grid">${popular.map(countryButton).join("")}</div>`;
+      html = `${selectionHeading("热门地区", popular, "popular")}<div class="country-grid">${popular.map(countryButton).join("")}</div>`;
       for (const continent of catalog.continents) {
         const countries = catalog.countries.filter(
           (c) =>
@@ -130,7 +132,11 @@ export function createSelectors({
           continent.id === "asia" && countryRegion
             ? catalog.asia_regions.find((r) => r.id === countryRegion)?.name
             : continent.name;
-        html += `<section><div class="picker-section-heading">${selectionHeading(name, countries)}${continent.id === "asia" ? `<div class="region-tabs" role="tablist" aria-label="亚洲分区">${[{ id: "", name: "全亚洲" }, ...catalog.asia_regions].map((r) => `<button type="button" role="tab" aria-selected="${r.id === countryRegion}" data-region="${r.id}">${r.name}</button>`).join("")}</div>` : ""}</div><div class="country-grid">${countries.map(countryButton).join("")}</div></section>`;
+        const tabs =
+          continent.id === "asia"
+            ? `<div class="region-tabs" role="tablist" aria-label="亚洲分区">${[{ id: "", name: "全亚洲" }, ...catalog.asia_regions].map((r) => `<button type="button" role="tab" aria-selected="${r.id === countryRegion}" data-region="${r.id}">${r.name}</button>`).join("")}</div>`
+            : "";
+        html += `<section>${selectionHeading(name, countries, continent.id, tabs)}<div class="country-grid">${countries.map(countryButton).join("")}</div></section>`;
       }
     }
     countryDialog.querySelector("#country-options").innerHTML =
@@ -218,15 +224,23 @@ export function createSelectors({
     const group = event.target.closest("[data-country-group]");
     if (group && countrySelection && !group.disabled) {
       const codes = group.dataset.countryGroup.split(",");
-      const complete = codes.every((c) => countrySelection.selected.has(c));
+      const clear = group.dataset.countryGroupAction === "clear";
       codes.forEach((c) =>
-        complete
+        clear
           ? countrySelection.selected.delete(c)
           : countrySelection.selected.add(c),
       );
-      const key = group.dataset.countryGroup;
+      const key = group.closest("[data-country-section]").dataset
+        .countrySection;
+      const scroll = countryDialog.querySelector(".picker-scroll");
+      const top = scroll.scrollTop;
       renderCountries();
-      countryDialog.querySelector(`[data-country-group="${key}"]`)?.focus();
+      countryDialog
+        .querySelector(
+          `[data-country-section="${key}"] [data-country-group-action]:not(:disabled)`,
+        )
+        ?.focus({ preventScroll: true });
+      scroll.scrollTop = top;
       return;
     }
     const region = event.target.closest("[data-region]");
