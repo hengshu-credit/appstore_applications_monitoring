@@ -171,11 +171,11 @@ body {
     grid-row: 1;
   }
 }
-@media (min-width: 751px) and (max-width: 1450px) {
+@media (min-width: 751px) {
   .shell > header {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: "heading account" "market market";
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: "heading market account";
     align-items: center;
   }
   .shell > header .page-heading {
@@ -183,9 +183,19 @@ body {
   }
   .shell > header > .market-actions {
     grid-area: account;
+    margin-left: 0;
   }
   .shell > header > .market {
     grid-area: market;
+    margin-left: 0;
+  }
+}
+/* Only the full market filters need a second row on smaller desktops.
+   A store-only page (or a page without filters) keeps a compact header. */
+@media (min-width: 751px) and (max-width: 1450px) {
+  .shell > header:has(.country-field:not([hidden])) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "heading account" "market market";
   }
 }
 @media (max-width: 750px) {

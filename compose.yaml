@@ -41,7 +41,7 @@ services:
     ports:
       - "${STORAGE_BIND_ADDRESS:-127.0.0.1}:${S3_PORT:-8333}:8333"
     volumes:
-      - seaweed_data:/data
+      - ${SEAWEEDFS_DATA_DIR:-seaweed_data}:/data
       - ./data/runtime/filer.toml:/etc/seaweedfs/filer.toml:ro
       - ./data/runtime/s3.json:/etc/seaweedfs/s3.json:ro
     depends_on:
