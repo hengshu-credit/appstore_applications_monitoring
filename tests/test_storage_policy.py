@@ -19,6 +19,24 @@ class StoragePolicyTest(OceanBaseTestCase):
         group=app_groups.create(self.db,{'name':'关注'})
         app_groups.add_members(self.db,group['id'],{'members':[self.m]})
 
+    def test_scoped_icon_batch_excludes_old_chart_other_store_and_paused_markets(self):
+        from appmon.icon_batches import claim
+        self.db.execute("INSERT INTO observation_targets(kind,store,app_id,country,language,latest_success_id) VALUES('chart','apple','','us','en',11)")
+        for run,appid,rank in [(10,'200',1),(11,'100',1),(11,'300',50),(11,'400',51)]:
+            self.db.execute('INSERT INTO observation_items VALUES(%s,%s,%s,%s)',(run,appid,rank,json.dumps({'app_id':appid})))
+        for appid in ('100','200','300','400'):
+            for country in ('us','gb'):
+                app_icons.remember(self.db,'apple',appid,country,'en','https://is1.mzstatic.com/shared.png')
+        app_icons.remember(self.db,'google','100','us','en','https://is1.mzstatic.com/shared.png')
+        self.db.execute('UPDATE app_icons SET requested=1')
+        self.db.execute("UPDATE app_icons SET enabled=0 WHERE app_id='300' AND country='gb'")
+        rows=claim(self.db,self.cfg,20,SimpleNamespace())
+        self.assertCountEqual([(r['store'],r['app_id'],r['country']) for r in rows],
+                              [('apple','100','us'),('apple','100','gb'),('apple','300','us')])
+        self.assertEqual(len({r['id'] for r in rows}),3)
+        self.assertEqual(len({r['token'] for r in rows}),1)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM app_icons WHERE token IS NOT NULL').fetchone()['n'],3)
+
     def test_scope_sync_schedules_missing_details_and_image_dependencies(self):
         self.db.execute("INSERT INTO observation_targets(kind,store,app_id,country,language,latest_success_id) VALUES('chart','apple','','gb','en',12)")
         self.db.execute('INSERT INTO observation_items VALUES(12,%s,1,%s)',('400',json.dumps({'app_id':'400'})))

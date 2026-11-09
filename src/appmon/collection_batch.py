@@ -1,5 +1,6 @@
 """Commit one fetched batch and all its task acknowledgements atomically."""
 from contextlib import contextmanager
+from itertools import groupby
 import re
 import time
 import logging
@@ -86,11 +87,15 @@ def persist_batch(db,save,app_keys=(),attempts=3):
             with write_batch(db) as writer:
                 # Claiming network work never holds these locks. Existing app
                 # identities are locked in a common order only at commit time.
-                for start in range(0,len(keys),500):
-                    batch=keys[start:start+500]
-                    writer.execute('SELECT store,app_id FROM apps FORCE INDEX(PRIMARY) WHERE (store,app_id) IN ('+
-                        ','.join('(%s,%s)' for _ in batch)+') ORDER BY store,app_id FOR UPDATE',
-                        tuple(value for pair in batch for value in pair)).fetchall()
+                # A large tuple-IN can become a full scan on OceanBase. Fix the
+                # first PK component so each batch uses exact app identity gets.
+                for store, group in groupby(keys, key=lambda pair: pair[0]):
+                    ids=[pair[1] for pair in group]
+                    for start in range(0,len(ids),500):
+                        batch=ids[start:start+500]
+                        writer.execute('SELECT store,app_id FROM apps FORCE INDEX(PRIMARY) WHERE store=%s AND app_id IN ('+
+                            ','.join('%s' for _ in batch)+') ORDER BY app_id FOR UPDATE',
+                            (store,*batch)).fetchall()
                 return save(writer)
         except pymysql.OperationalError as exc:
             if not exc.args or exc.args[0] not in (1205,1213) or attempt+1>=attempts:raise

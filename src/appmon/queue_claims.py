@@ -12,7 +12,7 @@ class Rows:
     def fetchall(self): return self.rows
 
 
-def select(db, sql, args=()):
+def select(db, sql, args=(), *, candidate_hint=None):
     match = re.fullmatch(r'(.*)\s+ORDER BY\s+(.+?)\s+LIMIT\s+(%s|\d+)\s+FOR UPDATE SKIP LOCKED\s*', sql.strip(), re.I | re.S)
     if not match:
         raise ValueError('Queue claims require an ordered, limited SELECT')
@@ -27,13 +27,17 @@ def select(db, sql, args=()):
     if not all(re.fullmatch(r'\w+(?:\.\w+)?', c) for c in order_columns):
         raise ValueError('Queue order must use ascending columns')
     order_columns += [alias+'.'+k for k in keys if k not in [c.split('.')[-1] for c in order_columns]]
+    # Candidate scans only need the cursor and identity. Fetching full payloads
+    # before LIMIT prevents covering-index scans on a multi-million-row queue.
+    hint=('/*+ '+candidate_hint+' */ ') if candidate_hint else ''
+    candidates_base='SELECT '+hint+','.join(order_columns)+' '+base[source.start():]
     after, selected = None, []
     while len(selected) < count:
         suffix, params = '', list(args)
         if after is not None:
             suffix = ' AND ('+','.join(order_columns)+')>('+','.join(['%s']*len(after))+')'
             params.extend(after)
-        candidates = db.execute(base+suffix+' ORDER BY '+','.join(order_columns)+' LIMIT 64',params).fetchall()
+        candidates = db.execute(candidates_base+suffix+' ORDER BY '+','.join(order_columns)+' LIMIT 64',params).fetchall()
         if not candidates: break
         for row in candidates:
             predicate = ' AND '+' AND '.join(alias+'.'+k+'=%s' for k in keys)

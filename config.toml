@@ -23,8 +23,9 @@ batch_size = 200
 apple_lookup_batch_size = 50
 # Same-market Google detail/search/chart/review calls per HTTP request.
 google_rpc_batch_size = 20
-# Concurrent logical consumers share one coalescing transport per service.
-collector_concurrency = 4
+# One consumer per service: console + keywords share this single-node database.
+# Increase after sizing the database for concurrent large historical batches.
+collector_concurrency = 1
 # Give nine of ten dispatch opportunities to focused/detail/chart/keyword lanes.
 collection_priority_mode = "focus"
 # Logical fan-out per shared icon / ASO response, independent of upstream RPC size.

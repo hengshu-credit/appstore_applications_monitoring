@@ -11,6 +11,60 @@ from test_monitor import OceanBaseTestCase
 
 
 class CollectionSchedulingTest(OceanBaseTestCase):
+    def test_queue_pages_past_locked_prefix_and_returns_complete_leased_rows(self):
+        from appmon.db import claim_details
+        add_apps(self.db,[('apple',str(i),None,None) for i in range(1000,1080)],'fixture')
+        enqueue(self.db,['us'],'en')
+        holder=connect(self.cfg,initialize=False)
+        try:
+            holder.begin()
+            holder.execute("SELECT app_id FROM jobs WHERE app_id<='1069' FOR UPDATE").fetchall()
+            rows=claim_details(self.db,['us'],'en',600,limit=5)
+            self.assertEqual([r['app_id'] for r in rows],['1070','1071','1072','1073','1074'])
+            self.assertTrue(all(r['failures']==0 and r['last_error'] is None and r['token'] for r in rows))
+            self.assertEqual(len({r['token'] for r in rows}),1)
+        finally:holder.rollback();holder.close()
+
+    def test_queue_index_upgrade_is_idempotent_and_preserves_jobs(self):
+        add_apps(self.db,[('apple','1000',None,None)],'fixture');enqueue(self.db,['us'],'en')
+        before=self.db.execute('SELECT * FROM jobs').fetchall()
+        self.db.execute('CREATE INDEX jobs_due ON jobs(due,lease_until)')
+        self.db.execute('DROP INDEX jobs_dispatch ON jobs')
+        timeout=self.db.execute('SELECT @@ob_query_timeout value').fetchone()['value']
+        for _ in range(2):
+            upgraded=connect(self.cfg,initialize=True)
+            self.assertEqual(upgraded.execute('SELECT @@ob_query_timeout value').fetchone()['value'],timeout)
+            upgraded.close()
+        indexes=self.db.execute('SHOW KEYS FROM jobs').fetchall()
+        self.assertEqual([r['Column_name'] for r in indexes if r['Key_name']=='jobs_dispatch'],
+                         ['due','store','app_id','country','language','lease_until'])
+        self.assertFalse(any(r['Key_name']=='jobs_due' for r in indexes))
+        self.assertEqual(self.db.execute('SELECT * FROM jobs').fetchall(),before)
+
+    def test_batch_locks_exact_cross_store_identities_and_rolls_back_together(self):
+        from appmon.collection_batch import persist_batch,revision
+        add_apps(self.db,[(store,appid,None,None) for store in ('apple','google') for appid in ('1000','2000')],'fixture')
+        observer=connect(self.cfg,initialize=False)
+        keys=[('google','2000'),('apple','1000'),('apple','1000')]
+        def save(writer):
+            with observer:
+                available=observer.execute('SELECT store,app_id FROM apps ORDER BY store,app_id FOR UPDATE SKIP LOCKED').fetchall()
+                self.assertEqual([(r['store'],r['app_id']) for r in available],[('apple','2000'),('google','1000')])
+            for store,appid in set(keys):
+                writer.execute('UPDATE apps SET name=%s WHERE store=%s AND app_id=%s',('updated',store,appid))
+        before=revision(self.db)
+        try:
+            def fail(writer):
+                save(writer)
+                raise RuntimeError('reject entire batch')
+            with self.assertRaisesRegex(RuntimeError,'reject entire batch'):persist_batch(self.db,fail,keys)
+            self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM apps WHERE name IS NOT NULL').fetchone()['n'],0)
+            self.assertEqual(revision(self.db),before)
+            persist_batch(self.db,save,keys)
+            self.assertEqual(self.db.execute("SELECT COUNT(*) n FROM apps WHERE name='updated'").fetchone()['n'],2)
+            self.assertEqual(revision(self.db),before+1)
+        finally:observer.close()
+
     def test_focus_lanes_get_priority_without_starving_or_idling_the_pool(self):
         add_apps(self.db,[('apple','1000',None,None)],'fixture');enqueue(self.db,['us'],'en')
         pipelines.save(self.db,self.cfg,'pool',{'enabled':True})

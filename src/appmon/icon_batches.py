@@ -15,12 +15,16 @@ def claim(db,cfg,limit,client):
     now=time.time();token=uuid.uuid4().hex
     from .storage_policy import media_scope_apps
     source='app_icons i'
+    select='SELECT '
     if cfg.get('media_scope','all')!='all':
         source+=' JOIN ('+media_scope_apps()+') scope ON scope.store=i.store AND scope.app_id=i.app_id'
+        # Keep scope as a set: a nested-loop plan can rescan every historical
+        # chart item for each queued icon, timing out on a restored database.
+        select='SELECT /*+ USE_HASH(scope) */ '
     ready='i.requested=1 AND i.enabled=1 AND i.due<=%s AND i.lease_until<=%s'
     # Resolve scope outside the locking transaction. A slow membership scan
     # must never hold icon locks needed by detail writes or Top50 expansion.
-    first=db.execute('SELECT i.* FROM '+source+' WHERE '+ready+' ORDER BY i.due,i.id LIMIT 1',(now,now)).fetchone()
+    first=db.execute(select+'i.* FROM '+source+' WHERE '+ready+' ORDER BY i.due,i.id LIMIT 1',(now,now)).fetchone()
     if not first:return []
     url=source_url(first['source_url'])
     if url:
@@ -32,7 +36,7 @@ def claim(db,cfg,limit,client):
         if not can_batch(first) or not callable(getattr(client,'fetch_many',None)):capacity=1
     ids=[first['id']]
     if capacity>1:
-        ids += [r['id'] for r in db.execute('SELECT i.id FROM '+source+' WHERE '+ready+' AND i.id<>%s AND '+condition+
+        ids += [r['id'] for r in db.execute(select+'i.id FROM '+source+' WHERE '+ready+' AND i.id<>%s AND '+condition+
             ' ORDER BY i.due,i.id LIMIT %s',(now,now,first['id'],*args,capacity-1)).fetchall()]
     with db:
         rows=list(db.execute('SELECT i.* FROM app_icons i WHERE i.id IN ('+','.join('%s' for _ in ids)+') AND '+ready+

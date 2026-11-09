@@ -10,6 +10,7 @@ from .content_store import ContentCursor, hydrate
 APP_KEY = 'store VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, app_id VARCHAR(512) CHARACTER SET ascii COLLATE ascii_bin NOT NULL'
 REGION = 'country CHAR(2) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, language VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL'
 ENGINE = ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin'
+JOBS_DISPATCH_COLUMNS = 'due,store,app_id,country,language,lease_until'
 TABLES = {
     'advisory_mutexes': 'name VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY',
     'apps': f'''{APP_KEY}, name TEXT, category TEXT, first_seen DOUBLE NOT NULL,
@@ -22,7 +23,7 @@ TABLES = {
     'jobs': f'''{APP_KEY}, {REGION}, due DOUBLE NOT NULL DEFAULT 0,
         lease_until DOUBLE NOT NULL DEFAULT 0, token CHAR(32) CHARACTER SET ascii,
         failures INT NOT NULL DEFAULT 0, last_error TEXT,
-        PRIMARY KEY(store,app_id,country,language), INDEX jobs_due(due,lease_until),
+        PRIMARY KEY(store,app_id,country,language), INDEX jobs_dispatch({JOBS_DISPATCH_COLUMNS}),
         INDEX jobs_market_due(store,country,language,due,lease_until),INDEX jobs_retry(failures,due,lease_until)''',
     'listings': f'''{APP_KEY}, {REGION}, state VARCHAR(32) NOT NULL, checked_at DOUBLE NOT NULL,
         last_success DOUBLE, misses INT NOT NULL DEFAULT 0, payload LONGTEXT, digest CHAR(64),
@@ -91,9 +92,9 @@ class Database:
             self._primary_keys[table] = [r['Column_name'] for r in sorted(rows, key=lambda r:r['Seq_in_index'])]
         return self._primary_keys[table]
 
-    def claim(self, sql, args=None):
+    def claim(self, sql, args=None, *, candidate_hint=None):
         from .queue_claims import select
-        return select(self, sql, args)
+        return select(self, sql, args, candidate_hint=candidate_hint)
 
     def executemany(self, sql, rows):
         if self.cursor is not None:
@@ -177,6 +178,18 @@ def connect(cfg, *, initialize=False, allow_migration=False):
         if initialize:
             for table, columns in TABLES.items():
                 db.execute(create_table_sql(table, if_not_exists=True))
+            # Match the deterministic candidate order without sorting millions
+            # of due jobs. Build the replacement before removing the old index.
+            indexes={r['Key_name'] for r in db.execute('SHOW KEYS FROM jobs').fetchall()}
+            if 'jobs_dispatch' not in indexes:
+                timeout=db.execute('SELECT @@ob_query_timeout value').fetchone()['value']
+                try:
+                    # Index construction is maintenance, not a worker query.
+                    db.execute('SET ob_query_timeout=%s',(max(int(timeout),300000000),))
+                    db.execute(f'CREATE INDEX jobs_dispatch ON jobs({JOBS_DISPATCH_COLUMNS})')
+                finally:db.execute('SET ob_query_timeout=%s',(timeout,))
+            if 'jobs_due' in indexes:
+                db.execute('DROP INDEX jobs_due ON jobs')
             from .auth import initialize as initialize_auth
             initialize_auth(db)
         if not allow_migration:
@@ -289,6 +302,7 @@ def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=Fa
         args += [*countries,language]
         where += ''' AND NOT EXISTS (SELECT 1 FROM watchlist w WHERE w.store=j.store AND w.app_id=j.app_id
             AND w.country=j.country AND w.language=j.language)'''
+    candidate_options={'candidate_hint':'LEADING(w j) USE_HASH(j)'} if watchlist else {}
     with db:
         # Serialize the short claim phase, not HTTP. Different queue indexes can
         # otherwise deadlock when parallel batches update indexed lease values.
@@ -298,12 +312,12 @@ def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=Fa
         first=None
         if retry:
             retry_source=source.replace('jobs j','jobs j FORCE INDEX (jobs_retry)')
-            first=db.claim(f'SELECT {columns} FROM {retry_source} WHERE {where} AND j.failures>0 ORDER BY j.due LIMIT 1 FOR UPDATE SKIP LOCKED',args).fetchone()
+            first=db.claim(f'SELECT {columns} FROM {retry_source} WHERE {where} AND j.failures>0 ORDER BY j.due LIMIT 1 FOR UPDATE SKIP LOCKED',args,**candidate_options).fetchone()
         elif mode=='scheduled':
-            first=db.claim(f'SELECT {columns} FROM {source} WHERE {where} AND j.failures=0 AND j.due>0 ORDER BY j.due LIMIT 1 FOR UPDATE SKIP LOCKED',args).fetchone()
+            first=db.claim(f'SELECT {columns} FROM {source} WHERE {where} AND j.failures=0 AND j.due>0 ORDER BY j.due LIMIT 1 FOR UPDATE SKIP LOCKED',args,**candidate_options).fetchone()
         if not first:
             retry=False;mode='fresh'
-            first = db.claim(f'SELECT {columns} FROM {source} WHERE {where} ORDER BY j.due LIMIT 1 FOR UPDATE SKIP LOCKED',args).fetchone()
+            first = db.claim(f'SELECT {columns} FROM {source} WHERE {where} ORDER BY j.due LIMIT 1 FOR UPDATE SKIP LOCKED',args,**candidate_options).fetchone()
         if not first:
             return []
         jobs = [first]
@@ -317,7 +331,7 @@ def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=Fa
                 jobs += list(db.claim(f'''SELECT {columns} FROM {fill_source} WHERE {where}
                     AND j.store=%s AND j.country=%s AND j.language=%s AND j.app_id<>%s AND {retry_condition('j.')}'''+extra+'''
                     ORDER BY j.due LIMIT %s FOR UPDATE SKIP LOCKED''',
-                    (*args,first['store'],first['country'],first['language'],first['app_id'],NETWORK_ERRORS,remaining)).fetchall())
+                    (*args,first['store'],first['country'],first['language'],first['app_id'],NETWORK_ERRORS,remaining),**candidate_options).fetchall())
         token = uuid.uuid4().hex
         db.execute('UPDATE jobs SET token=%s,lease_until=%s WHERE store=%s AND country=%s AND language=%s AND app_id IN ('+
                    ','.join('%s' for _ in jobs)+')',
