@@ -316,6 +316,9 @@ def create_app(cfg):
         from .source_registry import report
         return data_sources.public_status(db,cfg)|{'connections':report(db,cfg)}
 
+    @api.get('/data-sources/credentials')
+    def source_credentials(db=DB):return data_sources.admin_credentials(db,cfg)
+
     @api.put('/data-sources/config/{name}')
     def source_binding_save(name:str,value:dict=Body(...),db=DB):
         from .source_registry import save
@@ -347,16 +350,16 @@ def create_app(cfg):
         return report(db,cfg)
 
     @api.put('/data-sources/community')
-    def source_save(value:dict=Body(...),db=DB):return data_sources.save(db,cfg,value)
+    def source_save(value:dict=Body(...),authorize_now:bool=True,db=DB):return data_sources.save(db,cfg,value,authorize_now=authorize_now)
 
     @api.post('/data-sources/community/authorize')
-    def source_authorize(db=DB):return data_sources.authorize(db,cfg)
+    def source_authorize(db=DB):return data_sources.authorize(db,cfg,force=True)
 
     @api.put('/data-sources/directory')
-    def directory_save(value:dict=Body(...),db=DB):return data_sources.save(db,cfg,value,'directory')
+    def directory_save(value:dict=Body(...),authorize_now:bool=True,db=DB):return data_sources.save(db,cfg,value,'directory',authorize_now=authorize_now)
 
     @api.post('/data-sources/directory/authorize')
-    def directory_authorize(db=DB):return data_sources.authorize(db,cfg,'directory')
+    def directory_authorize(db=DB):return data_sources.authorize(db,cfg,'directory',force=True)
 
     @api.get('/data-sources/community/datasets')
     def source_datasets(db=DB):return data_sources.dataset_catalog(db,cfg)
@@ -364,10 +367,10 @@ def create_app(cfg):
     from . import marketdata_source as marketdata
 
     @api.put('/data-sources/marketdata')
-    def marketdata_save(value:dict=Body(...),db=DB):return data_sources.save(db,cfg,value,'marketdata')
+    def marketdata_save(value:dict=Body(...),authorize_now:bool=True,db=DB):return data_sources.save(db,cfg,value,'marketdata',authorize_now=authorize_now)
 
     @api.post('/data-sources/marketdata/authorize')
-    def marketdata_authorize(db=DB):return data_sources.authorize(db,cfg,'marketdata')
+    def marketdata_authorize(db=DB):return data_sources.authorize(db,cfg,'marketdata',force=True)
 
     @api.get('/data-sources/marketdata/collection')
     def marketdata_report(db=DB):return marketdata.report(db)

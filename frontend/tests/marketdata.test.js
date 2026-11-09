@@ -42,9 +42,12 @@ function setup(respond = () => undefined) {
   return { window, doc, calls, errors, bind, submit };
 }
 
-test("市场数据 accepts token-only configuration and immediately clears secrets", async () => {
+test("市场数据 accepts token-only configuration and keeps the token masked after saving", async () => {
   const ctx = setup((path) =>
-    path === "/data-sources/marketdata"
+    [
+      "/data-sources/marketdata?authorize_now=false",
+      "/data-sources/marketdata/authorize",
+    ].includes(path)
       ? { marketdata: { message: "授权有效", configured: true } }
       : undefined,
   );
@@ -53,16 +56,18 @@ test("市场数据 accepts token-only configuration and immediately clears secre
     const form = ctx.doc.querySelector("#marketdata-account");
     form.elements.access_token.value = "fixture-private-token";
     ctx.submit("#marketdata-account");
-    assert.equal(form.elements.access_token.value, "");
+    assert.equal(form.elements.access_token.value, "fixture-private-token");
+    assert.equal(form.elements.access_token.type, "password");
     await tick();
     assert.equal(
-      ctx.calls.find((c) => c.path === "/data-sources/marketdata").value
-        .access_token,
+      ctx.calls.find(
+        (c) => c.path === "/data-sources/marketdata?authorize_now=false",
+      ).value.access_token,
       "fixture-private-token",
     );
     assert.equal(
       ctx.doc.querySelector("#marketdata-state").textContent,
-      "授权有效",
+      "凭据已保存 · 授权有效",
     );
     assert.ok(
       ctx.calls.every((c) => !c.path.includes("fixture-private-token")),

@@ -1,3 +1,8 @@
+import {
+  secretField,
+  bindSourceAccount,
+  accountSummary,
+} from "./source-account.js";
 import { sourceGuide, sourceTitle } from "./source-guidance.js";
 const labels = {
   running: "采集中",
@@ -35,15 +40,16 @@ export function marketDataPanel(
     "市场数据采集",
     `
     <div data-source-guide="marketdata"><strong>${esc(sourceTitle(source))}</strong>${sourceGuide(esc, source)}</div>
-    <p id="marketdata-state" role="status">${esc(state.message || "未配置账户")}</p>
-    <form id="marketdata-account" class="toolbar">
+    <p id="marketdata-state" role="status">${esc(accountSummary(state))}</p>
+    <form id="marketdata-account" class="source-account-form">
       <label>账户邮箱<input type="email" name="email" autocomplete="off" value="${esc(state.email || "")}" placeholder="可选，与密码一起填写"></label>
-      <label>账户密码<input type="password" name="password" autocomplete="new-password"></label>
-      <label class="wide">Personal Access Token<input type="password" name="access_token" autocomplete="new-password" placeholder="API 采集必填；不回显"></label>
+      ${secretField(esc, "password", "账户密码", state.password)}
+      ${secretField(esc, "access_token", "Personal Access Token", state.access_token)}
+      <div class="source-account-actions">
       <button type="submit">保存并检查 API 授权</button>
-      <button type="button" id="marketdata-authorize" class="secondary" ${state.configured ? "" : "disabled"}>检查授权</button>
+      <button type="button" id="marketdata-authorize" class="secondary" ${state.configured ? "" : "disabled"}>重新检查授权</button></div>
     </form>
-    <p class="sub">账密及 Token 加密保存、不回显。可单独填写 Token；每次保存替换全部 市场数据 凭据。官方 API 已停用账密登录，仅保存账密不会启用采集。</p>
+    <p class="sub">密码及 Token 加密保存并回填，可点击各输入框右侧小眼睛查看。可单独填写 Token；每次保存使用当前表单的完整凭据。官方 API 已停用账密登录，仅保存账密不会启用采集。</p>
     <p class="sub">采集范围由账户权限及剩余额度决定，遇到限制时保留续采进度。</p>
     <form id="marketdata-plan" class="toolbar">
       <label>历史开始日期<input name="start_date" type="date" required value="${start}"></label>
@@ -69,7 +75,16 @@ export function marketDataPanel(
   );
 }
 
-export async function bindMarketData({ $, api, esc, table, toast, root }) {
+export async function bindMarketData({
+  $,
+  api,
+  esc,
+  table,
+  toast,
+  root,
+  onAccountUpdate,
+  onAccountReady,
+}) {
   const find = (selector) => root.querySelector(selector);
   const anchor = find("#marketdata-account");
   const run = async (button, action) => {
@@ -82,35 +97,14 @@ export async function bindMarketData({ $, api, esc, table, toast, root }) {
       if (button.isConnected) button.disabled = false;
     }
   };
-  const updateAccount = (data) => {
-    if (!anchor.isConnected) return;
-    find("#marketdata-state").textContent = data.marketdata.message;
-    find("#marketdata-authorize").disabled = !data.marketdata.configured;
-  };
-  find("#marketdata-account").onsubmit = (event) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const value = Object.fromEntries(
-      ["email", "password", "access_token"].map((k) => [
-        k,
-        form.elements[k].value,
-      ]),
-    );
-    form.elements.password.value = "";
-    form.elements.access_token.value = "";
-    run(form.querySelector("button"), async () => {
-      try {
-        updateAccount(await api("/data-sources/marketdata", value, "PUT"));
-      } finally {
-        value.password = "";
-        value.access_token = "";
-      }
-    });
-  };
-  find("#marketdata-authorize").onclick = (event) =>
-    run(event.currentTarget, async () =>
-      updateAccount(await api("/data-sources/marketdata/authorize", {})),
-    );
+  const updateAccount = bindSourceAccount({
+    root,
+    prefix: "marketdata",
+    provider: "marketdata",
+    api,
+    onUpdate: onAccountUpdate,
+  });
+  onAccountReady?.(updateAccount);
   const refresh = async () => {
     const data = await api("/data-sources/marketdata/collection");
     if (!anchor.isConnected) return;

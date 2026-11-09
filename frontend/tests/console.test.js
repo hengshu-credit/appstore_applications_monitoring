@@ -9,7 +9,7 @@ const html = (
 const accountSource = (
   await readFile(new URL("../src/accounts.js", import.meta.url), "utf8")
 )
-  .replace(/^import .*;$/gm, "")
+  .replace(/^import [\s\S]*?;$/gm, "")
   .replace(/^export /gm, "");
 const themeSource = (
   await readFile(new URL("../src/theme.js", import.meta.url), "utf8")
@@ -18,7 +18,7 @@ const selectorSource = (
   await readFile(new URL("../src/selectors.js", import.meta.url), "utf8")
 )
   .replace(/^export /gm, "")
-  .replace(/^import .*;$/gm, "");
+  .replace(/^import [\s\S]*?;$/gm, "");
 const catalogFixture = JSON.parse(
   await readFile(
     new URL("../../src/appmon/store_catalog.json", import.meta.url),
@@ -66,7 +66,7 @@ const researchSource = (
   await readFile(new URL("../src/research.js", import.meta.url), "utf8")
 )
   .replace(/^export /gm, "")
-  .replace(/^import .*;$/gm, "");
+  .replace(/^import [\s\S]*?;$/gm, "");
 const source = (
   await readFile(new URL("../src/main.js", import.meta.url), "utf8")
 ).replace(/import ['"]\.\/style\.css['"];?/, "");
@@ -74,12 +74,16 @@ async function wrappedModule(name, exports) {
   const code = (
     await readFile(new URL("../src/" + name, import.meta.url), "utf8")
   )
-    .replace(/^import .*;$/gm, "")
+    .replace(/^import [\s\S]*?;$/gm, "")
     .replace(/^export /gm, "");
   return `const {${exports}} = (()=>{${code};return {${exports}};})();`;
 }
 const newModules = (
   await Promise.all([
+    wrappedModule(
+      "source-account.js",
+      "secretField,bindSecretFields,bindSourceAccount,accountSummary",
+    ),
     wrappedModule(
       "filter-bar.js",
       "filterBar,filterFields,bindFilterBar,initFilterBars,setFilterCatalog",
@@ -98,7 +102,10 @@ const newModules = (
     wrappedModule("app-insights.js", "createAppInsights"),
     wrappedModule("discovery.js", "createDiscoveryPages"),
     wrappedModule("global-chart-hover.js", "bindGlobalChartHover"),
-    wrappedModule("source-guidance.js", "sourceGuide,sourceTitle,sourceAddress"),
+    wrappedModule(
+      "source-guidance.js",
+      "sourceGuide,sourceTitle,sourceAddress",
+    ),
     wrappedModule("marketdata.js", "marketDataPanel,bindMarketData"),
     wrappedModule("data-sources.js", "createDataSourcePage"),
     wrappedModule("global-charts.js", "createGlobalCharts"),
@@ -2595,7 +2602,7 @@ test("global countries are independent of an unsupported header Apple market", a
   }
 });
 
-test("admin source configuration submits secrets in the request body, clears password and shows authorization", async () => {
+test("admin source configuration submits secrets in the request body, retains a masked password and shows saved and authorization status", async () => {
   const result = {
     community: {
       configured: false,
@@ -2605,10 +2612,26 @@ test("admin source configuration submits secrets in the request body, clears pas
     catalog: [],
   };
   const { window, calls } = await setup((path) => {
-    if (path === "/api/data-sources") return result;
+    if (path === "/api/data-sources")
+      return {
+        ...result,
+        connections: [
+          {
+            id: "community",
+            name: "公开元数据",
+            editable: true,
+            editable_origin: true,
+          },
+        ],
+      };
+    if (path === "/api/data-sources/credentials") return {};
+    for (const id of ["community", "directory"]) {
+      if (path === `/api/data-sources/${id}?authorize_now=false`)
+        return { [id]: { configured: true, status: "saved" } };
+    }
     if (path === "/api/data-sources/marketdata/collection")
       return { runs: [], artifacts: [], errors: [], budget: null };
-    if (path === "/api/data-sources/directory")
+    if (path === "/api/data-sources/directory/authorize")
       return {
         directory: {
           configured: true,
@@ -2616,7 +2639,7 @@ test("admin source configuration submits secrets in the request body, clears pas
           message: "安装指标授权有效",
         },
       };
-    if (path === "/api/data-sources/community")
+    if (path === "/api/data-sources/community/authorize")
       return {
         community: {
           configured: true,
@@ -2644,9 +2667,12 @@ test("admin source configuration submits secrets in the request body, clears pas
     form.dispatchEvent(
       new window.Event("submit", { bubbles: true, cancelable: true }),
     );
-    assert.equal(form.elements.password.value, "");
+    assert.equal(form.elements.password.value, "fixture-secret");
+    assert.equal(form.elements.password.type, "password");
     await tick();
-    const call = calls.find((c) => c.path === "/api/data-sources/community");
+    const call = calls.find(
+      (c) => c.path === "/api/data-sources/community?authorize_now=false",
+    );
     assert.equal(call.options.method, "PUT");
     assert.deepEqual(JSON.parse(call.options.body), {
       email: "fixture@example.com",
@@ -2661,22 +2687,27 @@ test("admin source configuration submits secrets in the request body, clears pas
       false,
     );
     assert.ok(calls.every((c) => !c.path.includes("fixture-secret")));
+    assert.match(
+      window.document.querySelector("#source-config-list").textContent,
+      /凭据已保存 · 授权有效/,
+    );
     const directory = window.document.querySelector("#directory-account");
     directory.elements.email.value = "directory@example.com";
     directory.elements.password.value = "directory-secret";
     directory.dispatchEvent(
       new window.Event("submit", { bubbles: true, cancelable: true }),
     );
-    assert.equal(directory.elements.password.value, "");
+    assert.equal(directory.elements.password.value, "directory-secret");
+    assert.equal(directory.elements.password.type, "password");
     await tick();
     assert.match(
       window.document.querySelector("#directory-state").textContent,
-      /安装指标授权有效/,
+      /凭据已保存 · 授权有效/,
     );
     assert.ok(
       calls.some(
         (c) =>
-          c.path === "/api/data-sources/directory" &&
+          c.path === "/api/data-sources/directory?authorize_now=false" &&
           JSON.parse(c.options.body).email === "directory@example.com",
       ),
     );

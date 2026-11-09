@@ -14,6 +14,44 @@ class Response:
 
 
 class SourceAccountsTest(OceanBaseTestCase):
+    def test_admin_can_reload_editable_secrets_without_cookies_or_public_leak(self):
+        data_sources.save(self.db,self.cfg,{'email':'edit@example.com','password':'edit-secret','access_token':'edit-token'},'marketdata',authorize_now=False)
+        api=TestClient(create_app(self.cfg))
+        self.assertEqual(api.get('/api/data-sources/credentials').status_code,401)
+        self.login_admin(api)
+        response=api.get('/api/data-sources/credentials')
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.headers['cache-control'],'no-store')
+        self.assertEqual(response.json()['marketdata'],{'email':'edit@example.com','password':'edit-secret','access_token':'edit-token'})
+        self.assertNotIn('cookies',response.text)
+        for secret in ('edit-secret','edit-token'):
+            self.assertNotIn(secret,api.get('/api/data-sources').text)
+        member=TestClient(create_app(self.cfg))
+        member.post('/api/auth/register',json={'username':'credential-viewer','password':'password-123'})
+        member.post('/api/auth/login',json={'username':'credential-viewer','password':'password-123'})
+        self.assertEqual(member.get('/api/data-sources/credentials').status_code,403)
+
+    def test_page_save_finishes_before_authorization_and_manual_retry_is_effective(self):
+        api=TestClient(create_app(self.cfg));self.login_admin(api)
+        with patch.object(data_sources,'session') as session:
+            response=api.put('/api/data-sources/directory?authorize_now=false',json={'email':'test@example.com','password':'saved-secret'})
+            self.assertEqual(response.status_code,200)
+            self.assertEqual(response.json()['directory']['status'],'saved')
+            session.assert_not_called()
+        with patch('appmon.directory_source.authorize',side_effect=['action_required','authorized']) as login:
+            self.assertEqual(api.post('/api/data-sources/directory/authorize').json()['directory']['status'],'action_required')
+            self.assertEqual(data_sources.authorize(self.db,self.cfg,'directory')['directory']['status'],'action_required')
+            self.assertEqual(login.call_count,1)
+            self.assertEqual(api.post('/api/data-sources/directory/authorize').json()['directory']['status'],'authorized')
+            self.assertEqual(login.call_count,2)
+
+    def test_manual_retry_keeps_source_rate_limit_backoff(self):
+        data_sources.save(self.db,self.cfg,{'email':'test@example.com','password':'saved-secret'},'directory',authorize_now=False)
+        with patch('appmon.directory_source.authorize',return_value='rate_limited') as login:
+            data_sources.authorize(self.db,self.cfg,'directory',force=True)
+            data_sources.authorize(self.db,self.cfg,'directory',force=True)
+            self.assertEqual(login.call_count,1)
+
     def test_directory_has_separate_encrypted_configuration_and_session(self):
         def directory_login(client,saved):
             self.assertEqual(saved['email'],'directory@example.com')

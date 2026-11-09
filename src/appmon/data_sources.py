@@ -58,7 +58,19 @@ def public_status(db,cfg):
     return result
 
 
-def save(db,cfg,value,provider="community"):
+def admin_credentials(db,cfg):
+    """Editable secrets for the admin-only, no-store configuration endpoint."""
+    result={}
+    for row in db.execute('SELECT provider,secret FROM source_accounts').fetchall():
+        if row['provider'] not in PROVIDERS:continue
+        try:saved=json.loads(cipher(cfg).decrypt(row['secret'].encode()))
+        except (InvalidToken,ValueError,OSError):continue
+        if isinstance(saved,dict):
+            result[row['provider']]={key:saved.get(key) or '' for key in ('email','password','access_token')}
+    return result
+
+
+def save(db,cfg,value,provider="community",authorize_now=True):
     provider_name(provider)
     email=value.get('email');password=value.get('password')
     token=value.get('access_token','') if provider=='marketdata' else ''
@@ -74,7 +86,7 @@ def save(db,cfg,value,provider="community"):
         if provider=='marketdata':saved['access_token']=token
         secret=encryption.encrypt(dump(saved).encode()).decode()
         db.execute("INSERT INTO source_accounts(provider,secret,status,updated_at) VALUES(%s,%s,'saved',%s) ON DUPLICATE KEY UPDATE secret=VALUES(secret),status='saved',checked_at=NULL,retry_after=0,updated_at=VALUES(updated_at)",(provider,secret,time.time()))
-    return authorize(db,cfg,provider)
+    return authorize(db,cfg,provider) if authorize_now else status(db)
 
 
 def session(cfg):
@@ -100,22 +112,22 @@ def authorized_user(response):
     except (ValueError,AttributeError):return False
 
 
-def authorize(db,cfg,provider="community"):
+def authorize(db,cfg,provider="community",force=False):
     provider_name(provider)
-    try:return _authorize(db,cfg,provider)
+    try:return _authorize(db,cfg,provider,force=force)
     except RuntimeError:
         result=status(db)
         result[provider].update(status='authorizing',message='该来源正在授权，请稍后检查状态')
         return result
 
 
-def _authorize(db,cfg,provider):
+def _authorize(db,cfg,provider,force=False):
     provider_name(provider)
     with db.named_lock('data-source-'+provider):
         row=db.execute("SELECT * FROM source_accounts WHERE provider=%s",(provider,)).fetchone()
         if not row:return status(db)
         if row['status']=='endpoint_changed':return status(db)
-        if row['retry_after']>time.time():return status(db)
+        if row['retry_after']>time.time() and (not force or row['status']=='rate_limited'):return status(db)
         try:
             encryption=cipher(cfg);saved=json.loads(encryption.decrypt(row['secret'].encode()))
         except (InvalidToken,ValueError,OSError):

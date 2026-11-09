@@ -1,16 +1,25 @@
+import {
+  secretField,
+  bindSourceAccount,
+  accountSummary,
+} from "../src/source-account.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { Window } from "happy-dom";
-import { sourceGuide, sourceTitle, sourceAddress } from "../src/source-guidance.js";
+import {
+  sourceGuide,
+  sourceTitle,
+  sourceAddress,
+} from "../src/source-guidance.js";
 
-test("source configuration prefills saved values and persists batch changes without exposing credentials", async () => {
+test("source configuration prefills saved values and persists batch changes and restores a masked saved password", async () => {
   const window = new Window();
   window.document.body.innerHTML = "<main></main>";
   const source = (
     await readFile(new URL("../src/data-sources.js", import.meta.url), "utf8")
   )
-    .replace(/^import .*;$/gm, "")
+    .replace(/^import [\s\S]*?;$/gm, "")
     .replace(/^export /gm, "");
   const factory = new Function(
     "document",
@@ -21,6 +30,9 @@ test("source configuration prefills saved values and persists batch changes with
     "sourceGuide",
     "sourceTitle",
     "sourceAddress",
+    "secretField",
+    "bindSourceAccount",
+    "accountSummary",
     source + ";return createDataSourcePage;",
   )(
     window.document,
@@ -31,6 +43,9 @@ test("source configuration prefills saved values and persists batch changes with
     sourceGuide,
     sourceTitle,
     sourceAddress,
+    secretField,
+    bindSourceAccount,
+    accountSummary,
   );
   const row = {
     id: "apple_lookup",
@@ -58,6 +73,8 @@ test("source configuration prefills saved values and persists batch changes with
       calls.push({ path, value, method });
       return { ...row, ...value };
     }
+    if (path === "/data-sources/credentials")
+      return { community: { password: "saved-password" } };
     if (path === "/data-sources")
       return {
         community: {
@@ -111,11 +128,9 @@ test("source configuration prefills saved values and persists batch changes with
   });
   try {
     await render(1);
-    await window.document
-      .querySelector("#bulk-source-imports")
-      .onclick({
-        target: window.document.querySelector("[data-bulk-control]"),
-      });
+    await window.document.querySelector("#bulk-source-imports").onclick({
+      target: window.document.querySelector("[data-bulk-control]"),
+    });
     assert.equal(calls[0].value.action, "resume");
     assert.equal(
       calls[0].path,
@@ -128,7 +143,7 @@ test("source configuration prefills saved values and persists batch changes with
     assert.equal(
       window.document.querySelector('#provider-account [name="password"]')
         .value,
-      "",
+      "saved-password",
     );
     window.document.querySelector('[data-source-edit="apple_lookup"]').click();
     const form = window.document.querySelector("#source-binding-form");

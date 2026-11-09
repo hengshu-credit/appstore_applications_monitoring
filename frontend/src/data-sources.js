@@ -1,3 +1,8 @@
+import {
+  secretField,
+  bindSourceAccount,
+  accountSummary,
+} from "./source-account.js";
 import { sourceGuide, sourceTitle, sourceAddress } from "./source-guidance.js";
 import { filterBar, bindFilterBar } from "./filter-bar.js";
 import { marketDataPanel, bindMarketData } from "./marketdata.js";
@@ -12,8 +17,12 @@ export function createDataSourcePage({
   toast,
 }) {
   return async (revision) => {
-    const data = await api("/data-sources"),
-      state = data.community,
+    const [data, credentials] = await Promise.all([
+      api("/data-sources"),
+      api("/data-sources/credentials"),
+    ]);
+    const accountUpdates = {};
+    const state = data.community,
       directory = data.directory || {
         configured: false,
         message: "未配置账户",
@@ -48,13 +57,13 @@ export function createDataSourcePage({
           esc(source.access),
           esc(source.fields),
           sourceGuide(esc, source, true),
-          source.account?.configured
-            ? source.account.status === "endpoint_changed"
-              ? "地址变更，需重新保存凭据"
-              : "已保存 · 密钥不回显"
-            : "公开 / 未配置账户",
+          ["community", "directory", "marketdata"].includes(source.id)
+            ? esc(accountSummary(data[source.id] || source.account))
+            : source.account?.configured
+              ? "凭据已保存"
+              : "无需账户 / 未配置",
           source.editable
-            ? `<button type="button" class="link" data-source-edit="${esc(source.id)}">配置${source.batch_size ? ` · 每批 ${source.batch_size}` : ""}</button>`
+            ? `<button type="button" class="link" data-source-edit="${esc(source.id)}">${source.editable_origin ? "配置地址" : "配置"}${source.batch_size ? ` · 每批 ${source.batch_size}` : ""}</button>${["community", "directory", "marketdata"].includes(source.id) ? `<br><button type="button" class="link" data-source-account="${source.id}">配置账户 / 查看授权</button>` : ""}`
             : "内置协议",
         ]),
       );
@@ -70,7 +79,7 @@ export function createDataSourcePage({
     };
     if (
       !mount(
-        `${panel("数据源配置", `<p class="sub">官方商店公开接口无需账号。第三方来源先核对接入地址，再在对应区域填写该网站的账户或 Token；这里填写的不是观星平台登录账号。点击配置可查看具体字段说明。</p><div id="source-config-list">${sourceTable()}</div><p class="sub">配置保存在后台并实时回显。批量设置在新批次生效；修改接入地址后须重新保存账户凭据。</p>`)}${panel("首轮 24 小时容量", `<div id="initial-capacity">正在核算全库容量…</div>`)}${panel("公开批量数据包", `<div id="bulk-source-imports">正在读取本地数据包…</div>`)}${panel("公开指标接入", `${help("community")}<p id="provider-state" role="status">${esc(state.message)}${state.checked_at ? " · " + new Date(state.checked_at * 1000).toLocaleString() : ""}</p><form id="provider-account" class="toolbar"><label>账户邮箱<input type="email" name="email" required autocomplete="off" value="${esc(state.email || "")}" placeholder="${state.configured ? "已保存，更换账户时填写" : "AppGoblin 登录邮箱"}"></label><label>密码<input type="password" name="password" required autocomplete="new-password"></label><button type="submit">保存并自动授权</button><button type="button" id="provider-authorize" class="secondary" ${state.configured ? "" : "disabled"}>检查 / 续期授权</button><button type="button" id="provider-datasets" class="secondary">读取免费数据目录</button></form><p class="sub">账密与会话加密保存在服务器，密码不回显。普通密码登录可自动授权；邮箱验证、验证码或二次验证需在 AppGoblin 完成。授权不自动开通付费服务。</p><div id="provider-result"></div>`)}${panel("安装指标接入", `${help("directory")}<p id="directory-state" role="status">${esc(directory.message)}</p><form id="directory-account" class="toolbar"><label>账户邮箱<input name="email" type="email" required autocomplete="off" value="${esc(directory.email || "")}" placeholder="${directory.configured ? "已保存，更换时填写" : "AppBrain 登录邮箱"}"></label><label>密码<input name="password" type="password" required autocomplete="new-password"></label><button type="submit">保存并自动授权</button><button type="button" id="directory-authorize" class="secondary" ${directory.configured ? "" : "disabled"}>检查 / 续期授权</button></form><p class="sub">使用 AppBrain 自身的邮箱密码；第三方单点登录和验证码需在来源网站完成。免费账户仅获取实际开放的数据。</p>`)}${panel(
+        `${panel("数据源配置", `<p class="sub">官方商店公开接口无需账号。第三方来源先核对接入地址，再在对应区域填写该网站的账户或 Token；这里填写的不是观星平台登录账号。点击“配置地址”只修改接入地址；账户和密码请在对应接入区域填写并保存。第三方网页登录不会自动配置本系统。</p><div id="source-config-list">${sourceTable()}</div><p class="sub">配置保存在后台并实时回显。批量设置在新批次生效；修改接入地址后须重新保存账户凭据。</p>`)}${panel("首轮 24 小时容量", `<div id="initial-capacity">正在核算全库容量…</div>`)}${panel("公开批量数据包", `<div id="bulk-source-imports">正在读取本地数据包…</div>`)}${panel("公开指标接入", `${help("community")}<p id="provider-state" role="status">${esc(accountSummary(state))}${state.checked_at ? " · " + new Date(state.checked_at * 1000).toLocaleString() : ""}</p><form id="provider-account" class="source-account-form"><label>账户邮箱<input type="email" name="email" required autocomplete="off" value="${esc(state.email || "")}" placeholder="${state.configured ? "已保存，更换账户时填写" : "AppGoblin 登录邮箱"}"></label>${secretField(esc, "password", "密码", credentials.community?.password, true)}<div class="source-account-actions"><button type="submit">保存并检查授权</button><button type="button" id="provider-authorize" class="secondary" ${state.configured ? "" : "disabled"}>重新检查授权</button><button type="button" id="provider-datasets" class="secondary">读取免费数据目录</button></div></form><p class="sub">密码加密保存，默认隐藏；点击输入框右侧小眼睛查看。填写后点击保存，页面会分别显示保存结果和授权结果。邮箱验证等步骤需在 AppGoblin 完成，再回此页面重新检查；网页登录状态不会自动同步。</p><div id="provider-result"></div>`)}${panel("安装指标接入", `${help("directory")}<p id="directory-state" role="status">${esc(accountSummary(directory))}</p><form id="directory-account" class="source-account-form"><label>账户邮箱<input name="email" type="email" required autocomplete="off" value="${esc(directory.email || "")}" placeholder="${directory.configured ? "已保存，更换时填写" : "AppBrain 登录邮箱"}"></label>${secretField(esc, "password", "密码", credentials.directory?.password, true)}<div class="source-account-actions"><button type="submit">保存并检查授权</button><button type="button" id="directory-authorize" class="secondary" ${directory.configured ? "" : "disabled"}>重新检查授权</button></div></form><p class="sub">填写 AppBrain 自身的邮箱密码后点击保存；密码可通过右侧小眼睛查看。官网单点登录或验证码不会把浏览器会话同步到本系统；若持续要求验证，当前自动登录方式无法完成授权。</p>`)}${panel(
           "获取应用公开指标",
           `${filterBar({
             id: "source-app-query",
@@ -118,13 +127,34 @@ export function createDataSourcePage({
               esc(s.limits),
             ]),
           ),
-        )}${marketDataPanel(panel, esc, data.marketdata, connection("marketdata"))}`,
+        )}${marketDataPanel(panel, esc, { ...data.marketdata, ...credentials.marketdata }, connection("marketdata"))}`,
         revision,
       )
     )
       return;
     const root = $("#provider-account").closest("main");
-    bindMarketData({ $, api, esc, table, toast, root });
+    const syncAccounts = (result) => {
+      for (const id of ["community", "directory", "marketdata"]) {
+        if (!result[id]) continue;
+        data[id] = { ...data[id], ...result[id] };
+        const row = connection(id);
+        row.account = data[id];
+      }
+      const target = root.querySelector("#source-config-list");
+      if (target) target.innerHTML = sourceTable();
+    };
+    bindMarketData({
+      $,
+      api,
+      esc,
+      table,
+      toast,
+      root,
+      onAccountUpdate: syncAccounts,
+      onAccountReady: (update) => {
+        accountUpdates.marketdata = update;
+      },
+    });
     const loadCapacity = async () => {
       const capacity = await api("/data-sources/initial-capacity");
       const target = root.querySelector("#initial-capacity");
@@ -205,6 +235,17 @@ export function createDataSourcePage({
     });
 
     $("#source-config-list").onclick = (event) => {
+      const account = event.target.closest("[data-source-account]");
+      if (account) {
+        const prefix =
+          account.dataset.sourceAccount === "community"
+            ? "provider"
+            : account.dataset.sourceAccount;
+        const form = root.querySelector(`#${prefix}-account`);
+        form.scrollIntoView({ block: "center", behavior: "smooth" });
+        form.elements.email.focus({ preventScroll: true });
+        return;
+      }
       const button = event.target.closest("[data-source-edit]");
       if (!button) return;
       const source = data.connections.find(
@@ -253,6 +294,8 @@ export function createDataSourcePage({
             const current = connection(block.dataset.sourceGuide);
             block.innerHTML = `<strong>${esc(sourceTitle(current))}</strong>${sourceGuide(esc, current)}`;
           }
+          if (saved.account && accountUpdates[saved.id])
+            accountUpdates[saved.id]({ [saved.id]: saved.account });
           dialog.close();
           toast("数据源配置已保存");
           loadCapacity().catch(() => {});
@@ -266,47 +309,28 @@ export function createDataSourcePage({
       };
     };
 
-    const update = (result) => {
-      if (!root.querySelector("#provider-state")) return;
-      root.querySelector("#provider-state").textContent =
-        result.community.message;
-      root.querySelector("#provider-authorize").disabled =
-        !result.community.configured;
-      root.querySelector("#provider-datasets").disabled = false;
-    };
+    for (const [provider, prefix] of [
+      ["community", "provider"],
+      ["directory", "directory"],
+    ]) {
+      accountUpdates[provider] = bindSourceAccount({
+        root,
+        prefix,
+        provider,
+        api,
+        onUpdate: syncAccounts,
+      });
+    }
     const run = async (button, work) => {
       button.disabled = true;
       try {
         await work();
-      } catch (e) {
-        toast(e.message);
+      } catch (error) {
+        toast(error.message);
       } finally {
         if (button.isConnected) button.disabled = false;
       }
     };
-    $("#provider-account").onsubmit = (event) => {
-      event.preventDefault();
-      const form = event.currentTarget,
-        button = form.querySelector('[type="submit"]');
-      const value = {
-        email: form.elements.email.value,
-        password: form.elements.password.value,
-      };
-      form.elements.password.value = "";
-      run(button, async () => {
-        try {
-          const result = await api("/data-sources/community", value, "PUT");
-          if (form.isConnected) update(result);
-        } finally {
-          value.password = "";
-        }
-      });
-    };
-    $("#provider-authorize").onclick = (event) =>
-      run(event.currentTarget, async () => {
-        const result = await api("/data-sources/community/authorize", {});
-        if (event.target.isConnected) update(result);
-      });
     $("#provider-datasets").onclick = (event) =>
       run(event.currentTarget, async () => {
         const result = await api("/data-sources/community/datasets");
@@ -315,32 +339,6 @@ export function createDataSourcePage({
             ["可用文件"],
             result.files.map((f) => [esc(f)]),
           )}`;
-      });
-    const updateDirectory = (result) => {
-      $("#directory-state").textContent = result.directory.message;
-      $("#directory-authorize").disabled = !result.directory.configured;
-    };
-    $("#directory-account").onsubmit = (event) => {
-      event.preventDefault();
-      const form = event.currentTarget,
-        value = {
-          email: form.elements.email.value,
-          password: form.elements.password.value,
-        };
-      form.elements.password.value = "";
-      run(form.querySelector('[type="submit"]'), async () => {
-        try {
-          const result = await api("/data-sources/directory", value, "PUT");
-          if (form.isConnected) updateDirectory(result);
-        } finally {
-          value.password = "";
-        }
-      });
-    };
-    $("#directory-authorize").onclick = (event) =>
-      run(event.currentTarget, async () => {
-        const result = await api("/data-sources/directory/authorize", {});
-        if (event.target.isConnected) updateDirectory(result);
       });
     const queryForm = $("#source-app-query");
     queryForm.addEventListener("filter-reset", () =>

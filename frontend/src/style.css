@@ -302,6 +302,64 @@ p {
 .toolbar button {
   align-self: end;
 }
+.source-account-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+.source-account-form > label {
+  min-width: 0;
+}
+#marketdata-account {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 900px) {
+  .source-account-form,
+  #marketdata-account {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.source-account-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.source-secret {
+  display: block;
+  position: relative;
+}
+.source-secret input {
+  padding-right: 44px;
+  width: 100%;
+}
+.source-secret .source-secret-toggle {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  bottom: 2px;
+  width: 38px;
+  padding: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+}
+.source-secret-toggle:hover {
+  color: var(--accent);
+}
+.source-secret-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+.source-secret-toggle[aria-pressed="false"] .eye-slash {
+  display: none;
+}
+.source-account-form[aria-busy="true"] input {
+  opacity: 0.75;
+}
 .table-wrap {
   overflow: auto;
 }
