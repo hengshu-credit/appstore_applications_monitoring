@@ -184,7 +184,7 @@ export function createGlobalCharts(ctx) {
           )
             .map(
               (r) =>
-                `<li class="global-ranked-app" value="${Number(r.position)}" style="--rank-position:${Number(r.position)}"><span class="global-position" aria-hidden="true">${Number(r.position)}</span>${appLink(
+                `<li class="global-ranked-app" value="${Number(r.position)}"><span class="global-position" aria-hidden="true">${Number(r.position)}</span>${appLink(
                   c.store || store,
                   r.app_id,
                   r.name,
@@ -196,7 +196,7 @@ export function createGlobalCharts(ctx) {
             .join("")}</ol>`
         : `<div class="global-chart-empty"><strong>暂无数据</strong></div>`;
     const countryCard = (c) =>
-      `<section class="panel global-country" style="--chart-slots:${Math.max(1, ...c.boards.flatMap((b) => b.items.map((r) => Number(r.position))))}"><div class="panel-heading"><h2 class="global-country-title"><img class="country-flag" src="/flags/${esc(c.country)}.svg" alt="">${esc(c.name)}${store === "all" ? `<span class="sub">${storeName(c)}</span>` : ""}</h2><span class="sub">${esc(selectors.languageName(c.language))} <small>${esc(c.language)}</small></span></div><div class="global-lists" role="region" aria-label="${esc(c.name)}排行榜" tabindex="0">${c.boards
+      `<section class="panel global-country"><div class="panel-heading"><h2 class="global-country-title"><img class="country-flag" src="/flags/${esc(c.country)}.svg" alt="">${esc(c.name)}${store === "all" ? `<span class="sub">${storeName(c)}</span>` : ""}</h2><span class="sub">${esc(selectors.languageName(c.language))} <small>${esc(c.language)}</small></span></div><div class="global-lists" role="region" aria-label="${esc(c.name)}排行榜" tabindex="0">${c.boards
         .map(
           (b) =>
             `<section class="global-chart"><div class="global-chart-summary" title="${esc(boardMeta(b))}"><h3>${boardTitle(c, b, b.definition.name + (b.definition.mode === "derived" ? "（派生）" : ""))}</h3>${boardState(b) ? `<span class="global-chart-status" data-error="${Boolean(b.last_error)}">${esc(boardState(b))}</span>` : ""}</div><div class="global-chart-head" aria-hidden="true"><span>排名</span><span>应用</span></div>${applications(c, b)}</section>`,
@@ -213,7 +213,7 @@ export function createGlobalCharts(ctx) {
         ? [...countryMarkets.entries()]
             .map(
               ([country, markets]) =>
-                `<div class="global-market-group" data-country="${esc(country)}" style="--store-count:${markets.length}">${markets
+                `<div class="global-market-group" data-country="${esc(country)}">${markets
                   .sort(
                     (a, b) =>
                       Number(a.store === "apple") - Number(b.store === "apple"),
@@ -269,12 +269,26 @@ export function createGlobalCharts(ctx) {
           hasMore: data.has_more,
           prevId: "global-prev",
           nextId: "global-next",
-        })}<div id="global-rankings"><div class="global-board-grid" data-layout="${filters.layout}" data-store="${esc(store)}" style="--chart-display-depth:${Number(filters.depth)};--chart-count:${types.size}" role="region" aria-label="各国排行榜" tabindex="0">${cards}</div></div>`,
+        })}<div id="global-rankings"><div class="global-board-grid" data-layout="${filters.layout}" data-store="${esc(store)}" role="region" aria-label="各国排行榜" tabindex="0">${cards}</div></div>`,
         rev,
         `各国独立排名 · 本页有效 ${data.fresh_boards}/${data.requested_boards} 榜，已观察 ${data.observed_boards} 榜`,
       )
     )
       return;
+    // Set individual CSS properties after mounting. Style attributes in HTML
+    // are blocked by the production CSP, silently losing depth/count/rank slots.
+    const grid = $("#global-rankings .global-board-grid");
+    grid.style.setProperty("--chart-display-depth", String(Number(filters.depth)));
+    grid.style.setProperty("--chart-count", String(types.size));
+    for (const country of grid.querySelectorAll(".global-country")) {
+      const items = [...country.querySelectorAll(".global-ranked-app")];
+      country.style.setProperty(
+        "--chart-slots",
+        String(Math.max(1, ...items.map((item) => item.value))),
+      );
+      for (const item of items)
+        item.style.setProperty("--rank-position", String(item.value));
+    }
     const chartHover = bindGlobalChartHover({
       root: $("#global-rankings"),
       api,

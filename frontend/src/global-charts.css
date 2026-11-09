@@ -1,29 +1,23 @@
 .global-board-grid {
+  --chart-row-height: 64px;
   display: grid;
   max-width: 100%;
   grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 .global-board-grid[data-layout="columns"] {
-  display: block;
-  column-width: calc(var(--chart-count, 3) * 190px + 34px);
-  column-gap: 16px;
-}
-.global-board-grid[data-layout="columns"] > .global-country {
-  display: inline-block;
-  width: 100%;
-  margin: 0 0 16px;
-  break-inside: avoid;
-  vertical-align: top;
+  --country-width: calc(var(--chart-count, 3) * 190px + 34px);
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(min(100%, var(--country-width)), 1fr)
+  );
+  align-items: stretch;
 }
 .global-market-group {
   display: contents;
 }
 .global-board-grid[data-layout="columns"][data-store="all"] {
-  --country-width: calc(var(--chart-count, 3) * 190px + 34px);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
+  grid-template-columns: minmax(0, 1fr);
 }
 .global-board-grid[data-layout="columns"] .global-market-group {
   display: grid;
@@ -31,20 +25,15 @@
     auto-fit,
     minmax(min(100%, var(--country-width)), 1fr)
   );
-  flex: var(--store-count) 1
-    calc(
-      var(--store-count) * var(--country-width) + (var(--store-count) - 1) *
-        16px
-    );
   gap: 16px;
   min-width: 0;
   max-width: 100%;
-  align-items: start;
+  align-items: stretch;
 }
 .global-board-grid[data-layout="columns"] .global-lists {
   grid-template-columns: repeat(var(--chart-count, 3), minmax(0, 1fr));
   grid-auto-flow: row;
-  align-items: start;
+  align-items: stretch;
   overflow: visible;
 }
 .global-country-title {
@@ -64,6 +53,10 @@
   }
 }
 .global-board-grid[data-layout="columns"] .global-chart {
+  display: grid;
+  grid-template-rows: auto auto calc(
+      var(--chart-display-depth, 20) * var(--chart-row-height)
+    );
   border: 1px solid var(--line);
   background: var(--surface);
 }
@@ -99,13 +92,21 @@
   text-align: center;
 }
 .global-board-grid[data-layout="columns"] .global-ranked-app {
+  grid-row: var(--rank-position);
+  height: var(--chart-row-height);
+  min-height: 0;
   padding-block: 8px;
+}
+.global-board-grid[data-layout="columns"] .global-chart-apps {
+  display: grid;
+  grid-auto-rows: var(--chart-row-height);
+  align-content: start;
 }
 .global-board-grid[data-layout="columns"] .global-ranked-app:last-child {
   border-bottom: 0;
 }
 .global-board-grid[data-layout="columns"] .global-chart-empty {
-  min-height: calc(var(--chart-display-depth, 20) * 64px);
+  min-height: 0;
   justify-content: flex-start;
   padding-top: 24px;
 }
