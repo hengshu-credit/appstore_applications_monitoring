@@ -98,6 +98,7 @@ const newModules = (
     wrappedModule("app-insights.js", "createAppInsights"),
     wrappedModule("discovery.js", "createDiscoveryPages"),
     wrappedModule("global-chart-hover.js", "bindGlobalChartHover"),
+    wrappedModule("source-guidance.js", "sourceGuide,sourceTitle,sourceAddress"),
     wrappedModule("marketdata.js", "marketDataPanel,bindMarketData"),
     wrappedModule("data-sources.js", "createDataSourcePage"),
     wrappedModule("global-charts.js", "createGlobalCharts"),

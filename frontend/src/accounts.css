@@ -189,7 +189,11 @@ body.account-locked > :not(#login) {
   text-align: left;
 }
 .permission-table tbody th {
-  background: var(--surface);
+  background: inherit;
+  padding: 13px;
+  vertical-align: middle;
+  font-size: inherit;
+  letter-spacing: normal;
   font-weight: 500;
 }
 .account-admin .permission-table th,

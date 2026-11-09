@@ -1,3 +1,4 @@
+import { sourceGuide, sourceTitle } from "./source-guidance.js";
 const labels = {
   running: "采集中",
   paused: "已暂停",
@@ -20,7 +21,12 @@ const labels = {
   csv: "CSV 数据集",
 };
 
-export function marketDataPanel(panel, esc, state = {}) {
+export function marketDataPanel(
+  panel,
+  esc,
+  state = {},
+  source = { id: "marketdata", name: "商业市场数据" },
+) {
   const end = new Date().toISOString().slice(0, 10);
   const start = new Date(Date.now() - 365 * 86400000)
     .toISOString()
@@ -28,6 +34,7 @@ export function marketDataPanel(panel, esc, state = {}) {
   return panel(
     "市场数据采集",
     `
+    <div data-source-guide="marketdata"><strong>${esc(sourceTitle(source))}</strong>${sourceGuide(esc, source)}</div>
     <p id="marketdata-state" role="status">${esc(state.message || "未配置账户")}</p>
     <form id="marketdata-account" class="toolbar">
       <label>账户邮箱<input type="email" name="email" autocomplete="off" value="${esc(state.email || "")}" placeholder="可选，与密码一起填写"></label>

@@ -1,3 +1,4 @@
+import { sourceGuide, sourceTitle, sourceAddress } from "./source-guidance.js";
 import { filterBar, bindFilterBar } from "./filter-bar.js";
 import { marketDataPanel, bindMarketData } from "./marketdata.js";
 
@@ -17,14 +18,36 @@ export function createDataSourcePage({
         configured: false,
         message: "未配置账户",
       };
+    const connection = (id) =>
+      (data.connections || []).find((s) => s.id === id) || {
+        id,
+        name:
+          {
+            community: "公开元数据",
+            directory: "安装指标",
+            marketdata: "商业市场数据",
+          }[id] || id,
+        editable_origin: true,
+      };
+    const help = (id) =>
+      `<div data-source-guide="${id}"><strong>${esc(sourceTitle(connection(id)))}</strong>${sourceGuide(esc, connection(id))}</div>`;
     const sourceTable = () =>
       table(
-        ["数据源", "接入地址 / 仓库", "访问方式", "数据范围", "凭据", "操作"],
+        [
+          "数据源",
+          "接入地址 / 仓库",
+          "访问方式",
+          "数据范围",
+          "来源说明与配置入口",
+          "凭据",
+          "操作",
+        ],
         (data.connections || []).map((source) => [
-          esc(source.name),
-          esc(source.origin || "尚未配置"),
+          esc(sourceTitle(source)),
+          sourceAddress(esc, source.origin),
           esc(source.access),
           esc(source.fields),
+          sourceGuide(esc, source, true),
           source.account?.configured
             ? source.account.status === "endpoint_changed"
               ? "地址变更，需重新保存凭据"
@@ -47,7 +70,7 @@ export function createDataSourcePage({
     };
     if (
       !mount(
-        `${panel("数据源配置", `<div id="source-config-list">${sourceTable()}</div><p class="sub">配置保存在后台并实时回显。批量设置在新批次生效；修改接入地址后须重新保存账户凭据。</p>`)}${panel("首轮 24 小时容量", `<div id="initial-capacity">正在核算全库容量…</div>`)}${panel("公开批量数据包", `<div id="bulk-source-imports">正在读取本地数据包…</div>`)}${panel("公开指标接入", `<p id="provider-state" role="status">${esc(state.message)}${state.checked_at ? " · " + new Date(state.checked_at * 1000).toLocaleString() : ""}</p><form id="provider-account" class="toolbar"><label>账户邮箱<input type="email" name="email" required autocomplete="off" value="${esc(state.email || "")}" placeholder="${state.configured ? "已保存，更换账户时填写" : "公开元数据 登录邮箱"}"></label><label>密码<input type="password" name="password" required autocomplete="new-password"></label><button type="submit">保存并自动授权</button><button type="button" id="provider-authorize" class="secondary" ${state.configured ? "" : "disabled"}>检查 / 续期授权</button><button type="button" id="provider-datasets" class="secondary">读取免费数据目录</button></form><p class="sub">账密与会话加密保存在服务器，密码不回显。普通密码登录可自动授权；邮箱验证、验证码或二次验证需在 公开元数据 完成。授权不自动开通付费服务。</p><div id="provider-result"></div>`)}${panel("安装指标接入", `<p id="directory-state" role="status">${esc(directory.message)}</p><form id="directory-account" class="toolbar"><label>账户邮箱<input name="email" type="email" required autocomplete="off" value="${esc(directory.email || "")}" placeholder="${directory.configured ? "已保存，更换时填写" : "安装指标 登录邮箱"}"></label><label>密码<input name="password" type="password" required autocomplete="new-password"></label><button type="submit">保存并自动授权</button><button type="button" id="directory-authorize" class="secondary" ${directory.configured ? "" : "disabled"}>检查 / 续期授权</button></form><p class="sub">使用 安装指标 自身的邮箱密码；第三方单点登录和验证码需在来源网站完成。免费账户仅获取实际开放的数据。</p>`)}${panel(
+        `${panel("数据源配置", `<p class="sub">官方商店公开接口无需账号。第三方来源先核对接入地址，再在对应区域填写该网站的账户或 Token；这里填写的不是观星平台登录账号。点击配置可查看具体字段说明。</p><div id="source-config-list">${sourceTable()}</div><p class="sub">配置保存在后台并实时回显。批量设置在新批次生效；修改接入地址后须重新保存账户凭据。</p>`)}${panel("首轮 24 小时容量", `<div id="initial-capacity">正在核算全库容量…</div>`)}${panel("公开批量数据包", `<div id="bulk-source-imports">正在读取本地数据包…</div>`)}${panel("公开指标接入", `${help("community")}<p id="provider-state" role="status">${esc(state.message)}${state.checked_at ? " · " + new Date(state.checked_at * 1000).toLocaleString() : ""}</p><form id="provider-account" class="toolbar"><label>账户邮箱<input type="email" name="email" required autocomplete="off" value="${esc(state.email || "")}" placeholder="${state.configured ? "已保存，更换账户时填写" : "AppGoblin 登录邮箱"}"></label><label>密码<input type="password" name="password" required autocomplete="new-password"></label><button type="submit">保存并自动授权</button><button type="button" id="provider-authorize" class="secondary" ${state.configured ? "" : "disabled"}>检查 / 续期授权</button><button type="button" id="provider-datasets" class="secondary">读取免费数据目录</button></form><p class="sub">账密与会话加密保存在服务器，密码不回显。普通密码登录可自动授权；邮箱验证、验证码或二次验证需在 AppGoblin 完成。授权不自动开通付费服务。</p><div id="provider-result"></div>`)}${panel("安装指标接入", `${help("directory")}<p id="directory-state" role="status">${esc(directory.message)}</p><form id="directory-account" class="toolbar"><label>账户邮箱<input name="email" type="email" required autocomplete="off" value="${esc(directory.email || "")}" placeholder="${directory.configured ? "已保存，更换时填写" : "AppBrain 登录邮箱"}"></label><label>密码<input name="password" type="password" required autocomplete="new-password"></label><button type="submit">保存并自动授权</button><button type="button" id="directory-authorize" class="secondary" ${directory.configured ? "" : "disabled"}>检查 / 续期授权</button></form><p class="sub">使用 AppBrain 自身的邮箱密码；第三方单点登录和验证码需在来源网站完成。免费账户仅获取实际开放的数据。</p>`)}${panel(
           "获取应用公开指标",
           `${filterBar({
             id: "source-app-query",
@@ -61,8 +84,8 @@ export function createDataSourcePage({
                 type: "select",
                 options: [
                   ["auto", "自动兜底"],
-                  ["community", "公开元数据"],
-                  ["directory", "安装指标"],
+                  ["community", sourceTitle(connection("community"))],
+                  ["directory", sourceTitle(connection("directory"))],
                 ],
               },
               {
@@ -95,7 +118,7 @@ export function createDataSourcePage({
               esc(s.limits),
             ]),
           ),
-        )}${marketDataPanel(panel, esc, data.marketdata)}`,
+        )}${marketDataPanel(panel, esc, data.marketdata, connection("marketdata"))}`,
         revision,
       )
     )
@@ -189,7 +212,7 @@ export function createDataSourcePage({
       );
       const dialog = document.createElement("dialog");
       dialog.className = "collection-editor";
-      dialog.innerHTML = `<form id="source-binding-form" class="form-grid"><h2 class="full">${esc(source.name)}</h2>${source.editable_origin ? `<label class="full">HTTPS 接入地址<input name="origin" type="url" required value="${esc(source.origin || "")}"></label><label class="full">允许的域名（逗号分隔）<input name="hosts" required value="${esc((source.hosts || []).join(", "))}"></label>` : source.editable_token ? `<label>广告账户 ID<input name="ad_account_id" required value="${esc(source.ad_account_id || "")}"></label><label>访问令牌<input name="access_token" type="password" autocomplete="new-password" placeholder="${source.account?.configured ? "已保存，留空保留" : "填写访问令牌"}"></label>` : `<label class="full">每次请求最大任务数<input name="batch_size" type="number" min="1" max="${source.batch_max}" required value="${source.batch_size}"></label><p class="sub full">已验证最大 ${source.batch_max}。${esc(source.batch_scope || "同市场应用详情")}。保持国家、语言隔离和完整字段；超大请求会拆分补采。</p>`}<p class="sub full" role="status"></p><button type="submit">保存配置</button><button type="button" class="secondary" data-close-source>关闭</button></form>`;
+      dialog.innerHTML = `<form id="source-binding-form" class="form-grid"><h2 class="full">${esc(sourceTitle(source))}</h2><div class="full">${sourceGuide(esc, source)}</div>${source.editable_origin ? `<label class="full">HTTPS 接入地址<input name="origin" type="url" required value="${esc(source.origin || "")}"></label><label class="full">允许的域名（逗号分隔）<input name="hosts" required value="${esc((source.hosts || []).join(", "))}"></label>` : source.editable_token ? `<label>广告账户 ID<input name="ad_account_id" required value="${esc(source.ad_account_id || "")}"></label><label>访问令牌<input name="access_token" type="password" autocomplete="new-password" placeholder="${source.account?.configured ? "已保存，留空保留" : "填写访问令牌"}"></label>` : `<label class="full">每次请求最大任务数<input name="batch_size" type="number" min="1" max="${source.batch_max}" required value="${source.batch_size}"></label><p class="sub full">已验证最大 ${source.batch_max}。${esc(source.batch_scope || "同市场应用详情")}。保持国家、语言隔离和完整字段；超大请求会拆分补采。</p>`}<p class="sub full" role="status"></p><button type="submit">保存配置</button><button type="button" class="secondary" data-close-source>关闭</button></form>`;
       root.append(dialog);
       dialog.querySelector("[data-close-source]").onclick = () =>
         dialog.close();
@@ -226,6 +249,10 @@ export function createDataSourcePage({
           );
           if (root.querySelector("#source-config-list"))
             root.querySelector("#source-config-list").innerHTML = sourceTable();
+          for (const block of root.querySelectorAll("[data-source-guide]")) {
+            const current = connection(block.dataset.sourceGuide);
+            block.innerHTML = `<strong>${esc(sourceTitle(current))}</strong>${sourceGuide(esc, current)}`;
+          }
           dialog.close();
           toast("数据源配置已保存");
           loadCapacity().catch(() => {});

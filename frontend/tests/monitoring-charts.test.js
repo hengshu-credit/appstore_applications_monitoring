@@ -18,6 +18,43 @@ const key = (w, node, value) =>
     }),
   );
 
+test("chart geometry is initialized for asynchronously mounted axes and singleton points", async () => {
+  const w = new Window(),
+    d = w.document;
+  const dispose = bindMonitoringCharts(d);
+  try {
+    d.body.insertAdjacentHTML("beforeend", monitoringChart([{ at, value: 0 }]));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const point = d.querySelector(".plot-point");
+    assert.equal(point.style.left, "0%");
+    assert.equal(point.style.width, "100%");
+    assert.equal(point.style.getPropertyValue("--point-x"), "50%");
+    assert.equal(point.style.getPropertyValue("--point-y"), "100%");
+    assert.equal(d.querySelector(".plot-x-tick").style.left, "50%");
+    const ticks = [...d.querySelectorAll(".plot-y-axis span")];
+    assert.equal(new Set(ticks.map((e) => e.style.top)).size, ticks.length);
+    assert.ok(ticks.every((e) => e.style.top.endsWith("%")));
+    d.querySelector("figure").remove();
+    d.body.insertAdjacentHTML(
+      "beforeend",
+      monitoringChart([
+        { at, value: 2 },
+        { at: at + 86400 * 3, value: 4 },
+      ]),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const x = [...d.querySelectorAll(".plot-x-tick")].map((e) =>
+      parseFloat(e.style.left),
+    );
+    assert.equal(x[0], 0);
+    assert.equal(x.at(-1), 100);
+    assert.ok(x.every((value, i) => i === 0 || value > x[i - 1]));
+  } finally {
+    dispose();
+    w.happyDOM.abort();
+  }
+});
+
 test("trends preserve timestamp spacing, null gaps, exact values and safe source text", () => {
   const w = new Window(),
     d = w.document;
@@ -42,11 +79,11 @@ test("trends preserve timestamp spacing, null gaps, exact values and safe source
       /排名 #3/,
     );
     const points = [...d.querySelectorAll(".plot-point")];
+    const dispose = bindMonitoringCharts(d);
     assert.ok(
       parseFloat(points[1].style.width) < parseFloat(points[3].style.width),
     );
     assert.equal(points[4].style.getPropertyValue("--point-y"), "0%");
-    const dispose = bindMonitoringCharts(d);
     event(w, points[1], "pointerover");
     assert.equal(d.querySelector(".chart-tooltip").hidden, false);
     assert.match(

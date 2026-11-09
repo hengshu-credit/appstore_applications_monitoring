@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { Window } from "happy-dom";
+import { sourceGuide, sourceTitle, sourceAddress } from "../src/source-guidance.js";
 
 test("source configuration prefills saved values and persists batch changes without exposing credentials", async () => {
   const window = new Window();
@@ -17,6 +18,9 @@ test("source configuration prefills saved values and persists batch changes with
     "bindFilterBar",
     "marketDataPanel",
     "bindMarketData",
+    "sourceGuide",
+    "sourceTitle",
+    "sourceAddress",
     source + ";return createDataSourcePage;",
   )(
     window.document,
@@ -24,6 +28,9 @@ test("source configuration prefills saved values and persists batch changes with
     () => {},
     () => "",
     () => {},
+    sourceGuide,
+    sourceTitle,
+    sourceAddress,
   );
   const row = {
     id: "apple_lookup",

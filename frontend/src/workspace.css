@@ -804,3 +804,32 @@ table tr > :first-child:has(input[type="checkbox"]) {
 table td {
   vertical-align: middle;
 }
+.source-guide {
+  margin: 8px 0 16px;
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.source-guide p {
+  margin: 6px 0;
+}
+.source-guide-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 8px;
+}
+#source-config-list td {
+  white-space: normal;
+}
+#source-config-list table {
+  min-width: 1200px;
+}
+#source-config-list td:first-child {
+  white-space: nowrap;
+}
+#source-config-list .source-guide {
+  min-width: 190px;
+  max-width: 400px;
+  margin: 0;
+}

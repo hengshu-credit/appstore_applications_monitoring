@@ -23,7 +23,7 @@ table:not(.group-member-table) tbody tr {
 table:not(.group-member-table) tbody tr:nth-child(even) {
   background: var(--table-stripe);
 }
-table:not(.group-member-table) tbody td {
+table:not(.group-member-table) tbody :is(td, th) {
   background: inherit;
 }
 table:not(.group-member-table) tbody tr:hover {

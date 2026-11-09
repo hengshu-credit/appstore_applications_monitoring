@@ -154,10 +154,10 @@ export function monitoringChart(
         note =
           p.note ||
           (p.value === null ? "本次未观测到有效数值，曲线保留断线。" : "");
-      return `<button type="button" class="plot-point chart-datum" tabindex="${i === 0 ? 0 : -1}" aria-pressed="false" aria-label="${chartEscape(`${date} · ${label} ${value} ${note}`)}" data-date="${chartEscape(date)}" data-value="${chartEscape(value)}" data-raw="${p.value ?? ""}" data-note="${chartEscape(note)}" data-series="${chartEscape(options.label || (invert ? "排名" : ""))}" style="left:${left}%;width:${right - left}%;--point-x:${anchor}%;--point-y:${p.value === null ? 100 : y(p.value)}%"><span class="plot-cursor" aria-hidden="true"></span><span class="${p.value === null ? "plot-gap" : "plot-dot"}" aria-hidden="true"></span></button>`;
+      return `<button type="button" class="plot-point chart-datum" tabindex="${i === 0 ? 0 : -1}" aria-pressed="false" aria-label="${chartEscape(`${date} · ${label} ${value} ${note}`)}" data-date="${chartEscape(date)}" data-value="${chartEscape(value)}" data-raw="${p.value ?? ""}" data-note="${chartEscape(note)}" data-series="${chartEscape(options.label || (invert ? "排名" : ""))}" data-plot-left="${left}" data-plot-width="${right - left}" data-point-x="${anchor}" data-point-y="${p.value === null ? 100 : y(p.value)}"><span class="plot-cursor" aria-hidden="true"></span><span class="${p.value === null ? "plot-gap" : "plot-dot"}" aria-hidden="true"></span></button>`;
     })
     .join("");
-  return `<figure class="interactive-plot" aria-label="${chartEscape(options.label || "观察趋势")}，方向键浏览，回车固定提示"><div class="plot-viewport"><div class="plot-y-axis" aria-hidden="true">${scale.ticks.map((v) => `<span style="top:${y(v)}%">${chartEscape(numberLabel(v, 2, true))}</span>`).join("")}</div><div class="plot-canvas"><svg class="chart plot-lines" viewBox="0 0 1000 200" preserveAspectRatio="none" aria-hidden="true" focusable="false">${scale.ticks.map((v) => `<line class="gridline" x1="0" x2="1000" y1="${y(v) * 2}" y2="${y(v) * 2}" vector-effect="non-scaling-stroke"/>`).join("")}${segments
+  return `<figure class="interactive-plot" aria-label="${chartEscape(options.label || "观察趋势")}，方向键浏览，回车固定提示"><div class="plot-viewport"><div class="plot-y-axis" aria-hidden="true">${scale.ticks.map((v) => `<span data-plot-top="${y(v)}">${chartEscape(numberLabel(v, 2, true))}</span>`).join("")}</div><div class="plot-canvas"><svg class="chart plot-lines" viewBox="0 0 1000 200" preserveAspectRatio="none" aria-hidden="true" focusable="false">${scale.ticks.map((v) => `<line class="gridline" x1="0" x2="1000" y1="${y(v) * 2}" y2="${y(v) * 2}" vector-effect="non-scaling-stroke"/>`).join("")}${segments
     .filter((s) => s.length > 1)
     .map(
       (s) =>
@@ -165,7 +165,7 @@ export function monitoringChart(
     )
     .join(
       "",
-    )}</svg>${controls}${!values.length ? '<span class="plot-no-values">暂无有效数值</span>' : ""}</div><div class="plot-x-axis" aria-hidden="true">${ticks.map((t, i) => `<span class="plot-x-tick" data-anchor="${t.x === 0 ? "start" : t.x === 100 ? "end" : "middle"}" data-optional="${i % 2 === 1 && i < ticks.length - 1}" style="left:${t.x}%">${chartEscape(t.label)}</span>`).join("")}</div></div><figcaption class="plot-footer"><span>${points.length === 1 ? "单次观察 · " : ""}${chartEscape(dateLabel(first))}${dateLabel(first) !== dateLabel(last) ? " – " + chartEscape(dateLabel(last)) : ""} · 本地时间</span><span>悬停查看 · 点击固定</span></figcaption></figure>`;
+    )}</svg>${controls}${!values.length ? '<span class="plot-no-values">暂无有效数值</span>' : ""}</div><div class="plot-x-axis" aria-hidden="true">${ticks.map((t, i) => `<span class="plot-x-tick" data-anchor="${t.x === 0 ? "start" : t.x === 100 ? "end" : "middle"}" data-optional="${i % 2 === 1 && i < ticks.length - 1}" data-plot-left="${t.x}">${chartEscape(t.label)}</span>`).join("")}</div></div><figcaption class="plot-footer"><span>${points.length === 1 ? "单次观察 · " : ""}${chartEscape(dateLabel(first))}${dateLabel(first) !== dateLabel(last) ? " – " + chartEscape(dateLabel(last)) : ""} · 本地时间</span><span>悬停查看 · 点击固定</span></figcaption></figure>`;
 }
 
 export function monitoringBars(rows) {
@@ -190,6 +190,34 @@ export function bindMonitoringCharts(root = document) {
   if (bindings.has(root)) return bindings.get(root);
   const doc = root.nodeType === 9 ? root : root.ownerDocument,
     win = doc.defaultView;
+  // Apply geometry through CSS properties; HTML style attributes are blocked
+  // by the production CSP. Cover initial charts and later asynchronous renders.
+  const positions = {
+    "data-plot-left": "left",
+    "data-plot-top": "top",
+    "data-plot-width": "width",
+    "data-point-x": "--point-x",
+    "data-point-y": "--point-y",
+  };
+  const selector = Object.keys(positions)
+    .map((a) => `[${a}]`)
+    .join(",");
+  const place = (node) => {
+    if (!node.querySelectorAll) return;
+    const elements = [
+      ...(node.matches?.(selector) ? [node] : []),
+      ...node.querySelectorAll(selector),
+    ];
+    for (const element of elements) {
+      if (!element.closest(".interactive-plot")) continue;
+      for (const [attribute, property] of Object.entries(positions)) {
+        const raw = element.getAttribute(attribute);
+        if (raw !== null && raw.trim() !== "" && Number.isFinite(Number(raw)))
+          element.style.setProperty(property, `${Number(raw)}%`);
+      }
+    }
+  };
+  place(root);
   const tip = doc.createElement("div");
   tip.className = "chart-tooltip";
   tip.id = `chart-tooltip-${++tooltipSequence}`;
@@ -351,7 +379,9 @@ export function bindMonitoringCharts(root = document) {
     true,
   );
   on(win, "resize", clear);
-  const observer = new win.MutationObserver(() => {
+  const observer = new win.MutationObserver((records) => {
+    for (const record of records)
+      for (const node of record.addedNodes) place(node);
     if (active && !active.isConnected) clear();
   });
   observer.observe(root, { childList: true, subtree: true });
