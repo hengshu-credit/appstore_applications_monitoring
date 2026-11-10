@@ -459,7 +459,11 @@
 }
 .member-market-mix i {
   flex-basis: 0;
-  background: hsl(calc(219deg + var(--mix-index) * 79deg) 70% 54%);
+  background: color-mix(
+    in srgb,
+    var(--chart-accent) var(--mix-weight),
+    color-mix(in srgb, var(--chart-secondary) 45%, var(--surface))
+  );
 }
 .member-rank {
   color: var(--accent-text);

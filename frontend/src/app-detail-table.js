@@ -256,7 +256,7 @@ export function createAppDetailTable(ctx) {
             )
             .join(" · ");
           const bar = mix.length
-            ? `<span class="member-market-mix" role="img" aria-label="${esc("已收录市场占比 " + regionLabel)}" title="${esc("已收录市场占比 " + regionLabel)}">${mix.map((part) => `<i style="flex-grow:${Number(part.pct)};--mix-index:${part.country.charCodeAt(0) * 26 + part.country.charCodeAt(1)}"></i>`).join("")}</span>`
+            ? `<span class="member-market-mix" role="img" aria-label="${esc("已收录市场占比 " + regionLabel)}" title="${esc("已收录市场占比 " + regionLabel)}">${mix.map((part) => `<i style="flex-grow:${Number(part.pct)};--mix-weight:${35 + ((part.country.charCodeAt(0) * 26 + part.country.charCodeAt(1)) % 5) * 15}%"></i>`).join("")}</span>`
             : "";
           const value =
             Math.abs(Number(item.value)) >= 10000

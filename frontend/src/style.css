@@ -14,8 +14,9 @@ body {
   background: var(--bg);
   color: var(--ink);
 }
+/* Use tokens directly: production can load shared theme.css before this file. */
 a {
-  color: var(--accent);
+  color: var(--accent-text);
   text-decoration: none;
 }
 a:hover {
@@ -52,7 +53,7 @@ button.secondary {
 button.link {
   background: transparent;
   border: 0;
-  color: var(--accent);
+  color: var(--accent-text);
   padding: 2px 0;
   text-align: left;
   font-weight: 500;
@@ -98,7 +99,7 @@ label {
   width: 224px;
   inset: 0 auto 0 0;
   background: var(--nav);
-  color: #fff;
+  color: var(--nav-text);
   padding: 28px 18px;
   display: flex;
   flex-direction: column;
@@ -141,26 +142,26 @@ label {
 .nav-label {
   font-size: 10px;
   letter-spacing: 1.6px;
-  color: #8ea7ba;
+  color: var(--nav-muted);
   padding: 0 12px 14px;
 }
 #navigation a {
   display: flex;
   align-items: center;
   gap: 12px;
-  color: #b9c9d5;
+  color: var(--nav-text);
   padding: 10px 14px;
   margin: 3px 0;
   border-radius: var(--radius);
 }
 #navigation a.active {
-  color: #fff;
-  background: #244557;
-  box-shadow: inset 3px 0 #5ed0c0;
+  color: var(--on-brand);
+  background: var(--brand-background);
+  box-shadow: inset 3px 0 var(--on-brand);
 }
 #navigation a:hover {
-  color: #fff;
-  background: #203d52;
+  color: var(--nav-active-text);
+  background: var(--nav-hover);
   text-decoration: none;
 }
 #navigation .nav-icon {
@@ -173,7 +174,7 @@ label {
   width: 6px;
   height: 6px;
   border-radius: var(--radius);
-  background: #5ed0c0;
+  background: var(--nav-text);
   margin-right: 6px;
 }
 .shell {
@@ -250,7 +251,7 @@ p {
 }
 .metric {
   padding: 20px 22px;
-  border-top: 3px solid #7fbbc0;
+  border-top: 3px solid var(--accent);
 }
 .metric .value {
   font-size: 30px;
@@ -348,7 +349,7 @@ p {
   place-items: center;
 }
 .source-secret-toggle:hover {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .source-secret-toggle svg {
   width: 20px;
@@ -372,11 +373,11 @@ th {
   text-align: left;
   font-size: 11px;
   letter-spacing: 0.4px;
-  color: var(--muted);
+  color: var(--ink);
   font-weight: 600;
   border-bottom: 1px solid var(--line);
   padding: 12px 13px;
-  background: var(--soft);
+  background: var(--accent-soft);
   white-space: nowrap;
 }
 td {
@@ -406,7 +407,7 @@ tbody tr:hover {
   background: var(--accent-soft);
   display: grid;
   place-items: center;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 20px;
   flex-shrink: 0;
 }
@@ -516,7 +517,7 @@ tbody tr:hover {
   width: 9px;
   height: 9px;
   background: var(--accent);
-  border: 2px solid white;
+  border: 2px solid var(--surface);
   border-radius: var(--radius);
 }
 details {
@@ -590,11 +591,11 @@ footer a {
   position: fixed;
   bottom: 24px;
   right: 28px;
-  background: #18374b;
-  color: var(--on-accent);
+  background: var(--ink);
+  color: var(--surface);
   border-radius: var(--radius);
   padding: 13px 20px;
-  box-shadow: 0 8px 35px #17283d33;
+  box-shadow: 0 8px 24px var(--shadow);
   display: none;
   z-index: 40;
   max-width: min(520px, 90vw);
@@ -607,7 +608,7 @@ dialog {
   width: 90%;
 }
 dialog::backdrop {
-  background: #10243888;
+  background: var(--mask);
 }
 dialog label {
   margin: 18px 0;

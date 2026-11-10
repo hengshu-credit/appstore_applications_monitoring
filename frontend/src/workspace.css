@@ -771,7 +771,7 @@ input[type="file"]:not([type="hidden"]):not([type="radio"]):not(
 }
 @media (max-width: 1100px) {
   .overview-main {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .overview-actions a {
     align-items: flex-start;
