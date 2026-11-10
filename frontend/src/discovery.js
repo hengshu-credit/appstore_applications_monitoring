@@ -87,7 +87,7 @@ export function createDiscoveryPages(ctx) {
     mode: "store",
     collection: "top-free",
     category: "",
-    days: "7",
+    days: "0",
     as_of: "",
     q: "",
     metric: "ratings",
@@ -114,6 +114,8 @@ export function createDiscoveryPages(ctx) {
       chartStore = m.store;
     }
     if (preset) chartsState = { ...chartsState, ...preset };
+    if (chartsState.mode === "growth" && chartsState.days === "0")
+      chartsState.days = "7";
     const s = chartsState,
       definitions = selectors.chartDefinitions(m.store);
     if (s.as_of && s.as_of > new Date().toLocaleDateString("sv-SE"))
@@ -163,7 +165,7 @@ export function createDiscoveryPages(ctx) {
     };
     const headers =
       s.mode === "store"
-        ? ["选择", "位置", "应用", "开发者", "基榜位置", "名次升幅", "入榜状态"]
+        ? ["选择", "位置", "应用", "开发者", "历史位置", "名次升幅", "入榜状态"]
         : [
             "选择",
             "应用",
@@ -184,7 +186,7 @@ export function createDiscoveryPages(ctx) {
             r.position,
             appLink(m.store, r.app_id, r.name, r.icon),
             esc(r.developer || "—"),
-            r.base_position,
+            r.previous_position ?? "—",
             r.change == null
               ? "—"
               : (r.change > 0 ? "↑ " : r.change < 0 ? "↓ " : "") +
@@ -259,7 +261,10 @@ export function createDiscoveryPages(ctx) {
               type: "select",
               name: "days",
               label: "比较窗口",
-              options: [1, 7, 14, 30].map((n) => [n, n + "天"]),
+              options: [
+                ...(s.mode === "store" ? [[0, "相邻快照"]] : []),
+                ...[1, 7, 14, 30].map((n) => [n, n + "天"]),
+              ],
             },
             {
               name: "q",
@@ -432,7 +437,7 @@ export function createDiscoveryPages(ctx) {
   };
   const monitoringOverview = ({ data, error }) => {
     if (error)
-      return `<section class="panel keyword-coverage-overview"><div class="panel-heading"><h2>各国关键词覆盖</h2><button id="keyword-overview-retry" type="button" class="secondary small">重试</button></div><p role="status">各国覆盖统计暂时无法加载。</p></section>`;
+      return `<section class="panel keyword-coverage-overview"><div class="panel-heading"><h2>各国关键词覆盖</h2><button id="keyword-overview-retry" type="button" class="secondary small">重试</button></div><p role="status">各国覆盖统计暂时无法加载。${esc(error.message || "请稍后重试")}</p></section>`;
     const total = data.totals;
     return `<section class="panel keyword-coverage-overview" aria-label="各国关键词覆盖"><div class="panel-heading"><h2>各国关键词覆盖</h2><span class="sub">全系统 · 全部商店与国家 · ${esc(stamp(data.observed_at))}</span></div><div class="cards keyword-coverage-metrics">${metric("已纳入监控", total.monitored_words, "按国家和语言去重，包含暂停")}${metric("启用中", total.enabled_words, "至少一个商店启用监控")}${metric("有效采样", total.fresh_words, "至少一个商店有当前有效结果")}${metric("监控国家", total.monitoring_countries, `已收录 ${num(total.countries)} 个国家/地区`)}</div><div class="keyword-overview-tools"><label>筛选国家或语言<input id="keyword-overview-filter" type="search" placeholder="国家名称、国家代码或语言" ${data.items.length ? "" : "disabled"}></label><span id="keyword-overview-count" class="sub" aria-live="polite">${num(data.items.length)} 行</span></div>${table(
       [
@@ -513,7 +518,7 @@ export function createDiscoveryPages(ctx) {
             app_keyword_offset: coverageOffsets.app_keywords,
           }),
       );
-      content = `<div class="cards">${metric("跟踪词数", data.stats.tracked, "本市场词库规模")}${metric("有效词数", data.stats.fresh, "最新成功、未过期、深度一致")}</div><p class="callout">${esc(data.note)}</p>${filterBar(
+      content = `<div class="cards">${metric("跟踪词数", data.stats.tracked, "本市场词库规模")}${metric("有效词数", data.stats.fresh, "最新成功、未过期、深度一致")}${metric("已有采样", data.stats.sampled ?? data.stats.fresh, "包含过期或暂停的历史结果")}${metric("等待首次采集", data.stats.pending ?? 0, "启用且尚无成功采样")}</div>${Number(data.stats.tracked) > 0 && Number(data.stats.fresh) === 0 ? '<p class="callout">当前市场暂无有效采样，覆盖榜暂为空。已有历史结果仍保留；可采集本页关键词，完成后刷新查看。</p>' : ""}<p class="callout">${esc(data.note)}</p>${filterBar(
         {
           id: "coverage-app-form",
           submit: "查看",
@@ -567,16 +572,29 @@ export function createDiscoveryPages(ctx) {
       );
       content += panel(
         "市场关键词搜索排名",
-        table(
-          ["关键词", "返回结果数", "采集深度", "数据状态", "时间"],
-          data.keywords.map((r) => [
-            `<button class="link" data-keyword="${r.id}">${esc(r.keyword)}</button>`,
-            r.returned_count,
-            r.depth,
-            r.fresh ? "有效" : esc(r.last_error || "等待更新"),
-            stamp(r.observed_at),
-          ]),
-        ) + pager("keywords", data.pages?.keywords, data.keywords),
+        `<div class="toolbar"><button id="coverage-refresh" class="secondary" ${data.keywords.some((r) => r.enabled && r.status !== "running") ? "" : "disabled"}>采集本页关键词</button><button id="coverage-reload" class="secondary">刷新结果</button><span class="sub">仅采集本页启用的关键词，遵守共享限速；暂停任务保持暂停。</span></div>` +
+          table(
+            ["关键词", "返回结果数", "采集深度", "数据状态", "时间"],
+            data.keywords.map((r) => [
+              `<button class="link" data-keyword="${r.id}">${esc(r.keyword)}</button>`,
+              r.returned_count,
+              r.depth,
+              esc(
+                ({
+                  fresh: "有效",
+                  paused: "已暂停",
+                  running: "采集中",
+                  failed: "采集失败",
+                  pending: "等待首次采集",
+                  depth_changed: "采集深度已变更",
+                  stale: "历史结果已过期",
+                }[r.status] || (r.fresh ? "有效" : "等待更新")) +
+                  (r.last_error ? `：${r.last_error}` : ""),
+              ),
+              stamp(r.observed_at),
+            ]),
+          ) +
+          pager("keywords", data.pages?.keywords, data.keywords),
       );
     } else if (keywordTab === "candidates") {
       data = await api(
@@ -872,6 +890,18 @@ export function createDiscoveryPages(ctx) {
     )
       return;
     bindOverview(() => keywords(nextRevision()));
+    act("#coverage-reload", () => keywords(nextRevision()));
+    act("#coverage-refresh", async () => {
+      const tasks = data.keywords
+        .filter((r) => r.enabled && r.status !== "running")
+        .map((r) => ({ resource: "keywords", id: r.id }));
+      if (!tasks.length) return;
+      const result = await api("/research/collection/tasks/batch", {
+        tasks,
+        action: "refresh",
+      });
+      toast(`已优先安排 ${result.updated} 个关键词，完成后刷新结果`);
+    });
     document.querySelectorAll("[data-keyword-tab]").forEach((el) =>
       el.addEventListener("click", () => {
         keywordTab = el.dataset.keywordTab;

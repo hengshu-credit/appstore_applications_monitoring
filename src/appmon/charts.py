@@ -117,7 +117,7 @@ def view(db,store,country,language,collection='top-free',category='',cache=None,
     if spec['mode']=='derived':rows=[r|{'position':i} for i,r in enumerate(rows,1)]
     compatible=bool(current and previous and all(current[k]==previous[k] for k in ('source','parser_version','coverage')))
     for r in rows:
-        r['entry_status']='observed'
+        r['entry_status']='observed' if compatible else 'missing_baseline'
         if compatible and r['app_id'] not in old:
             r['entry_status']='entered_range' if r['base_position']<=previous['returned_count'] else 'unknown_depth'
     current_ids={r['app_id'] for r in items}

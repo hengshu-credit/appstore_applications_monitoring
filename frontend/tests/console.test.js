@@ -828,6 +828,12 @@ test("chart center exposes seven views and requests the selected collection", as
       '#chart-view-form [name="collection"]',
     );
     assert.equal(select.options.length, 7);
+    const days = window.document.querySelector(
+      '#chart-view-form [name="days"]',
+    );
+    assert.equal(days.value, "0");
+    assert.equal(days.options[0].textContent, "相邻快照");
+    assert.ok(calls.some((c) => c.path.includes("compare_days=0")));
     select.value = "new-grossing";
     select.dispatchEvent(new window.Event("change"));
     await tick();
@@ -3051,6 +3057,70 @@ test("multi-store tracking selects independent official categories and carries s
     window.location.hash = configure.getAttribute("href");
     await tick();
     assert.equal(doc.querySelector("#plan-category").value, "FINANCE");
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("keyword coverage explains stale samples and refreshes only enabled idle page tasks", async () => {
+  const { window, calls } = await setup((path) => {
+    if (path.startsWith("/api/discovery/keywords/coverage?"))
+      return {
+        ...emptyCoverage,
+        stats: { tracked: 3, fresh: 0, sampled: 1, pending: 1 },
+        keywords: [
+          {
+            id: 1,
+            keyword: "stale word",
+            enabled: 1,
+            status: "stale",
+            depth: 50,
+          },
+          {
+            id: 2,
+            keyword: "paused word",
+            enabled: 0,
+            status: "paused",
+            depth: 50,
+          },
+          {
+            id: 3,
+            keyword: "running word",
+            enabled: 1,
+            status: "running",
+            depth: 50,
+          },
+        ],
+      };
+    if (path === "/api/research/collection/tasks/batch") return { updated: 1 };
+  });
+  try {
+    window.location.hash = "keywords";
+    await tick();
+    const text = window.document.querySelector("main").textContent;
+    assert.match(text, /当前市场暂无有效采样/);
+    assert.match(text, /历史结果已过期/);
+    assert.match(text, /已暂停/);
+    window.document.querySelector("#coverage-refresh").click();
+    await tick();
+    const request = calls.find(
+      (c) => c.path === "/api/research/collection/tasks/batch",
+    );
+    assert.deepEqual(JSON.parse(request.options.body), {
+      tasks: [{ resource: "keywords", id: 1 }],
+      action: "refresh",
+    });
+    const before = calls.filter((c) =>
+      c.path.startsWith("/api/discovery/keywords/coverage?"),
+    ).length;
+    window.document.querySelector("#coverage-reload").click();
+    await tick();
+    assert.equal(
+      calls.filter((c) =>
+        c.path.startsWith("/api/discovery/keywords/coverage?"),
+      ).length,
+      before + 1,
+    );
   } finally {
     await window.happyDOM.close();
   }

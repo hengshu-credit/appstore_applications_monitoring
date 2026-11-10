@@ -91,6 +91,8 @@ def create_app(cfg):
 
     @app.exception_handler(pymysql.MySQLError)
     async def database_error(request, exc):
+        if exc.args and exc.args[0] == 4184:
+            return JSONResponse({"detail": "数据库数据盘容量不足，统计和采集暂不可用，请扩容 OceanBase 数据文件后重试"}, status_code=503)
         return JSONResponse({"detail": "数据库查询失败或超时，请缩小筛选范围或查看服务日志"}, status_code=503)
 
     @app.exception_handler(BotoCoreError)

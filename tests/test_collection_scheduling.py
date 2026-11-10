@@ -11,6 +11,21 @@ from test_monitor import OceanBaseTestCase
 
 
 class CollectionSchedulingTest(OceanBaseTestCase):
+    def test_manual_keyword_refresh_precedes_import_backlog_and_preserves_active_lease(self):
+        from appmon.collection_tasks import control_tasks
+        from appmon.target_batches import claim_targets
+        spec=dict(store='google',country='us',language='en')
+        ids=add_targets(self.db,[spec|{'keyword':f'word{i}'} for i in range(25)])['ids']
+        selected=ids[-1]
+        ref={'resource':'keywords','id':selected}
+        control_tasks(self.db,{'action':'refresh','tasks':[ref]})
+        rows=claim_targets(self.db,'keyword_targets',600,1)
+        self.assertEqual([r['id'] for r in rows],[selected])
+        before=self.db.execute('SELECT * FROM keyword_targets WHERE id=%s',(selected,)).fetchone()
+        control_tasks(self.db,{'action':'refresh','tasks':[ref]})
+        self.assertEqual(self.db.execute('SELECT * FROM keyword_targets WHERE id=%s',(selected,)).fetchone(),before)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM keyword_targets WHERE due=0').fetchone()['n'],24)
+
     def test_queue_pages_past_locked_prefix_and_returns_complete_leased_rows(self):
         from appmon.db import claim_details
         add_apps(self.db,[('apple',str(i),None,None) for i in range(1000,1080)],'fixture')

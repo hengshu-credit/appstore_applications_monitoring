@@ -219,13 +219,17 @@ def control_tasks(db, value):
                     db.execute('''UPDATE jobs SET token=NULL,lease_until=0
                         WHERE store=%s AND app_id=%s AND country=%s AND language=%s''',keys)
                 else:
-                    db.execute('''UPDATE jobs SET due=0 WHERE store=%s AND app_id=%s AND country=%s
-                        AND language=%s AND lease_until<=%s''',(*keys,time.time()))
+                    now=time.time()
+                    db.execute('''UPDATE jobs SET due=%s WHERE store=%s AND app_id=%s AND country=%s
+                        AND language=%s AND lease_until<=%s''',(-now,*keys,now))
             elif action in ('pause','resume'):
                 db.execute(f'UPDATE {table} SET enabled=%s,token=NULL,lease_until=0'+
                     (f',manual_paused={int(action=="pause")}' if resource=='media' else '')+' WHERE id=%s', (action=='resume',identifier))
             else:
-                db.execute(f'UPDATE {table} SET due=0'+(',failures=0,last_error=NULL' if resource=='sources' else '')+' WHERE id=%s AND lease_until<=%s', (identifier,time.time()))
+                # Explicit refresh must precede the potentially huge due=0 import backlog.
+                # Keep active leases, pause state and observation history intact.
+                now=time.time()
+                db.execute(f'UPDATE {table} SET due=%s'+(',failures=0,last_error=NULL' if resource=='sources' else '')+' WHERE id=%s AND lease_until<=%s', (-now,identifier,now))
             emit(db,resource,identifier,action,{'pause':'任务已暂停，当前租约已失效','resume':'任务已恢复，等待到期后领取','refresh':'已请求立即采集；由后台按租约和限速执行'}[action])
     return {'updated':len(refs),'action':action}
 

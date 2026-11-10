@@ -1,4 +1,6 @@
 import time
+import pymysql
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 from appmon import auth, keyword_discovery as kd
 from appmon.keywords import add_targets, claim_target, save_search
@@ -8,6 +10,15 @@ from test_monitor import OceanBaseTestCase
 
 
 class KeywordCoverageOverviewTest(OceanBaseTestCase):
+    def test_disk_capacity_error_reports_actionable_message_without_internal_details(self):
+        client = TestClient(create_app(self.cfg))
+        self.login_admin(client)
+        with patch.object(kd,'monitoring_overview',side_effect=pymysql.OperationalError(4184,'private server address')):
+            response=client.get('/api/discovery/keywords/overview')
+        self.assertEqual(response.status_code,503)
+        self.assertIn('扩容 OceanBase',response.json()['detail'])
+        self.assertNotIn('private',response.text)
+
     def test_empty_overview_requires_keyword_read_access(self):
         client = TestClient(create_app(self.cfg))
         path = '/api/discovery/keywords/overview'

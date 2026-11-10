@@ -26,6 +26,8 @@ docker compose -f compose.yaml --env-file .env --profile console --profile keywo
 
 前端默认 `http://127.0.0.1:5173`，API `http://127.0.0.1:8765/health`。新库通过前端初始化管理员。默认端口：OceanBase 2881、SeaweedFS S3 8333；均只绑定回环地址。
 
+OceanBase 数据文件默认预分配 15 GiB，可用 `OCEANBASE_DATAFILE_SIZE` 调整。主机磁盘有余量不代表数据库数据文件有余量：旧的 5 GiB 数据卷可能在大词库聚合时返回错误 4184，同时阻塞统计和采集。已有卷不会随 Compose 环境变量自动扩容；确认底层磁盘空间后，以 `root@sys` 在 OceanBase 执行 `ALTER SYSTEM SET datafile_size='15G'`，并在 `.env` 同步 `OCEANBASE_DATAFILE_SIZE=15G`。扩容保留现有数据，不需要删除或重建卷。
+
 线上对象下载需将 `S3_PUBLIC_ENDPOINT` 设置为浏览器可访问的 HTTPS 地址，并由代理转发 S3 请求。修改外部域名后必须重新生成签名，不要修改已签名 URL 的主机或路径。桶必须从创建时启用认证；添加服务器密钥不能自动纠正既有匿名桶的权限。
 
 ## 开发与测试

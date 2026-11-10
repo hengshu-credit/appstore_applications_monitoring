@@ -76,7 +76,7 @@ class CollectionCenterTest(OceanBaseTestCase):
         with self.assertRaises(ValueError):control_tasks(self.db,{'action':'refresh','tasks':[ref]})
         control_tasks(self.db,{'action':'resume','tasks':[ref]})
         control_tasks(self.db,{'action':'refresh','tasks':[ref]})
-        self.assertEqual(self.db.execute('SELECT due FROM keyword_targets').fetchone()['due'],0)
+        self.assertLess(self.db.execute('SELECT due FROM keyword_targets').fetchone()['due'],0)
 
     def test_full_pool_worker_cannot_bypass_watchlist_pause_and_stale_result_rejected(self):
         m=self.seed();row=list_tasks(self.db,kind='details')['items'][0]

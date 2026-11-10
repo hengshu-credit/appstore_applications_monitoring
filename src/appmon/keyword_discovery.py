@@ -210,7 +210,11 @@ def coverage(db,m,app_id='',app_offset=0,keyword_offset=0,app_keyword_offset=0,q
     now=time.time();args=tuple(m[k] for k in ('store','country','language'))
     scope='t.store=%s AND t.country=%s AND t.language=%s'
     base=' FROM keyword_targets t LEFT JOIN keyword_runs r ON r.id=t.latest_success_id WHERE '+scope
-    stats=db.execute('SELECT count(*) tracked,COALESCE(SUM('+fresh_sql()+'),0) fresh'+base,(now,*args)).fetchone()
+    stats=db.execute('''SELECT count(*) tracked,COALESCE(SUM('''+fresh_sql()+'''),0) fresh,
+        COALESCE(SUM(r.id IS NOT NULL),0) sampled,
+        COALESCE(SUM(t.enabled=1 AND r.id IS NULL),0) pending,
+        COALESCE(SUM(t.enabled=0),0) paused'''+base,(now,*args)).fetchone()
+    stats={k:int(v) for k,v in stats.items()}
     join=' FROM keyword_targets t JOIN keyword_runs r ON r.id=t.latest_success_id JOIN keyword_ranks k ON k.run_id=r.id WHERE '+scope+' AND '+fresh_sql()
     app_total=db.execute('SELECT count(DISTINCT k.app_id) total'+join,(*args,now)).fetchone()['total']
     apps=db.execute('''SELECT k.app_id,MAX(k.name) name,count(*) covered,SUM(k.position<=3) top3,
@@ -224,9 +228,13 @@ def coverage(db,m,app_id='',app_offset=0,keyword_offset=0,app_keyword_offset=0,q
     term_filter=' AND LOCATE(LOWER(%s),LOWER(t.keyword))>0' if q else ''
     term_args=(*args,q) if q else args
     term_total=db.execute('SELECT count(*) total'+base+term_filter,term_args).fetchone()['total']
-    terms=db.execute('''SELECT t.id,t.keyword,t.depth,r.observed_at,r.returned_count,r.source,
+    terms=db.execute('''SELECT t.id,t.keyword,t.depth,t.enabled,t.failures,t.lease_until,r.requested_depth,r.observed_at,r.returned_count,r.source,
         CASE WHEN '''+fresh_sql()+''' THEN 1 ELSE 0 END fresh,t.last_error'''+base+term_filter+' ORDER BY t.keyword,t.id LIMIT %s OFFSET %s',(now,*term_args,limit,keyword_offset)).fetchall()
     app_terms=[]
+    for term in terms:
+        term['status']=('paused' if not term['enabled'] else 'running' if term['lease_until']>now else
+            'failed' if term['failures'] else 'pending' if term['observed_at'] is None else
+            'depth_changed' if term['requested_depth']!=term['depth'] else 'fresh' if term['fresh'] else 'stale')
     if app_id:
         app_terms=db.execute('''SELECT t.id,t.keyword,k.position,r.observed_at,r.returned_count,r.source,'''+fresh_sql()+''' fresh
             FROM keyword_targets t LEFT JOIN keyword_runs r ON r.id=t.latest_success_id

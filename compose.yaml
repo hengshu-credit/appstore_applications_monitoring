@@ -12,7 +12,7 @@ services:
       OB_TENANT_PASSWORD: ${OCEANBASE_PASSWORD:?Run scripts/configure_storage.py}
       OB_SYS_PASSWORD: ${OCEANBASE_SYS_PASSWORD:?Run scripts/configure_storage.py}
       OB_MEMORY_LIMIT: ${OCEANBASE_MEMORY_LIMIT:-6G}
-      OB_DATAFILE_SIZE: ${OCEANBASE_DATAFILE_SIZE:-5G}
+      OB_DATAFILE_SIZE: ${OCEANBASE_DATAFILE_SIZE:-15G}
       OB_LOG_DISK_SIZE: ${OCEANBASE_LOG_DISK_SIZE:-5G}
     volumes:
       - oceanbase_data:/root/ob
