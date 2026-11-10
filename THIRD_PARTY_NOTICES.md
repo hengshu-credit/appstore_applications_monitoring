@@ -71,3 +71,8 @@ Data provided by [AppGoblin](https://appgoblin.info).
   follow `core/pagination.ts`, `core/clusterItem.ts`, and
   `features/search/specs.ts` in the same pinned MIT scraper. The local pagination
   state machine adds strict completion checks and per-target batch isolation.
+
+- API documentation uses Swagger UI 5.34.1 (Apache-2.0), bundled locally from
+  `swagger-ui-dist`. Project: https://github.com/swagger-api/swagger-ui.
+  License, upstream notice and bundled dependency notices are retained in
+  `frontend/public/licenses/swagger-ui*.txt`.

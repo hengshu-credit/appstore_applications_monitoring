@@ -75,7 +75,9 @@ docker compose -f compose.yaml --env-file .env --profile console stop web consol
 
 ## API
 
-接口定义在 `/api/openapi.json`（受相同鉴权保护）。主要资源：
+可读接口文档位于 `/api/docs`，控制台页脚的“API 文档”可直接打开。页面使用本地打包的 Swagger UI，沿用观星主题、深浅色与直角样式，支持按业务分组、搜索路径/名称、展开参数与响应模型。文档为只读参考，不在页面中执行接口请求。
+
+原始接口定义保留在 `/api/openapi.json`，供程序与 OpenAPI 工具使用，仍仅允许已登录的管理员访问。未登录或无权限时文档页给出登录或权限提示；登录后点击“重新加载”即可。前端开发服务器和生产 Nginx 均提供 `/api/docs`，文档资源随前端构建交付，无需访问外部 CDN。主要资源：
 
 - `GET /api/pool`、`/overview`、`/apps`、`/apps/{store}/{app_id}`。
 - `GET/POST /api/watchlist`、`/targets`、`/keywords`；任务通过 `POST /api/control/{resource}/{id}` 暂停、恢复或安排刷新。

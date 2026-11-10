@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>API 文档 · 衡枢·观星</title>
+    <link rel="icon" type="image/svg+xml" href="/images/hengshucredit.svg" />
+    <script type="module" src="/src/api-docs.js"></script>
+  </head>
+  <body class="api-docs-page">
+    <header class="docs-header">
+      <a class="docs-brand" href="/" aria-label="返回观星控制台">
+        <img src="/images/hengshucredit.svg" width="32" height="32" alt="" />
+        <span>衡枢·观星 <small>开发者文档</small></span>
+      </a>
+      <nav aria-label="文档操作">
+        <a href="/api/openapi.json" target="_blank" rel="noopener"
+          >OpenAPI JSON ↗</a
+        >
+        <button id="open-theme" type="button" class="secondary">
+          主题设置
+        </button>
+        <a class="docs-console" href="/">返回控制台</a>
+      </nav>
+    </header>
+    <div class="docs-layout">
+      <aside class="docs-sidebar">
+        <p class="docs-eyebrow">API REFERENCE</p>
+        <h1>接口文档</h1>
+        <p class="docs-intro">浏览接口、请求参数与响应模型。</p>
+        <label class="docs-search"
+          >搜索接口
+          <input
+            id="api-doc-search"
+            type="search"
+            placeholder="路径、名称或分组"
+            disabled
+          />
+        </label>
+        <p id="api-doc-count" class="docs-count" role="status"></p>
+        <nav id="api-doc-groups" aria-label="接口分组"></nav>
+        <a
+          class="docs-credit"
+          href="https://github.com/swagger-api/swagger-ui"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Powered by Swagger UI ↗</a
+        >
+      </aside>
+      <main class="docs-content">
+        <section class="docs-banner">
+          <div>
+            <p class="docs-eyebrow">衡枢 · 观星</p>
+            <h2>让数据连接你的应用</h2>
+            <p>按业务分组查阅接口，展开查看参数、数据结构和响应示例。</p>
+          </div>
+          <span id="api-doc-version" class="docs-version">OpenAPI</span>
+        </section>
+        <section id="api-doc-status" class="docs-status" role="status">
+          <h2 id="api-doc-status-title">正在加载接口文档</h2>
+          <p id="api-doc-status-message">正在读取当前服务的 OpenAPI 定义…</p>
+          <div class="docs-status-actions">
+            <button id="api-doc-retry" type="button" hidden>重新加载</button>
+            <a id="api-doc-login" href="/" target="_blank" rel="noopener" hidden
+              >前往控制台登录 ↗</a
+            >
+          </div>
+        </section>
+        <p id="api-doc-empty" class="docs-status" hidden>
+          没有匹配的接口，请换一个路径、名称或分组关键词。
+        </p>
+        <div id="api-reference"></div>
+      </main>
+    </div>
+  </body>
+</html>
