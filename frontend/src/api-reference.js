@@ -153,13 +153,70 @@ export function apiGroups(spec) {
 }
 
 export function createApiDocs({ doc, fetcher, renderReference }) {
+  const win = doc.defaultView;
   const get = (id) => doc.getElementById(id);
   const status = get("api-doc-status"),
     search = get("api-doc-search"),
     retry = get("api-doc-retry");
   let spec,
+    reference,
+    activeGroup,
     loading = false;
+  let stopNavigation = () => {};
+  function navigateGroup(name) {
+    stopNavigation();
+    const root = get("api-reference");
+    let idleTimer, timer;
+    const observer = new win.MutationObserver(schedule);
+    const stop = () => {
+      observer.disconnect();
+      win.removeEventListener("scroll", schedule, true);
+      win.removeEventListener("wheel", stop);
+      win.removeEventListener("touchstart", stop);
+      win.clearTimeout(idleTimer);
+      win.clearTimeout(timer);
+    };
+    function schedule() {
+      win.clearTimeout(idleTimer);
+      idleTimer = win.setTimeout(align, 150);
+    }
+    function align() {
+      const heading = [...root.querySelectorAll(".opblock-tag")].find(
+        (element) => element.dataset.tag === name,
+      );
+      if (!heading || heading.dataset.isOpen === "false") return;
+      if (
+        root.querySelector(".operations-virtual") &&
+        reference.layoutSelectors?.getScrollToVirtualizedOperation?.()
+      ) {
+        schedule();
+        return;
+      }
+      // Virtualizer measurements can adjust the scroll repeatedly. Align once they settle.
+      stop();
+      heading.scrollIntoView({ block: "start", behavior: "instant" });
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+    }
+    observer.observe(root, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-is-open"],
+    });
+    win.addEventListener("scroll", schedule, { passive: true, capture: true });
+    win.addEventListener("wheel", stop, { passive: true });
+    win.addEventListener("touchstart", stop, { passive: true });
+    stopNavigation = stop;
+    timer = win.setTimeout(stop, 3000);
+    const key = ["operations-tag", name];
+    reference.layoutActions.clearScrollTo();
+    reference.layoutActions.show(key, true);
+    reference.layoutActions.scrollToVirtualizedOperation(key);
+    schedule();
+  }
   function render() {
+    stopNavigation();
     const visible = filterApiSpec(spec, search.value);
     const { total, groups } = apiGroups(visible);
     get("api-doc-count").textContent =
@@ -168,6 +225,28 @@ export function createApiDocs({ doc, fetcher, renderReference }) {
       ...groups.map(({ name, count }) => {
         const link = doc.createElement("a");
         link.href = "#/" + encodeURIComponent(name);
+        link.dataset.apiGroup = name;
+        if (name === activeGroup) link.setAttribute("aria-current", "location");
+        link.addEventListener("click", (event) => {
+          if (
+            event.button !== 0 ||
+            event.ctrlKey ||
+            event.metaKey ||
+            event.shiftKey ||
+            event.altKey
+          )
+            return;
+          event.preventDefault();
+          // Expand and mount the group before positioning its heading below the header.
+          navigateGroup(name);
+          activeGroup = name;
+          get("api-doc-groups")
+            .querySelectorAll("a")
+            .forEach((item) => {
+              if (item === link) item.setAttribute("aria-current", "location");
+              else item.removeAttribute("aria-current");
+            });
+        });
         const label = doc.createElement("span"),
           badge = doc.createElement("span");
         label.textContent = name;
@@ -178,7 +257,7 @@ export function createApiDocs({ doc, fetcher, renderReference }) {
     );
     get("api-doc-empty").hidden = total > 0;
     get("api-reference").hidden = total === 0;
-    renderReference({
+    reference = renderReference({
       domNode: get("api-reference"),
       spec: visible,
       deepLinking: true,

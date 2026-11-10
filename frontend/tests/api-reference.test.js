@@ -129,6 +129,162 @@ test("docs load the protected JSON from the same origin and search locally witho
   }
 });
 
+test("sidebar links activate offscreen groups through the current Swagger instance, including repeated and filtered navigation", async () => {
+  const win = new Window({ url: "http://localhost/api/docs" });
+  try {
+    win.document.body.innerHTML = html;
+    const calls = [];
+    let generation = 0;
+    const docs = createApiDocs({
+      doc: win.document,
+      fetcher: async () => ({
+        ok: true,
+        status: 200,
+        json: async () => schema,
+      }),
+      renderReference: () => {
+        const current = ++generation;
+        return {
+          layoutActions: {
+            clearScrollTo: () => {},
+            show: (key, open) => calls.push({ current, key, open }),
+            scrollToVirtualizedOperation: (key) =>
+              calls.push({ current, mount: key }),
+          },
+        };
+      },
+    });
+    await docs.load();
+    const linkFor = (name) =>
+      [...win.document.querySelectorAll("#api-doc-groups a")].find(
+        (link) => link.dataset.apiGroup === name,
+      );
+    const keyword = linkFor("关键词与 ASO");
+    assert.equal(
+      keyword.getAttribute("href"),
+      "#/" + encodeURIComponent("关键词与 ASO"),
+    );
+    assert.equal(
+      win.document.querySelector(".opblock-tag"),
+      null,
+      "offscreen virtualized headings need not exist yet",
+    );
+    keyword.querySelector("span").click();
+    keyword.click();
+    assert.deepEqual(calls, [
+      { current: 1, key: ["operations-tag", "关键词与 ASO"], open: true },
+      { current: 1, mount: ["operations-tag", "关键词与 ASO"] },
+      { current: 1, key: ["operations-tag", "关键词与 ASO"], open: true },
+      { current: 1, mount: ["operations-tag", "关键词与 ASO"] },
+    ]);
+    assert.equal(keyword.getAttribute("aria-current"), "location");
+    const modifiedClick = new win.MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+    });
+    keyword.dispatchEvent(modifiedClick);
+    assert.equal(
+      modifiedClick.defaultPrevented,
+      false,
+      "modified clicks retain normal link behavior",
+    );
+    assert.equal(calls.length, 4);
+    const search = win.document.getElementById("api-doc-search");
+    search.value = "服务状态";
+    search.dispatchEvent(new win.Event("input"));
+    const next = linkFor("服务状态");
+    next.click();
+    assert.deepEqual(calls.at(-1), {
+      current: 2,
+      mount: ["operations-tag", "服务状态"],
+    });
+    assert.equal(next.getAttribute("aria-current"), "location");
+    search.value = "";
+    search.dispatchEvent(new win.Event("input"));
+    linkFor("应用与分组").click();
+    assert.deepEqual(calls.at(-1), {
+      current: 3,
+      mount: ["operations-tag", "应用与分组"],
+    });
+    assert.equal(linkFor("服务状态").hasAttribute("aria-current"), false);
+  } finally {
+    await win.happyDOM.close();
+  }
+});
+
+test(
+  "directory alignment waits for a mounted group and cancels stale navigation after filtering",
+  { timeout: 3000 },
+  async () => {
+    const win = new Window({ url: "http://localhost/api/docs" });
+    try {
+      win.document.body.innerHTML = html;
+      const root = win.document.getElementById("api-reference");
+      let scrolling = false,
+        alignments = 0,
+        resolveAlignment;
+      const aligned = new Promise((resolve) => {
+        resolveAlignment = resolve;
+      });
+      const docs = createApiDocs({
+        doc: win.document,
+        fetcher: async () => ({
+          ok: true,
+          status: 200,
+          json: async () => schema,
+        }),
+        renderReference: () => ({
+          layoutActions: {
+            clearScrollTo: () => {},
+            show: () => {},
+            scrollToVirtualizedOperation: () => {
+              scrolling = true;
+            },
+          },
+          layoutSelectors: { getScrollToVirtualizedOperation: () => scrolling },
+        }),
+      });
+      await docs.load();
+      win.document.querySelector('[data-api-group="服务状态"]').click();
+      assert.equal(alignments, 0);
+      const heading = win.document.createElement("h3");
+      heading.className = "opblock-tag";
+      heading.dataset.tag = "服务状态";
+      heading.dataset.isOpen = "true";
+      heading.scrollIntoView = (options) => {
+        assert.equal(
+          scrolling,
+          true,
+          "non-virtualized filtered lists leave Swagger's virtual scroll key unconsumed",
+        );
+        assert.deepEqual(options, { block: "start", behavior: "instant" });
+        alignments++;
+        resolveAlignment();
+      };
+      root.append(heading);
+      await aligned;
+      assert.equal(alignments, 1);
+      assert.equal(win.document.activeElement, heading);
+      win.document.querySelector('[data-api-group="服务状态"]').click();
+      const search = win.document.getElementById("api-doc-search");
+      search.value = "应用";
+      search.dispatchEvent(new win.Event("input"));
+      scrolling = false;
+      root.append(win.document.createElement("div"));
+      win.dispatchEvent(new win.Event("scroll"));
+      await new Promise((resolve) => win.setTimeout(resolve, 200));
+      assert.equal(
+        alignments,
+        1,
+        "search changes must cancel pending directory positioning",
+      );
+    } finally {
+      await win.happyDOM.close();
+    }
+  },
+);
+
 test("expired login and forbidden access never render the schema, and reloading recovers", async () => {
   const win = new Window();
   try {

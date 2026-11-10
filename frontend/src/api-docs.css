@@ -8,6 +8,12 @@ body {
   font-size: 14px;
   line-height: 1.6;
 }
+.api-docs-page {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 a {
   color: var(--accent-text);
   text-decoration: none;
@@ -32,6 +38,7 @@ button {
   outline-offset: 3px;
 }
 .docs-header {
+  flex-shrink: 0;
   min-height: 76px;
   padding: 16px 28px;
   display: flex;
@@ -80,15 +87,16 @@ button {
   color: var(--on-accent);
 }
 .docs-layout {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
   display: grid;
   grid-template-columns: 256px minmax(0, 1fr);
   max-width: 1800px;
   margin: auto;
 }
 .docs-sidebar {
-  position: sticky;
-  top: 76px;
-  height: calc(100dvh - 76px);
+  min-height: 0;
   overflow: auto;
   padding: 28px 20px;
   border-right: 1px solid var(--line);
@@ -143,7 +151,8 @@ button {
   border-left: 2px solid transparent;
 }
 #api-doc-groups a:hover,
-#api-doc-groups a:focus-visible {
+#api-doc-groups a:focus-visible,
+#api-doc-groups a[aria-current="location"] {
   background: var(--accent-soft);
   color: var(--accent-text);
   border-left-color: var(--accent);
@@ -161,6 +170,8 @@ button {
   margin: 32px 10px 0;
 }
 .docs-content {
+  position: relative;
+  overflow: auto;
   min-width: 0;
   padding: 28px 36px 60px;
 }
@@ -284,7 +295,7 @@ button {
   font-size: 17px;
   border-bottom-color: var(--line);
   padding: 16px 12px;
-  scroll-margin-top: 90px;
+  scroll-margin-top: 16px;
 }
 .api-docs-page .swagger-ui .opblock-tag:hover {
   background: var(--accent-soft);
@@ -387,6 +398,11 @@ dialog::backdrop {
   background: var(--mask);
 }
 @media (max-width: 900px) {
+  .api-docs-page {
+    display: block;
+    height: auto;
+    overflow: visible;
+  }
   .docs-header {
     position: static;
     padding: 16px;
@@ -425,7 +441,11 @@ dialog::backdrop {
     margin: 14px 0 0;
   }
   .docs-content {
+    overflow: visible;
     padding: 20px 16px;
+  }
+  .api-docs-page .swagger-ui .opblock-tag {
+    scroll-margin-top: 16px;
   }
   .docs-banner {
     padding: 18px;
