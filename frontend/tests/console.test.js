@@ -2318,6 +2318,98 @@ const emptyGlobalBoard = () => ({
   available_countries: [{ code: "us", name: "美国", english: "United States" }],
 });
 
+test("global country page size changes the request and cards, resets the page and persists per store", async () => {
+  const countries = catalogFixture.countries
+    .filter((c) => c.apple_supported)
+    .slice(0, 25);
+  const { window, calls } = await setup((path) => {
+    if (!path.startsWith("/api/charts/global?")) return;
+    const query = new URL(path, "http://localhost").searchParams;
+    const size = Number(query.get("page_size") || 6);
+    const offset = Number(query.get("offset") || 0);
+    return {
+      ...emptyGlobalBoard(),
+      selected_codes: countries.map((c) => c.code),
+      total_countries: countries.length,
+      page_size: size,
+      has_more: offset + size < countries.length,
+      available_countries: countries,
+      countries: countries.slice(offset, offset + size).map((c) => ({
+        country: c.code,
+        name: c.name,
+        language: "en",
+        boards: [],
+      })),
+    };
+  });
+  const query = () =>
+    new URL(
+      calls.filter((c) => c.path.startsWith("/api/charts/global?")).at(-1).path,
+      "http://localhost",
+    ).searchParams;
+  const sizePicker = () =>
+    window.document.querySelector('[aria-label="每页国家数"]');
+  const setSize = async (value) => {
+    sizePicker().value = String(value);
+    sizePicker().dispatchEvent(new window.Event("change", { bubbles: true }));
+    await tick();
+  };
+  const switchStore = async (value) => {
+    const picker = window.document.querySelector("#global-store");
+    picker.value = value;
+    picker.dispatchEvent(new window.Event("change"));
+    await tick();
+  };
+  try {
+    window.location.hash = "globalcharts";
+    await tick();
+    assert.equal(sizePicker().disabled, false);
+    assert.deepEqual(
+      [...sizePicker().options].map((o) => o.value),
+      ["3", "6", "9", "12"],
+    );
+    await setSize(12);
+    assert.equal(query().get("page_size"), "12");
+    assert.equal(query().get("offset"), "0");
+    assert.equal(
+      window.document.querySelectorAll(".global-country").length,
+      12,
+    );
+    window.document.querySelector("#global-next").click();
+    await tick();
+    assert.equal(query().get("offset"), "12");
+    assert.equal(
+      window.document.querySelectorAll(".global-country").length,
+      12,
+    );
+    await setSize(3);
+    assert.equal(query().get("offset"), "0");
+    assert.equal(window.document.querySelectorAll(".global-country").length, 3);
+    const form = window.document.querySelector("#global-chart-form");
+    form.elements.depth.value = "50";
+    form.dispatchEvent(
+      new window.Event("submit", { bubbles: true, cancelable: true }),
+    );
+    await tick();
+    assert.equal(query().get("page_size"), "3");
+    await switchStore("apple");
+    assert.equal(sizePicker().value, "6");
+    await setSize(9);
+    await switchStore("google");
+    assert.equal(sizePicker().value, "3");
+    window.document.querySelector("#refresh-page").click();
+    await tick();
+    assert.equal(sizePicker().value, "3");
+    const saved = JSON.parse(
+      window.localStorage.getItem("appmon-global-chart-filters"),
+    );
+    assert.equal(saved.google.page_size, 3);
+    assert.equal(saved.apple.page_size, 9);
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
 test("compact global chart headings keep observation details on hover and failures visible", async () => {
   const states = [
     { fresh: true },
@@ -2506,6 +2598,7 @@ test("global filters recover invalid saved values and reject future dates withou
           category: "bogus",
           as_of: "2999-01-01",
           depth: "999",
+          page_size: 250,
           layout: "invalid",
           store: "apple",
         },
@@ -2521,6 +2614,7 @@ test("global filters recover invalid saved values and reject future dates withou
     assert.equal(query.get("countries"), "us");
     assert.equal(query.get("collections"), "top-free");
     assert.equal(query.get("depth"), "20");
+    assert.equal(query.get("page_size"), "6");
     assert.equal(query.get("category"), null);
     assert.equal(query.get("as_of"), null);
     const form = window.document.querySelector("#global-chart-form");

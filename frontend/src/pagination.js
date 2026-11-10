@@ -10,6 +10,7 @@ export function pagination({
   nextId,
   sizes = [],
   unit = "条",
+  sizeLabel = "每页条数",
 }) {
   const page = Math.floor(offset / limit) + 1;
   const last =
@@ -31,7 +32,7 @@ export function pagination({
     `<button type="button" class="secondary pager-button" data-page="${n}" ${attrs}>${label}</button>`;
   return `<div class="table-pager" data-pager="${id}" data-limit="${limit}" data-current="${page}" ${last == null ? "" : `data-last="${last}"`} aria-label="表格分页">
     <span class="pager-summary">${total == null ? `第 ${pagerNumber(page)} 页` : `共 ${pagerNumber(total)} ${unit}`}</span>
-    <select data-page-size aria-label="每页条数" ${sizes.length ? "" : "disabled"}>${(sizes.length ? sizes : [limit]).map((n) => `<option value="${n}" ${n === limit ? "selected" : ""}>${n}${unit}/页</option>`).join("")}</select>
+    <select data-page-size aria-label="${sizeLabel}" ${sizes.length ? "" : "disabled"}>${(sizes.length ? sizes : [limit]).map((n) => `<option value="${n}" ${n === limit ? "selected" : ""}>${n}${unit}/页</option>`).join("")}</select>
     <span class="pager-controls">${button(page - 1, "‹", `id="${prevId || id + "-prev"}" aria-label="上一页" ${page <= 1 ? "disabled" : ""}`)}${numbers.map((n, i) => (i && n - numbers[i - 1] > 1 ? '<span aria-hidden="true">…</span>' : "") + button(n, pagerNumber(n), `aria-label="第 ${n} 页" ${n === page ? 'aria-current="page"' : ""}`)).join("")}${button(page + 1, "›", `id="${nextId || id + "-next"}" aria-label="下一页" ${canNext ? "" : "disabled"}`)}</span>
     <span class="pager-jump"><label>跳至<input type="number" min="1" ${last == null ? "" : `max="${last}"`} step="1" value="${page}" aria-label="跳转页码"></label><button type="button" class="secondary pager-button" data-page-jump>跳转</button></span><span class="pager-feedback" role="status"></span></div>`;
 }

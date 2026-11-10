@@ -305,8 +305,8 @@ def create_app(cfg):
         return growth.report(db,m['store'],m['country'],m['language'],days,metric,as_of,category,q,pricing,monetization,new_days)
 
     @api.get('/charts/global')
-    def global_board(store:str,countries:str='',collections:str='top-free,top-paid,top-grossing',category:str='',as_of:float|None=None,depth:int=10,offset:int=0,db=DB):
-        return global_charts.report(db,store,countries,collections,category,as_of,depth,offset)
+    def global_board(store:str,countries:str='',collections:str='top-free,top-paid,top-grossing',category:str='',as_of:float|None=None,depth:int=10,offset:int=0,page_size:int=6,db=DB):
+        return global_charts.report(db,store,countries,collections,category,as_of,depth,offset,page_size)
 
     @api.post('/charts/global/preview')
     def global_preview(value:dict=Body(...)):return global_charts.preview(value)

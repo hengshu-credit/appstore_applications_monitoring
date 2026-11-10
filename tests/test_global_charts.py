@@ -7,6 +7,28 @@ from test_monitor import OceanBaseTestCase
 
 
 class GlobalChartsTest(OceanBaseTestCase):
+    def test_global_api_applies_selected_country_page_size_for_each_store(self):
+        from fastapi.testclient import TestClient
+        from appmon.web import create_app
+        api=TestClient(create_app(self.cfg));self.login_admin(api)
+        codes=['us','jp','cn','gb','de','fr','br','kr','ca','au','th','vn']
+        for store in ('google','apple','all'):
+            params=dict(store=store,countries=','.join(codes),collections='top-free',depth=1)
+            default=api.get('/api/charts/global',params=params).json()
+            self.assertEqual(default['page_size'],6)
+            self.assertEqual(len({c['country'] for c in default['countries']}),6)
+            for size in (3,6,9,12):
+                response=api.get('/api/charts/global',params=params|{'page_size':size})
+                self.assertEqual(response.status_code,200,response.text)
+                data=response.json()
+                self.assertEqual(data['page_size'],size)
+                self.assertEqual({c['country'] for c in data['countries']},set(codes[:size]))
+                self.assertEqual(data['has_more'],size<len(codes))
+                later=api.get('/api/charts/global',params=params|{'page_size':size,'offset':size}).json()
+                self.assertEqual({c['country'] for c in later['countries']},set(codes[size:2*size]))
+            for invalid in (0,13):
+                self.assertEqual(api.get('/api/charts/global',params=params|{'page_size':invalid}).status_code,400)
+
     def test_country_boards_preserve_each_rank_and_report_missing_and_stale_separately(self):
         now=time.time()
         for country,position,at in [('us',1,now),('jp',7,now-3*86400)]:

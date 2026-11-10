@@ -20,6 +20,7 @@ export function createGlobalCharts(ctx) {
     nextRevision,
     currentRevision,
   } = ctx;
+  const pageSizes = [3, 6, 9, 12];
   let filters = {
       countries: "",
       collections: "top-free,top-paid,top-grossing",
@@ -27,6 +28,7 @@ export function createGlobalCharts(ctx) {
       as_of: "",
       depth: "20",
       layout: "rows",
+      page_size: 6,
     },
     offset = 0,
     lastStore = "";
@@ -93,6 +95,9 @@ export function createGlobalCharts(ctx) {
               : v.depth
             : defaults.depth,
           layout: normalizeLayout(v.layout),
+          page_size: pageSizes.includes(v.page_size)
+            ? v.page_size
+            : defaults.page_size,
         };
       }
     } catch {}
@@ -265,6 +270,8 @@ export function createGlobalCharts(ctx) {
           unit: "国",
           offset,
           limit: data.page_size,
+          sizes: pageSizes,
+          sizeLabel: "每页国家数",
           total: data.total_countries,
           hasMore: data.has_more,
           prevId: "global-prev",
@@ -278,7 +285,10 @@ export function createGlobalCharts(ctx) {
     // Set individual CSS properties after mounting. Style attributes in HTML
     // are blocked by the production CSP, silently losing depth/count/rank slots.
     const grid = $("#global-rankings .global-board-grid");
-    grid.style.setProperty("--chart-display-depth", String(Number(filters.depth)));
+    grid.style.setProperty(
+      "--chart-display-depth",
+      String(Number(filters.depth)),
+    );
     grid.style.setProperty("--chart-count", String(types.size));
     for (const country of grid.querySelectorAll(".global-country")) {
       const items = [...country.querySelectorAll(".global-ranked-app")];
@@ -335,6 +345,7 @@ export function createGlobalCharts(ctx) {
         as_of: form.elements.as_of.value,
         depth: form.elements.depth.value,
         layout: form.elements.layout.value,
+        page_size: filters.page_size,
       };
     };
     bindForm("#global-chart-form", async () => {
@@ -407,8 +418,10 @@ export function createGlobalCharts(ctx) {
     $("#global-chart-form").addEventListener("click", (e) => {
       if (!typeField.contains(e.target)) closeTypes();
     });
-    bindPagination(document, "global-pages", (start) => {
+    bindPagination(document, "global-pages", (start, size) => {
       offset = start;
+      filters.page_size = size;
+      persist(store);
       return render(nextRevision());
     });
     $("#global-configure").onclick = async () => {
