@@ -99,6 +99,7 @@ const newModules = (
       "monitoring-charts.js",
       "monitoringChart,monitoringBars,bindMonitoringCharts",
     ),
+    wrappedModule("snapshot-comparison.js", "mountSnapshotComparison,versionNote"),
     wrappedModule("app-insights.js", "createAppInsights"),
     wrappedModule("app-ad-tracking.js", "createAdTracking"),
     wrappedModule("discovery.js", "createDiscoveryPages"),
@@ -796,8 +797,15 @@ test("app detail orders the profile, observed version changes and rating beside 
     assert.deepEqual(Array.from(rows, (r) => [r.cells[1].textContent, r.cells[2].textContent]),
       [["1.0.5", "1.0.4"], ["1.0.4", "1.0.5"]]);
     doc.querySelector("#detail-tab-history").click();
-    assert.equal(doc.querySelector(".snapshot-icon img").src, icon);
-    assert.deepEqual(Array.from(doc.querySelectorAll(".snapshot-gallery img"), (img) => img.src), screenshots);
+    const sides = doc.querySelectorAll(".snapshot-preview");
+    assert.equal(sides.length, 2);
+    for (const side of sides) {
+      assert.equal(side.querySelector(".snapshot-icon img").src, icon);
+      assert.deepEqual(Array.from(side.querySelectorAll(".snapshot-gallery img"), (img) => img.src), screenshots);
+    }
+    rows[0].querySelector("[data-compare-from]").click();
+    assert.equal(doc.querySelector("#snapshot-comparison [name=base]").value, "2");
+    assert.equal(doc.querySelector("#snapshot-comparison [name=target]").value, "0");
   } finally {
     await window.happyDOM.close();
   }

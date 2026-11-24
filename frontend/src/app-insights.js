@@ -1,3 +1,4 @@
+import { versionNote } from "./snapshot-comparison.js";
 import { filterBar, bindFilterBar } from "./filter-bar.js";
 export function createAppInsights(ctx) {
   const {
@@ -128,27 +129,31 @@ export function createAppInsights(ctx) {
       )}<p class="sub">商店日期与本系统观察日期分开记录；空值表示来源未返回。</p>`,
     );
   }
-  function versionHistory(snapshots) {
+  function versionHistory(data) {
+    const { snapshots } = data;
     const rows = [];
-    let previous = "";
-    // The API returns newest first. Keep rollbacks and skip snapshots with no version.
-    for (const { payload, observed_at } of [...snapshots].reverse()) {
-      const current = String(payload?.version ?? "").trim();
+    let previousIndex = null;
+    for (let i = snapshots.length - 1; i >= 0; i--) {
+      const snapshot = snapshots[i];
+      const current = snapshot.payload?.version;
       if (!current) continue;
+      const previous = snapshots[previousIndex]?.payload?.version;
       if (previous && previous !== current) {
+        const note = versionNote(snapshot, data);
         rows.push([
-          esc(stamp(observed_at)),
+          esc(stamp(snapshot.observed_at)),
           esc(previous),
           esc(current),
-          esc(payload.release_notes || "—"),
+          note ? esc(note.text) + (note.supplemental ? '<small class="sub">（同版本商店记录）</small>' : "") : "未采集到",
+          `<button type="button" class="link" data-compare-from="${previousIndex}" data-compare-to="${i}">对比</button>`,
         ]);
       }
-      previous = current;
+      previousIndex = i;
     }
     return panel(
       "版本变更记录",
       (rows.length
-        ? table(["观察时间", "原版本", "新版本", "版本说明"], rows.reverse())
+        ? table(["观察时间", "原版本", "新版本", "开发者更新说明", "操作"], rows.reverse())
         : '<p class="sub">暂无已观察到的版本变更。</p>') +
         (snapshots.length === 100 ? '<p class="sub">依据本市场最近 100 个资料快照。</p>' : ""),
     );
@@ -164,6 +169,7 @@ export function createAppInsights(ctx) {
       ),
     );
     const url = ctx.safeURL(listing.url);
+    const note = versionNote(data.listing, data);
     const store = panel(
       "当前商店资料",
       `<h3>${esc(listing.name || "等待采集")}</h3>
@@ -171,11 +177,11 @@ export function createAppInsights(ctx) {
        <p>${esc(listing.summary || "")}</p>
        <details open><summary>描述与版本说明</summary>
          <div class="review-text">${esc(listing.description || "暂无描述")}</div>
-         <h3 class="spacer">版本说明</h3><div class="review-text">${esc(listing.release_notes || "暂无版本说明")}</div>
+         <h3 class="spacer">版本说明</h3><div class="review-text">${esc(note?.text || "未采集到开发者更新说明")}</div>${note?.supplemental ? `<small class="sub">同版本快照 · ${esc(stamp(note.at))}</small>` : ""}
        </details>
        ${url ? `<a href="${url}" target="_blank" rel="noopener">查看商店原页 ↗</a>` : ""}`,
     );
-    return `<div id="app-profile-layout" class="app-profile-layout"><div class="app-profile-history">${archived}${versionHistory(data.snapshots)}${rating}</div>${store}</div>`;
+    return `<div id="app-profile-layout" class="app-profile-layout"><div class="app-profile-history">${archived}${versionHistory(data)}${rating}</div>${store}</div>`;
   }
 
   function snapshotMedia(payload) {

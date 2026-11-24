@@ -89,7 +89,12 @@ class CollectionBatchTest(OceanBaseTestCase):
         self.db.execute('UPDATE keyword_targets SET enabled=0 ORDER BY id LIMIT 1')
         second=self.db.execute('SELECT id FROM keyword_targets ORDER BY id LIMIT 1 OFFSET 1').fetchone()['id']
         self.db.execute('UPDATE keyword_targets SET failures=2 WHERE id=%s',(second,))
-        source_states = [('aso_popularity','pending',1,0),('aso_import','paused',0,0),('aso_report','done',1,None)]
+        source_states = [
+            ('aso_popularity','pending',1,0), ('aso_import','paused',0,0), ('aso_report','done',1,None),
+            ('ad_creatives','pending',1,0), ('ad_rankings','paused',0,0), ('ad_apple','done',1,None),
+            ('ad_google','pending',1,0), ('ad_meta','paused',0,0), ('ad_tiktok','done',1,None),
+            ('ad_reddit','pending',1,0),
+        ]
         self.db.executemany('''INSERT INTO collection_source_tasks
             (store,app_id,country,language,kind,label,payload,batch_key,source,request_id,created_at,enabled,due)
             VALUES('apple','','us','en',%s,%s,'{}',%s,'test',%s,0,%s,%s)''',
@@ -98,7 +103,7 @@ class CollectionBatchTest(OceanBaseTestCase):
         self.assertEqual(result['total'],1)
         self.assertCountEqual([c['kind'] for c in result['categories']],
             ['details','keywords','chart','reviews','featured','icons','screenshots','permissions',
-             'aso_popularity','aso_import','aso_report'])
+             *[kind for kind,_,_,_ in source_states]])
         c=next(c for c in result['categories'] if c['kind']=='keywords')
         self.assertEqual((c['total'],c['summary']['paused'],c['summary']['error'],c['summary']['pending']),(3,1,1,1))
         for kind,state,_,_ in source_states:

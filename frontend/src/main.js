@@ -37,6 +37,8 @@ import {
   monitoringBars,
   bindMonitoringCharts,
 } from "./monitoring-charts.js";
+import { mountSnapshotComparison } from "./snapshot-comparison.js";
+import "./snapshot-comparison.css";
 import { createAppInsights } from "./app-insights.js";
 import { createAdTracking } from "./app-ad-tracking.js";
 import { createAvailabilityPage } from "./availability.js";
@@ -680,7 +682,7 @@ async function appDetail(store, id, rev = ++revision) {
   const p = data.listing?.payload || {};
   if (
     !mount(
-      `<div class="panel-heading"><div>${appLink(store, id, p.name || data.app.name, p.icon)}<p class="sub app-detail-meta"><span class="member-store">${storeLogo(store)}<span>${store === "apple" ? "App Store" : "Google Play"}</span></span><span>·</span><span>${esc(m.country.toUpperCase())}</span><span>·</span><span>${esc(m.language)}</span><span>·</span><span class="app-detail-developer" title="${esc(p.developer || "开发者待采集")}">${esc(p.developer || "开发者待采集")}</span></p></div><div class="actions"><button id="collect-app-now">立即采集全部公开信息</button><button id="quick-watch" class="secondary">管理采集配置</button><button class="secondary" id="open-aso-workbench">ASO 工作台</button></div></div><div id="app-collection-progress"></div>${panel("应用明细", await appRows([{ ...data.app, ...p, store, app_id: id }], { scope: m }))}<div class="cards">${metric("商店评分", p.rating, "来自最近一次商店观察")}${metric("评分数", p.ratings, "累计公开评分数量")}${metric("版本快照", data.snapshots.length, "显示最近最多100次变更")}${metric("历史命中过的关键词", data.keywords.coverage.length, "包含当前未命中词；有效覆盖见下方监控")}</div>${appInsights.profile(data, p)}<div id="monitoring-trends"></div><div id="app-market-matrix"></div><div id="app-keyword-markets"></div>${panel("素材与版本历史", `<label>选择历史快照<select id="snapshot-choice">${data.snapshots.length ? "" : '<option value="">暂无已保存的快照</option>'}${data.snapshots.map((r, i) => `<option value="${i}">${esc(stamp(r.observed_at))} · ${esc(r.payload?.version || "")}</option>`).join("")}</select></label><div id="snapshot-view"></div>`)}${panel(
+      `<div class="panel-heading"><div>${appLink(store, id, p.name || data.app.name, p.icon)}<p class="sub app-detail-meta"><span class="member-store">${storeLogo(store)}<span>${store === "apple" ? "App Store" : "Google Play"}</span></span><span>·</span><span>${esc(m.country.toUpperCase())}</span><span>·</span><span>${esc(m.language)}</span><span>·</span><span class="app-detail-developer" title="${esc(p.developer || "开发者待采集")}">${esc(p.developer || "开发者待采集")}</span></p></div><div class="actions"><button id="collect-app-now">立即采集全部公开信息</button><button id="quick-watch" class="secondary">管理采集配置</button><button class="secondary" id="open-aso-workbench">ASO 工作台</button></div></div><div id="app-collection-progress"></div>${panel("应用明细", await appRows([{ ...data.app, ...p, store, app_id: id }], { scope: m }))}<div class="cards">${metric("商店评分", p.rating, "来自最近一次商店观察")}${metric("评分数", p.ratings, "累计公开评分数量")}${metric("版本快照", data.snapshots.length, "显示最近最多100次变更")}${metric("历史命中过的关键词", data.keywords.coverage.length, "包含当前未命中词；有效覆盖见下方监控")}</div>${appInsights.profile(data, p)}<div id="monitoring-trends"></div><div id="app-market-matrix"></div><div id="app-keyword-markets"></div>${panel("素材与版本历史", '<div id="snapshot-comparison"></div>')}${panel(
         "关键词覆盖",
         table(
           ["关键词", "最近位置", "变化", "数据时间", "状态"],
@@ -919,26 +921,6 @@ async function appDetail(store, id, rev = ++revision) {
     location.hash =
       "aso/" + encodeURIComponent(store) + "/" + encodeURIComponent(id);
   });
-  const renderSnapshot = () => {
-    const i = Number($("#snapshot-choice").value),
-      snapshot = data.snapshots[i],
-      previous = data.snapshots[i + 1];
-    if (!snapshot) {
-      $("#snapshot-view").innerHTML = empty();
-      return;
-    }
-    const q = snapshot.payload || {};
-    const changes = Object.fromEntries(
-      [...new Set([...Object.keys(q), ...Object.keys(previous?.payload || {})])]
-        .filter(
-          (k) =>
-            JSON.stringify(q[k]) !== JSON.stringify(previous?.payload?.[k]),
-        )
-        .map((k) => [k, { previous: previous?.payload?.[k], current: q[k] }]),
-    );
-    $("#snapshot-view").innerHTML =
-      `<p class="sub">版本 ${esc(q.version || "—")} · ${esc(stamp(snapshot.observed_at))}</p>${appInsights.snapshotMedia(q)}<details><summary>与前一快照的字段差异</summary>${jsonBlock(changes)}</details>`;
-  };
   Promise.all([
     api("/discovery/keywords/markets?" + qs({ store, app_id: id })),
     api("/discovery/reports?" + qs(m)),
@@ -963,8 +945,16 @@ async function appDetail(store, id, rev = ++revision) {
     .catch((e) => {
       if (rev === revision) $("#app-keyword-markets").textContent = e.message;
     });
-  renderSnapshot();
-  $("#snapshot-choice").addEventListener("change", renderSnapshot);
+  const selectPair = mountSnapshotComparison($("#snapshot-comparison"), data, {
+    esc, stamp, snapshotMedia: appInsights.snapshotMedia,
+  });
+  $("#app-profile-layout").addEventListener("click", (event) => {
+    const action = event.target.closest("[data-compare-from]");
+    if (!action) return;
+    selectPair(action.dataset.compareFrom, action.dataset.compareTo);
+    $("#detail-tab-history").click();
+    $("#snapshot-comparison").scrollIntoView?.({ block: "start" });
+  });
   $("#quick-watch").addEventListener("click", () => {
     researchPages.planForApps([id]);
   });
