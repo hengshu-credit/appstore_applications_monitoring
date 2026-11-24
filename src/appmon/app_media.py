@@ -55,6 +55,9 @@ def sync_existing(db,cfg,wait=0):
         # DISTINCT/UNION materializes the small eligible set once, rather than
         # rechecking all current charts for every icon in the global app pool.
         eligible='SELECT DISTINCT store,app_id FROM ('+desired+') media_markets'
+        # Preserve existing assets from paused charts while scheduling follow-ups only for active charts.
+        desired += ' AND t.enabled=1'
+        active_apps='SELECT DISTINCT store,app_id FROM ('+desired+') active_markets'
         if incremental:desired='SELECT store,app_id,country,language FROM app_group_members'
         # Materialize only focus/latest-chart detail dependencies, not a global market product.
         with db:
@@ -64,11 +67,11 @@ def sync_existing(db,cfg,wait=0):
             db.execute('''INSERT INTO jobs(store,app_id,country,language)
                 SELECT store,app_id,country,language FROM ('''+desired+''') desired
                 ON DUPLICATE KEY UPDATE app_id=jobs.app_id''')
-            db.execute('UPDATE app_icons i JOIN ('+eligible+''') scope ON scope.store=i.store AND scope.app_id=i.app_id
+            db.execute('UPDATE app_icons i JOIN ('+active_apps+''') scope ON scope.store=i.store AND scope.app_id=i.app_id
                 SET i.requested=1 WHERE i.requested=0''')
         count=processed=0;last=None
         while True:
-            scope='SELECT DISTINCT store,app_id FROM app_group_members' if incremental else eligible
+            scope='SELECT DISTINCT store,app_id FROM app_group_members' if incremental else active_apps
             rows=db.execute('SELECT l.* FROM ('+scope+''') scope JOIN listings l
                 ON scope.store=l.store AND scope.app_id=l.app_id WHERE l.payload IS NOT NULL'''+
                 (' AND (l.store,l.app_id,l.country,l.language)>(%s,%s,%s,%s)' if last else '')+

@@ -7,6 +7,8 @@ from .source_tasks import KINDS as SOURCE_KINDS
 TABLES = {'watchlist': 'watchlist', 'keywords': 'keyword_targets', 'targets': 'observation_targets', 'icons':'app_icons','media':'app_media_assets','permissions':'app_permission_targets','sources':'collection_source_tasks'}
 KINDS = ('details','keywords','chart','reviews','featured','icons','screenshots','permissions',*SOURCE_KINDS)
 STATES = ('paused','running','error','pending','scheduled','done')
+RESOURCES = [('watchlist','w',('details',)),('keywords','t',('keywords',)),('targets','t',('chart','reviews','featured')),
+             ('icons','i',('icons',)),('permissions','p',('permissions',)),('sources','s',tuple(SOURCE_KINDS)),('media','m',('screenshots',))]
 UNION = '''SELECT 'watchlist' resource,w.id,'details' kind,w.store,w.country,w.language,w.app_id,
     COALESCE(a.name,w.app_id) label,'' category,'' collection,w.group_name,NULL depth,
     w.refresh_hours,w.enabled,COALESCE(j.failures,0) failures,j.last_error,j.due,j.lease_until,l.last_success success_at
@@ -58,7 +60,7 @@ def _task_union(kind='', light=False, search=False, refs=None):
             "SELECT 'sources',s.id,s.kind,s.store,s.country,s.language,s.app_id,s.label,'',s.enabled,s.failures,s.due,s.lease_until,(s.success_at IS NOT NULL) FROM collection_source_tasks s",
             "SELECT 'media',m.id,'screenshots',m.store,'','','',m.label,'',m.enabled,m.failures,m.due,m.lease_until,(m.checked_at IS NOT NULL) FROM app_media_assets m"]
     selected=[];args=[]
-    for part,(resource,alias,kinds) in zip(parts,[('watchlist','w',('details',)),('keywords','t',('keywords',)),('targets','t',('chart','reviews','featured')),('icons','i',('icons',)),('permissions','p',('permissions',)),('sources','s',tuple(SOURCE_KINDS)),('media','m',('screenshots',))]):
+    for part,(resource,alias,kinds) in zip(parts,RESOURCES):
         if kind and kind not in kinds:continue
         if resource=='sources' and kind:
             part+=' WHERE s.kind=%s';args.append(kind)
@@ -71,7 +73,7 @@ def _task_union(kind='', light=False, search=False, refs=None):
     return ' UNION ALL '.join(selected),args
 
 
-def task_query(*, kind='', store='', country='', language='', state='', q='', light=False, refs=None):
+def task_query(*, kind='', store='', country='', language='', state='', q='', light=False, refs=None, now=None):
     if any(not isinstance(v,str) for v in (kind,store,country,language,state,q)):
         raise ValueError('筛选参数须为文本')
     if kind and kind not in KINDS:
@@ -81,7 +83,7 @@ def task_query(*, kind='', store='', country='', language='', state='', q='', li
         raise ValueError('未知商店')
     if len(q) > 255:
         raise ValueError('搜索参数无效')
-    now = time.time()
+    now = time.time() if now is None else now
     union,args=_task_union(kind,light,bool(q),refs)
     columns='resource,id,kind,store,country,language,app_id,label,category,'+('enabled,failures,due,lease_until,has_success' if light else 'collection,group_name,depth,refresh_hours,enabled,failures,last_error,due,lease_until,success_at')
     # Explicit output aliases survive OceanBase pruning a UNION to one branch.
@@ -183,7 +185,12 @@ def control_tasks(db, value):
             raise ValueError('筛选参数无效')
         if scope == 'all' and filters:
             raise ValueError('全部任务操作不能带筛选条件')
-        query, args = task_query(**filters)
+        query, args = task_query(**filters,light=True)
+        if value.get('background') is True:
+            if action not in ('pause','resume'):
+                raise ValueError('后台批量操作仅支持暂停和恢复')
+            from .bulk_controls import enqueue
+            return enqueue(db,action,filters)
         if action=='retry':
             query = f"SELECT * FROM ({query}) retryable WHERE enabled=1 AND failures>0 AND lease_until<=%s"
             args.append(time.time())

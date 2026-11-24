@@ -82,3 +82,15 @@ class ChartEnrichmentTest(OceanBaseTestCase):
         for table in ('watchlist','jobs','keyword_targets','chart_enrichment_apps','chart_enrichment_runs'):
             self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM '+table).fetchone()['n'],0,table)
         self.assertEqual(enrichment.sync(self.db,self.cfg),{'runs':1,'apps':1})
+
+    def test_paused_chart_defers_unprocessed_followups_until_resumed(self):
+        from appmon.app_media import sync_existing
+        self.enable()
+        target = self.prepare([('com.waiting',1,'Waiting')])
+        self.db.execute('UPDATE observation_targets SET enabled=0 WHERE id=%s',(target,))
+        self.assertEqual(enrichment.sync(self.db,self.cfg),{'runs':0,'apps':0})
+        with patch.object(enrichment,'settings',return_value={'enabled':False}):
+            sync_existing(self.db,self.cfg)
+        self.assertIsNone(self.db.execute('SELECT id FROM watchlist LIMIT 1').fetchone())
+        self.db.execute('UPDATE observation_targets SET enabled=1 WHERE id=%s',(target,))
+        self.assertEqual(enrichment.sync(self.db,self.cfg),{'runs':1,'apps':1})

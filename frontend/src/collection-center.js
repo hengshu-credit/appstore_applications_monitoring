@@ -68,6 +68,24 @@ export function createCollectionCenter(ctx) {
       : num(value);
   const options = (obj) => Object.entries(obj);
   const refresh = (reuse = false) => render(nextRevision(), reuse);
+  function showBulkOperations(operations = []) {
+    const el = $("#bulk-operation-status");
+    if (!el) return;
+    el.innerHTML = operations
+      .filter((op, i) => i === 0 || op.status !== "complete")
+      .map((op) => {
+        const action = op.action === "pause" ? "暂停" : "恢复";
+        const progress = `已处理 ${num(op.completed)} / ${num(op.total)} 项`;
+        const status = {
+          queued: "正在排队或确定任务范围",
+          running: progress,
+          complete: `已完成，${progress}`,
+          error: `${esc(op.error)}，${progress} <button class="link" data-bulk-retry="${op.id}">继续处理</button>`,
+        };
+        return `<p>批量${action} #${op.id} · ${status[op.status]}</p>`;
+      })
+      .join("");
+  }
   let refreshTimer;
   function watchDataRevision(rev, baseline) {
     clearTimeout(refreshTimer);
@@ -99,13 +117,14 @@ export function createCollectionCenter(ctx) {
         location.hash.split("?")[0] !== "#collection"
       )
         return;
-      if (document.hidden || editing()) {
+      if (document.hidden) {
         schedule();
         return;
       }
       try {
         const result = await api("/research/collection/revision");
         if (rev !== currentRevision()) return;
+        showBulkOperations(result.bulk_operations);
         if (
           Number.isInteger(result.revision) &&
           result.revision !== baseline &&
@@ -405,7 +424,7 @@ export function createCollectionCenter(ctx) {
       .filter((p) => p.id === "pool")
       .map(
         (p) =>
-          `<article class="collection-category" id="pool-task-card"><button type="button" class="category-heading" data-pool-card title="所有商店与市场；管理基础流程"><span>全池应用详情<small>全部商店 / 市场</small></span><strong class="stat-skeleton" aria-label="统计中"></strong></button><div class="pool-summary" role="status" aria-live="polite"><span class="stat-loading">正在统计全池…</span></div></article>`,
+          `<article class="collection-category" id="pool-task-card"><button type="button" class="category-heading" data-pool-card title="所有商店与市场；管理基础流程"><span>全池应用详情<small>独立流程 · 全部商店 / 市场</small></span><strong class="stat-skeleton" aria-label="统计中"></strong></button><div class="pool-summary" role="status" aria-live="polite"><span class="stat-loading">正在统计全池…</span></div><button type="button" class="secondary small" data-toggle-pool="${p.enabled ? "pause" : "resume"}">${p.enabled ? "暂停全池采集" : "恢复全池采集"}</button></article>`,
       )
       .join("")}</div>`;
     const body =
@@ -448,7 +467,7 @@ export function createCollectionCenter(ctx) {
                   { name: "country", label: "国家 / 地区", type: "country" },
                   { name: "language", label: "请求语言", type: "language" },
                 ],
-              })}<div class="task-bulk"><span id="selected-count">已选 0 项</span><button type="button" class="secondary small" data-batch="refresh">立即采集</button><button type="button" class="secondary small" data-batch="pause">暂停</button><button type="button" class="secondary small" data-batch="resume">恢复</button><button type="button" class="secondary small" data-batch="interval">修改周期</button><button type="button" class="secondary small" id="retry-failed-tasks">重试筛选内失败任务</button><button type="button" class="secondary small" id="select-filtered-tasks">全选筛选结果（跨页）</button><button type="button" class="secondary small" id="select-every-task">全选配置任务（所有商店）</button><button type="button" class="secondary small" id="clear-task-selection">取消选择</button></div>${table(
+              })}<div class="task-bulk"><span id="selected-count">已选 0 项</span><button type="button" class="secondary small" data-batch="refresh">立即采集</button><button type="button" class="secondary small" data-batch="pause">暂停</button><button type="button" class="secondary small" data-batch="resume">恢复</button><button type="button" class="secondary small" data-batch="interval">修改周期</button><button type="button" class="secondary small" id="retry-failed-tasks">重试筛选内失败任务</button><button type="button" class="secondary small" id="select-filtered-tasks">全选筛选结果（跨页）</button><button type="button" class="secondary small" id="select-every-task">全选配置任务（所有商店）</button><button type="button" class="secondary small" id="clear-task-selection">取消选择</button></div><div id="bulk-operation-status" role="status"></div>${table(
                 [
                   '<input type="checkbox" id="select-all-tasks" aria-label="选择当前页全部任务">',
                   "目标",
@@ -552,7 +571,27 @@ export function createCollectionCenter(ctx) {
       )
     )
       return;
-    if (section === "tasks") watchDataRevision(rev, tasks.data_revision);
+    if (section === "tasks") {
+      showBulkOperations(quality.bulk_operations);
+      $("#bulk-operation-status").onclick = async (event) => {
+        const button = event.target.closest("[data-bulk-retry]");
+        if (!button) return;
+        button.disabled = true;
+        try {
+          const result = await api(
+            `/research/collection/tasks/batch/${button.dataset.bulkRetry}/retry`,
+            {},
+          );
+          if (rev === currentRevision())
+            showBulkOperations(result.bulk_operations);
+        } catch (error) {
+          toast(error.message);
+        } finally {
+          button.disabled = false;
+        }
+      };
+      watchDataRevision(rev, tasks.data_revision);
+    }
     document.querySelectorAll("[data-category]").forEach(
       (b) =>
         (b.onclick = () => {
@@ -565,7 +604,32 @@ export function createCollectionCenter(ctx) {
     );
     const poolCard = $("#pool-task-card");
     if (poolCard) {
-      poolCard.onclick = (event) => {
+      poolCard.onclick = async (event) => {
+        const toggle = event.target.closest("[data-toggle-pool]");
+        if (toggle) {
+          const enabled = toggle.dataset.togglePool === "resume";
+          if (
+            !window.confirm(
+              `确认${enabled ? "恢复" : "暂停"}所有商店的全池应用详情采集？当前已发出的请求可完成。`,
+            )
+          )
+            return;
+          toggle.disabled = true;
+          try {
+            await api(
+              "/research/collection/pipelines/pool",
+              { enabled },
+              "PUT",
+            );
+            recentRegistry = poolSnapshot = pendingPool = null;
+            if (rev === currentRevision()) await refresh();
+          } catch (error) {
+            toast(error.message);
+          } finally {
+            toggle.disabled = false;
+          }
+          return;
+        }
         if (event.target.closest("[data-pool-card]"))
           location.hash = "#collection?view=pipelines";
         if (event.target.closest("[data-retry-pool]")) loadPool();
@@ -575,13 +639,16 @@ export function createCollectionCenter(ctx) {
           '<span class="stat-loading">正在统计全池…</span>';
         try {
           if (!poolSnapshot || Date.now() - poolSnapshot.at > 60000) {
-            pendingPool ||= api("/research/collection/pipelines")
-              .then((rows) => {
+            const request = (pendingPool ||= api(
+              "/research/collection/pipelines",
+            ));
+            try {
+              const rows = await request;
+              if (request === pendingPool)
                 poolSnapshot = { rows, at: Date.now() };
-                return rows;
-              })
-              .finally(() => (pendingPool = null));
-            await pendingPool;
+            } finally {
+              if (request === pendingPool) pendingPool = null;
+            }
           }
           if (!poolCard.isConnected || rev !== currentRevision()) return;
           const info = poolSnapshot.rows.find((p) => p.id === "pool");
@@ -766,6 +833,7 @@ export function createCollectionCenter(ctx) {
             );
             f.querySelector(".pipeline-feedback").textContent =
               "已保存，将在当前请求 / 批次完成后应用";
+            recentRegistry = poolSnapshot = pendingPool = null;
             toast("流程设置已保存");
           } catch (err) {
             toast(err.message);
@@ -806,7 +874,7 @@ export function createCollectionCenter(ctx) {
         selectionScope === "all"
           ? "已选全部配置任务（所有商店、所有页，不含全池）"
           : selectionScope === "filtered"
-            ? `已选筛选结果 ${tasks.total} 项（所有页）`
+            ? `已选筛选结果 ${tasks.total} 项（所有页，配置任务）`
             : `已选 ${selected().length} 项`;
       document
         .querySelectorAll("[data-batch]")
@@ -836,19 +904,20 @@ export function createCollectionCenter(ctx) {
         }),
     );
     selectionChange();
+    function selectScope(scope) {
+      selectionScope = scope;
+      document
+        .querySelectorAll("[data-task-index]")
+        .forEach((c) => (c.checked = scope !== "selected"));
+      if (selectAll) selectAll.checked = scope !== "selected";
+      selectionChange();
+    }
     for (const [id, scope] of [
       ["select-filtered-tasks", "filtered"],
       ["select-every-task", "all"],
       ["clear-task-selection", "selected"],
     ]) {
-      $("#" + id).onclick = () => {
-        selectionScope = scope;
-        document
-          .querySelectorAll("[data-task-index]")
-          .forEach((c) => (c.checked = scope !== "selected"));
-        if (selectAll) selectAll.checked = scope !== "selected";
-        selectionChange();
-      };
+      $("#" + id).onclick = () => selectScope(scope);
     }
     async function control(action, rows, scope = "selected", extra = {}) {
       if (action === "interval" && extra.refresh_hours === undefined) {
@@ -873,7 +942,7 @@ export function createCollectionCenter(ctx) {
       if (
         scope !== "selected" &&
         !window.confirm(
-          `确认${{ pause: "暂停", resume: "恢复", retry: "重试其中失败的", interval: "修改周期：" }[action]}${scope === "all" ? "所有商店的全部配置任务（不含全池）" : `当前筛选结果的 ${tasks.total} 个任务`}？将跨越所有分页，执行时匹配的任务均会更新。`,
+          `确认${{ pause: "暂停", resume: "恢复", retry: "重试其中失败的", interval: "修改周期：" }[action]}${scope === "all" ? "所有商店的全部配置任务（不含全池）" : `当前筛选结果的 ${tasks.total} 个任务`}？执行时匹配的配置任务覆盖所有分页。全池应用详情可在全池卡片单独控制。`,
         )
       )
         return;
@@ -888,11 +957,31 @@ export function createCollectionCenter(ctx) {
         const result = await api("/research/collection/tasks/batch", {
           action,
           scope,
+          ...(scope !== "selected" && ["pause", "resume"].includes(action)
+            ? { background: true }
+            : {}),
           ...extra,
           ...(scope === "selected"
             ? { tasks: rows.map((t) => ({ resource: t.resource, id: t.id })) }
             : { filters: scope === "filtered" ? { ...filters } : {} }),
         });
+        if (result.status === "queued") {
+          recentRegistry = null;
+          toast(
+            `已提交批量${action === "pause" ? "暂停" : "恢复"} #${result.id}`,
+          );
+          if (rev === currentRevision()) {
+            quality.bulk_operations = [
+              result,
+              ...(quality.bulk_operations || []).filter(
+                (op) => op.id !== result.id,
+              ),
+            ];
+            showBulkOperations(quality.bulk_operations);
+            selectScope("selected");
+          }
+          return;
+        }
         toast(
           action === "refresh"
             ? "已安排采集，后台按限速执行"
@@ -903,6 +992,7 @@ export function createCollectionCenter(ctx) {
         controls.forEach((b, i) => {
           if (b.isConnected) b.disabled = disabled[i];
         });
+        if (rev === currentRevision()) selectionChange();
       }
     }
     $("#retry-failed-tasks").onclick = () =>

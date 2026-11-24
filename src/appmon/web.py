@@ -18,7 +18,7 @@ from .db import connect
 from .ingest import valid_id
 from . import catalog
 from . import aso, review_desk, insights, collection
-from . import collection_tasks, pipelines
+from . import collection_tasks, pipelines, bulk_controls
 from . import task_logs, locales, scoped_views, app_icons
 from . import charts, app_collection
 from . import growth, keyword_discovery, keyword_reports
@@ -728,6 +728,7 @@ def create_app(cfg):
         selected=locales.stores(store);marks=','.join('%s' for _ in selected)
         source_scope=' OR '.join("JSON_CONTAINS(JSON_EXTRACT(actions,'$[*].value.store'),JSON_QUOTE(%s))" for _ in selected)
         return {'plans':db.execute("SELECT id,name,status,completed,total,error,created_at FROM collection_plans WHERE (JSON_EXTRACT(specification,'$.input_source') IS NOT NULL AND ("+source_scope+")) OR COALESCE(JSON_UNQUOTE(JSON_EXTRACT(specification,'$.store')),JSON_UNQUOTE(JSON_EXTRACT(specification,'$.app_request.store'))) IN ("+marks+') ORDER BY id DESC LIMIT 100',(*selected,*selected)).fetchall(),
+                'bulk_operations':bulk_controls.recent(db),
                 'heartbeat':db.execute("SELECT next_at FROM schedules WHERE name='console-heartbeat'").fetchone(), 'dispatcher':status(db)}
 
     @api.get('/research/collection/lineage')
@@ -755,7 +756,7 @@ def create_app(cfg):
     @api.get('/research/collection/revision')
     def collection_revision(db=DB):
         from .collection_batch import revision
-        return {'revision':revision(db)}
+        return {'revision':revision(db),'bulk_operations':bulk_controls.recent(db)}
 
     @api.get('/research/collection/logs/{resource}/{identifier}')
     def collection_task_logs(resource:str,identifier:str,after_id:int=Query(0,ge=0),before_id:int=Query(0,ge=0),
@@ -764,6 +765,11 @@ def create_app(cfg):
 
     @api.post('/research/collection/tasks/batch')
     def batch_collection(value:dict=Body(...),db=DB):return collection_tasks.control_tasks(db,value)
+
+    @api.post('/research/collection/tasks/batch/{identifier}/retry')
+    def retry_bulk_control(identifier:int,db=DB):
+        bulk_controls.retry(db,identifier)
+        return {'bulk_operations':bulk_controls.recent(db)}
 
     @api.put('/research/collection/tasks/{resource}/{identifier}')
     def update_collection_task(resource:str,identifier:int,value:dict=Body(...),db=DB):

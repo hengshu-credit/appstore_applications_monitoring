@@ -12,8 +12,10 @@ log = logging.getLogger(__name__)
 
 def run_once(cfg, db, limit=5, include_icons=True):
     from .collection import work_plans
+    from .bulk_controls import step as advance_bulk_controls
     from .app_groups import ensure_verification_jobs
     ensure_verification_jobs(db)
+    advance_bulk_controls(db)
     plans = work_plans(db)
     result = {"plans": plans, "watchlist": work_watchlist(cfg, db, max(limit,cfg.get('apple_lookup_batch_size',50)),max_requests=limit),
               "observations": work_observations(cfg, db, limit),
@@ -57,8 +59,10 @@ def maintenance_once(cfg, db):
 
 def worker(cfg):
     from threading import Thread
+    from .bulk_controls import worker as bulk_control_worker
     from .db import connect
     from .dispatcher import worker as collect_worker
+    Thread(target=bulk_control_worker,args=(cfg,),daemon=True,name='collection-bulk-controls').start()
     Thread(target=collect_worker,args=(cfg,'console'),daemon=True,name='collection-dispatcher').start()
     Thread(target=marketdata_worker,args=(cfg,),daemon=True,name='marketdata').start()
     Thread(target=developer_reference_worker,args=(cfg,),daemon=True,name='developer-references').start()

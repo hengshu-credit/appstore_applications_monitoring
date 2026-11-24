@@ -82,12 +82,12 @@ def sync(db,cfg,limit=20):
         with db.named_lock('chart-top50-followups'):
             targets=db.execute('''SELECT t.* FROM observation_targets t
                 LEFT JOIN chart_enrichment_runs e ON e.run_id=t.latest_success_id
-                WHERE t.kind='chart' AND t.latest_success_id IS NOT NULL AND e.run_id IS NULL
+                WHERE t.kind='chart' AND t.enabled=1 AND t.latest_success_id IS NOT NULL AND e.run_id IS NULL
                 ORDER BY t.latest_success_id LIMIT %s''',(limit,)).fetchall()
             for target in targets:
                 with db:
-                    current=db.execute('SELECT latest_success_id FROM observation_targets WHERE id=%s FOR UPDATE',(target['id'],)).fetchone()
-                    if current['latest_success_id']!=target['latest_success_id']:continue
+                    current=db.execute('SELECT latest_success_id FROM observation_targets WHERE id=%s AND enabled=1 FOR UPDATE',(target['id'],)).fetchone()
+                    if not current or current['latest_success_id']!=target['latest_success_id']:continue
                     rows=db.execute('SELECT item_id,payload FROM observation_items WHERE run_id=%s AND position<=%s ORDER BY position',
                         (target['latest_success_id'],DEPTH)).fetchall()
                     apps=[(target['store'],r['item_id'],target['country'],target['language']) for r in rows]

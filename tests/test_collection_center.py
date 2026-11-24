@@ -1,5 +1,7 @@
 import time
 from unittest.mock import patch
+import pymysql
+from appmon import bulk_controls
 from appmon.collection import preview_plan, create_plan, work_plans
 from appmon.collection_tasks import list_tasks, edit_task, control_tasks
 from appmon import pipelines
@@ -44,6 +46,59 @@ class CollectionCenterTest(OceanBaseTestCase):
         add_targets(self.db,[m|{'keyword':'เงินกู้'}])
         add_observation_target(self.db,m|{'kind':'reviews','app_id':'com.example.app'})
         return m
+
+    def test_background_pause_snapshots_filter_and_resumes_after_chunk_failure(self):
+        self.seed()
+        add_targets(self.db,[dict(store='apple',country='us',language='en',keyword=f'match {i}') for i in range(125)])
+        request = dict(action='pause',scope='filtered',background=True,
+                       filters=dict(store='apple',kind='keywords',q='match',state='pending'))
+        op = control_tasks(self.db,request)
+        with patch.object(bulk_controls,'CHUNK_SIZE',50):
+            self.assertTrue(bulk_controls.step(self.db))  # Capture all three pages.
+        self.db.execute("UPDATE keyword_targets SET due=%s WHERE store='apple'",(time.time()+3600,))
+        add_targets(self.db,[dict(store='apple',country='us',language='en',keyword='match later')])
+        self.assertTrue(bulk_controls.step(self.db))
+        self.assertEqual(bulk_controls.recent(self.db)[0]['completed'],49)  # First page also held the Google keyword.
+        # Fail after task updates but before commit. Logs and progress must roll back together.
+        execute = self.db.execute
+        def interrupt(sql,args=None):
+            if sql.startswith('DELETE FROM collection_bulk_chunks'):
+                raise pymysql.OperationalError(1213,'simulated deadlock')
+            return execute(sql,args)
+        with patch.object(self.db,'execute',side_effect=interrupt), self.assertLogs('appmon.bulk_controls',level='ERROR'):
+            for _ in range(3):
+                self.assertFalse(bulk_controls.step(self.db))
+        self.assertEqual(bulk_controls.recent(self.db)[0]['status'],'error')
+        self.assertEqual(list_tasks(self.db,state='paused')['total'],49)
+        other = connect(self.cfg)
+        try:
+            bulk_controls.retry(other,op['id'])
+            while bulk_controls.step(other): pass
+        finally:
+            other.close()
+        result = bulk_controls.recent(self.db)[0]
+        self.assertEqual((result['status'],result['completed'],result['total']),('complete',125,125))
+        self.assertEqual(list_tasks(self.db,state='paused')['total'],125)
+        self.assertEqual(list_tasks(self.db,state='pending')['total'],4)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) n FROM collection_logs WHERE event='pause'").fetchone()['n'],125)
+
+    def test_background_all_controls_every_configured_resource_and_leases(self):
+        self.seed()
+        self.db.execute("INSERT INTO app_permission_targets(store,app_id,country) VALUES('google','com.example.app','th')")
+        self.db.execute("""INSERT INTO app_icons(store,app_id,country,language,requested) VALUES
+            ('apple','123','us','en',1),('apple','456','us','en',0)""")
+        self.db.execute("""INSERT INTO collection_source_tasks(store,app_id,country,language,kind,label,payload,batch_key,source,request_id,created_at)
+            VALUES('apple','','us','en','aso_import','test','{}','key','test','1',0)""")
+        self.db.execute("INSERT INTO app_media_assets(store,url_hash,source_url,label) VALUES('apple','hash','url','test')")
+        self.db.execute("UPDATE jobs SET token='old',lease_until=%s",(time.time()+600,))
+        for action,state in [('pause','paused'),('resume','pending')]:
+            control_tasks(self.db,dict(scope='all',action=action,background=True))
+            while bulk_controls.step(self.db): pass
+            self.assertEqual(list_tasks(self.db,state=state)['total'],7)
+            self.assertEqual(self.db.execute('SELECT manual_paused FROM app_media_assets').fetchone()['manual_paused'],action=='pause')
+            self.assertEqual(self.db.execute('SELECT token,lease_until FROM jobs').fetchone(),dict(token=None,lease_until=0))
+            self.assertEqual(self.db.execute('SELECT enabled FROM app_icons WHERE requested=0').fetchone()['enabled'],1)
+            self.assertTrue(pipelines.settings(self.db,self.cfg,'pool')['enabled'])
 
     def test_registry_filters_paginates_and_distinguishes_paused_and_failed(self):
         self.seed()

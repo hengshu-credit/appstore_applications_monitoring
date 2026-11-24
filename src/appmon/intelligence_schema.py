@@ -2,6 +2,11 @@
 from .db import APP_KEY, REGION
 
 TABLES = {
+    'collection_bulk_operations': '''id BIGINT AUTO_INCREMENT PRIMARY KEY, action VARCHAR(8) NOT NULL,
+        filters TEXT NOT NULL, status VARCHAR(16) NOT NULL DEFAULT 'queued', total BIGINT NOT NULL DEFAULT 0,
+        completed BIGINT NOT NULL DEFAULT 0, failures INT NOT NULL DEFAULT 0, error TEXT, INDEX bulk_queue(status,id)''',
+    'collection_bulk_chunks': '''operation_id BIGINT NOT NULL, sequence_no BIGINT NOT NULL,
+        resource VARCHAR(16) NOT NULL, task_ids TEXT NOT NULL, PRIMARY KEY(operation_id,sequence_no)''',
     'chart_enrichment_runs':'''run_id BIGINT PRIMARY KEY,target_id BIGINT NOT NULL,app_count INT NOT NULL,
         keyword_count INT NOT NULL,created_at DOUBLE NOT NULL,INDEX enrichment_target(target_id,run_id)''',
     'chart_enrichment_apps':f'''{APP_KEY},{REGION},last_run_id BIGINT NOT NULL,first_seen DOUBLE NOT NULL,last_seen DOUBLE NOT NULL,

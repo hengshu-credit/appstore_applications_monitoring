@@ -106,6 +106,9 @@ def verify(archive):
         raise ValueError('备份存在重复路径')
     manifest = json.loads(archive.read('manifest.json'))
     expected_tables = set(TABLES)
+    bulk_tables = {'collection_bulk_operations','collection_bulk_chunks'}
+    if set(manifest['tables']) == expected_tables - bulk_tables:
+        expected_tables -= bulk_tables  # Older format-4 backups predate background controls.
     if manifest.get('format') != 4 or set(manifest['tables']) != expected_tables:
         raise ValueError('备份版本或表清单不匹配，请使用当前 OceanBase/S3 备份格式')
     if {name for name in names if name.startswith('tables/')} != {f'tables/{table}.jsonl' for table in expected_tables}:

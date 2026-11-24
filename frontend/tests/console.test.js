@@ -990,7 +990,10 @@ test("category cards drill into state and batch interval preserves scope", async
 
 test("cross-page selection sends scope and filters without enumerating pages", async () => {
   const bodies = [];
+  const operations = [];
   const { window } = await setup((path, options) => {
+    if (path.split("?")[0] === "/api/research/collection/activity")
+      return { plans: [], bulk_operations: operations };
     if (path.startsWith("/api/research/collection/tasks?"))
       return {
         items: [],
@@ -1000,7 +1003,15 @@ test("cross-page selection sends scope and filters without enumerating pages", a
       };
     if (path === "/api/research/collection/tasks/batch") {
       bodies.push(JSON.parse(options.body));
-      return { updated: 175 };
+      const operation = {
+        id: bodies.length,
+        action: bodies.at(-1).action,
+        status: "queued",
+        completed: 0,
+        total: 0,
+      };
+      operations.unshift(operation);
+      return operation;
     }
   });
   try {
@@ -1020,15 +1031,63 @@ test("cross-page selection sends scope and filters without enumerating pages", a
     await tick();
     assert.equal(bodies[0].scope, "filtered");
     assert.equal(bodies[0].action, "pause");
+    assert.equal(bodies[0].background, true);
+    assert.match(
+      window.document.querySelector("#bulk-operation-status").textContent,
+      /批量暂停 #1.*排队/,
+    );
     assert.equal("tasks" in bodies[0], false);
     window.document.querySelector("#select-every-task").click();
-    window.document.querySelector('[data-batch="resume"]').click();
+    window.document.querySelector('[data-batch="pause"]').click();
     await tick();
     assert.deepEqual(bodies[1], {
       scope: "all",
-      action: "resume",
+      action: "pause",
+      background: true,
       filters: {},
     });
+    window.document.querySelector("#select-every-task").click();
+    window.document.querySelector('[data-batch="resume"]').click();
+    await tick();
+    assert.deepEqual(bodies[2], { ...bodies[1], action: "resume" });
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
+test("pool pause refreshes the independent queue without touching configured tasks", async () => {
+  let enabled = true;
+  const { window, calls } = await setup((path, options) => {
+    if (path === "/api/research/collection/pipelines/pool") {
+      enabled = JSON.parse(options.body).enabled;
+      return { enabled };
+    }
+    if (path.split("?")[0] === "/api/research/collection/pipelines")
+      return [
+        {
+          id: "pool",
+          enabled,
+          total: 5000,
+          summary: { [enabled ? "pending" : "paused"]: 5000 },
+        },
+      ];
+  });
+  try {
+    window.confirm = () => true;
+    window.location.hash = "collection";
+    await tick();
+    const doc = window.document;
+    doc.querySelector('[data-toggle-pool="pause"]').click();
+    await tick();
+    assert.match(
+      doc.querySelector('#pool-task-card [data-state="paused"]').textContent,
+      /5,000/,
+    );
+    assert.ok(doc.querySelector('[data-toggle-pool="resume"]'));
+    assert.equal(
+      calls.some((c) => c.path === "/api/research/collection/tasks/batch"),
+      false,
+    );
   } finally {
     await window.happyDOM.close();
   }

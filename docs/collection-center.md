@@ -48,7 +48,7 @@
 
 - `GET /api/research/collection/tasks`：分页、筛选、状态统计。
 - `PUT /api/research/collection/tasks/{resource}/{id}`：编辑目标设置。
-- `POST /api/research/collection/tasks/batch`：默认 `scope=selected` 最多 100 个目标；`scope=filtered` 携带筛选条件，`scope=all` 操作全部任务；跨页支持暂停/恢复、周期调整与重试失败。任一目标无效则整批回滚。
+- `POST /api/research/collection/tasks/batch`：默认 `scope=selected` 最多 100 个目标；`scope=filtered` 携带筛选条件，`scope=all` 操作全部任务；跨页支持暂停/恢复、周期调整与重试失败。跨页暂停和恢复可带 `background=true`，返回操作编号。
 - `GET /api/research/collection/activity`：计划记录与 worker 心跳。
 - `GET /api/research/collection/logs/{resource}/{identifier}`：任务日志，支持 `after_id` 增量游标或 `before_id` 历史分页，二者互斥。`resource` 为 `watchlist`、`keywords`、`targets`、`plans` 或 `pipelines`。
 - `GET/PUT /api/research/collection/pipelines[/{name}]`：读取或保存基础流程设置。
@@ -76,8 +76,9 @@
 - Apple 评论仍受 RSS 分页约束：依据来源的下一页标记继续，不根据短页推断结束；无导航时读取至空页。最多读取来源支持的 10 页，达到来源窗口但未取足目标时标为 `reviews_source_limit`，不宣称历史全量。
 - 分页遇到游标循环、连续没有新增数据、解析失败或请求失败，报错并保留上次完整结果，不能把已取得的部分页发布成完整成功。已完成的同批其他目标仍独立保存。日志记录目标数量、实际数量、响应次数和停止原因。Google 响应通过每次调用的独立标识映射，支持乱序返回；详情另外校验应用 ID。单项缺失或格式异常只将该目标标成失败，按原退避机制改用原有单目标协议重试，不保存不完整结果或捏造空数据。HTTP 限流依旧执行共享冷却，不立即拆批轰炸请求。
 - 此优化不自动降低目标深度、延长采集周期、删除任务或复用过期数据。请求次数下降来自传输层的合并；原有字段、排名、评论、各目标历史仍独立完整保存。
-- 跨页暂停/恢复、周期调整、失败重试使用 MySQL 临时表固定目标集合，并以集合更新及批量日志写入完成同一事务；不将几十万个 ID 拉到 API 内存，不逐任务发出数据库更新。选中任务仍支持至多 100 项的原子操作。
-- API 批量操作新增 `action=interval`（携带 `refresh_hours`）及跨页 `action=retry`；跨页立即采集 `refresh` 仍不支持，避免误触全量重采。全池任务通过基础流程控制，不包含在配置目标列表的“全部”操作中。
+- 页面上的跨页暂停和恢复交由 console 服务后台执行。后台开始时固定匹配的配置任务，包含当时已领取的任务。每批最多处理 1,000 项，任务状态、租约、日志与进度一起提交。关闭页面或重启服务后继续执行。操作区显示处理进度，失败后可从断点继续。快照完成后新增的任务遵循其自身配置。
+- 同步跨页操作使用 MySQL 临时表固定目标集合，并以集合更新及批量日志写入完成同一事务；不将几十万个 ID 拉到 API 内存，不逐任务发出数据库更新。选中任务仍支持至多 100 项的原子操作。
+- API 批量操作新增 `action=interval`（携带 `refresh_hours`）及跨页 `action=retry`；跨页立即采集 `refresh` 仍不支持，避免误触全量重采。全池应用详情在独立卡片上暂停或恢复。两个全选按钮的范围都是配置任务。
 
 回归覆盖 105 个同市场 Apple 应用分 3 个 HTTP 请求、21 个 Google 详情/关键词分 2 次请求、完整字段/排名对比、评论独立游标与完整深度、响应乱序/部分缺失、失败目标单独重试、并发领取、暂停后的过期结果丢弃、每日预算跨日重置、图例筛选与跨页周期调整。
 
