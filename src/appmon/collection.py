@@ -8,6 +8,7 @@ from .keywords import validate_target, add_targets
 from .catalog import BY_ID
 from .task_logs import emit
 from .log_details import diagnostics
+from .source_tasks import KINDS as SOURCE_KINDS
 
 SOURCES = [
     {'id':'details','name':'应用详情与版本','source':'Apple lookup / Google Play详情','method':'public','cadence':'重点池默认24小时，可配置',
@@ -20,6 +21,8 @@ SOURCES = [
      'fields':'原文、星级、版本、时间、公开回复字段（来源提供时）','coverage':'每轮最多500条，最多10页；无法获取的回复状态为未知'},
     {'id':'featured','name':'编辑推荐','source':'Apple Today公开结构化页面','method':'public','cadence':'默认24小时',
      'fields':'卡片、关联应用、故事链接、观察时间','coverage':'iPhone Today可见卡片，卡片顺序不等于商店排名'},
+    {'id':'ad_tracking','name':'应用广告追踪','source':'AppGoblin、Google、Apple 及已授权的广告 API','method':'public / authorization','cadence':'按应用提交采集',
+     'fields':'投放渠道与广告位、推广素材及版本、文案、证据链接、广告主样本排名','coverage':'Google、Meta、Instagram、TikTok、Reddit、Yandex、App Store，覆盖依来源市场和授权范围而定'},
     {'id':'owned','name':'自有后台与广告报表','source':'用户导入 / 开发者授权接口','method':'authorization',
      'cadence':'按报表覆盖期间与授权配额配置','fields':'真实广告指标、后台关键词、转化与回复权限',
      'coverage':'现支持广告报表导入及本地草稿；尚未连接开发者账户，不读取竞品私有后台'},
@@ -94,7 +97,7 @@ def enqueue(db, value):
     for task in tasks:
         if not isinstance(task,dict):raise ValueError('采集任务须为对象')
         kind = task.get('kind')
-        if kind in ('aso_popularity','aso_import','aso_report'):
+        if kind in SOURCE_KINDS:
             from .source_tasks import normalize
             actions.append({'kind':kind,'value':normalize(kind,task)})
         elif kind in ('icons','permissions'):
@@ -176,7 +179,7 @@ def work_plans(db, limit=20):
             emit(db,'plans',row['id'],'started',f'开始配置目标，从 {completed}/{len(actions)} 继续')
             try:
                 for action in actions[completed:completed+limit]:
-                    if action['kind'] in ('aso_popularity','aso_import','aso_report'):
+                    if action['kind'] in SOURCE_KINDS:
                         from .source_tasks import enqueue as enqueue_source
                         enqueue_source(db,action['kind'],action['value'],source='collection-plan',request_id=f'{row["id"]}:{completed}')
                     elif action.get('immediate'):
@@ -186,7 +189,7 @@ def work_plans(db, limit=20):
                     elif action['kind']=='keywords':add_targets(db,[action['value']],merge_existing=True)
                     elif action['kind'] in ('icons','permissions'):configure_asset(db,action)
                     else:add_observation_target(db,action['value'],preserve_existing=action.get('preserve_existing',False),merge_existing=not action.get('preserve_existing',False))
-                    if 'input_source' in json.loads(row['specification']) and action['kind'] not in ('aso_popularity','aso_import','aso_report'):
+                    if 'input_source' in json.loads(row['specification']) and action['kind'] not in SOURCE_KINDS:
                         schedule_submission(db,action,row['created_at'])
                     completed+=1;processed+=1
                     db.execute("UPDATE collection_plans SET completed=%s,updated_at=%s WHERE id=%s",(completed,time.time(),row['id']))

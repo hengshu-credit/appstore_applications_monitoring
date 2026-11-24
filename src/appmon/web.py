@@ -21,6 +21,7 @@ from . import aso, review_desk, insights, collection
 from . import collection_tasks, pipelines, bulk_controls
 from . import task_logs, locales, scoped_views, app_icons
 from . import charts, app_collection
+from . import ad_tracking
 from . import growth, keyword_discovery, keyword_reports
 from . import auth
 from . import global_charts
@@ -77,7 +78,7 @@ def create_app(cfg):
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
-        response.headers["Content-Security-Policy"] = "default-src 'self'; img-src 'self' https: data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'"
+        response.headers["Content-Security-Policy"] = "default-src 'self'; img-src 'self' https: data:; media-src 'self' https:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'"
         response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -279,8 +280,9 @@ def create_app(cfg):
                 "job": db.execute("SELECT due,failures,last_error FROM jobs WHERE store=%s AND app_id=%s AND country=%s AND language=%s", key).fetchone()}
 
     @api.post('/apps/{store}/{app_id}/collect')
-    def collect_app(store:str,app_id:str,value:dict=Body(...),db=DB):
-        return app_collection.collect(db,value|{'store':store,'app_id':app_id})
+    def collect_app(store:str,app_id:str,request:Request,value:dict=Body(...),db=DB):
+        return app_collection.collect(db,value|{'store':store,'app_id':app_id},
+                                      include_ads='ads:write' in request.state.user['permissions'])
 
     @api.get('/apps/{store}/{app_id}/collection')
     def app_collection_status(store:str,app_id:str,country:str='us',language:str='en',db=DB):
@@ -638,6 +640,18 @@ def create_app(cfg):
         scope,args=locales.where(store)
         return {'observations':db.execute('SELECT * FROM ad_observations WHERE '+scope+' ORDER BY observed_at DESC LIMIT 500',args).fetchall(),
                 'reports':db.execute('SELECT * FROM ad_reports ORDER BY report_date DESC,id DESC LIMIT 500').fetchall() if 'apple' in locales.stores(store) else []}
+
+    @api.get('/ads/apps/{store}/{app_id}')
+    def app_ads(store:str,app_id:str,country:str='us',language:str='en',channel:str='',offset:int=0,limit:int=12,db=DB):
+        return ad_tracking.report(db,dict(store=store,app_id=app_id,country=country,language=language),channel,offset,limit)
+
+    @api.post('/ads/apps/{store}/{app_id}/collect')
+    def collect_app_ads(store:str,app_id:str,value:dict=Body(...),db=DB):
+        return ad_tracking.enqueue(db,value|{'store':store,'app_id':app_id})
+
+    @api.get('/ads/apps/{store}/{app_id}/observations/{identifier}/versions')
+    def app_ad_versions(store:str,app_id:str,identifier:int,country:str='us',language:str='en',offset:int=0,db=DB):
+        return ad_tracking.versions(db,dict(store=store,app_id=app_id,country=country,language=language),identifier,offset)
 
     @api.post("/ads/{kind}/import")
     def ad_import(kind: str, value: dict = Body(...), db=DB):

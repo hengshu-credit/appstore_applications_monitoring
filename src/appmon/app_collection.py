@@ -7,6 +7,7 @@ from .keywords import add_targets, validate_target
 from .catalog import category_id, BY_ID
 from .charts import capabilities, definition
 from .task_logs import emit, target_state
+from . import ad_sources, source_tasks
 
 
 def action_target(db,action):
@@ -50,7 +51,24 @@ def report(db,identifier,allow_plan=False):
     plan=db.execute('SELECT * FROM collection_plans WHERE id=%s',(identifier,)).fetchone()
     if not plan or not allow_plan and 'app_request' not in json.loads(plan['specification']):raise ValueError('应用采集请求不存在')
     actions=json.loads(plan['actions']);tasks=[];finished=0;errors=0
-    for action in actions:
+    for index, action in enumerate(actions):
+        if action['kind'] in source_tasks.KINDS:
+            row = db.execute("""SELECT id FROM collection_source_tasks WHERE source='collection-plan'
+                AND request_id=%s""", (f'{identifier}:{index}',)).fetchone()
+            task = source_tasks.receipt(db, row['id']) if row else None
+            state = task['status'] if task else 'configuring'
+            if state == 'done':
+                state = 'complete'
+                finished += 1
+            elif state == 'error' and task['failures'] >= 3:
+                state = 'failed'
+                finished += 1
+                errors += 1
+            tasks.append({'kind': action['kind'], 'label': source_tasks.KINDS[action['kind']],
+                          'ref': {'resource':'sources','id':row['id']} if row else None, 'state': state,
+                          'observed_at': task['success_at'] if task else None,
+                          'outcome': {'complete':'ok','failed':'error'}.get(state)})
+            continue
         ref=action_target(db,action);state='configuring';observed=None;outcome=None
         if ref:
             state=target_state(db,ref['resource'],str(ref['id']))['status']
@@ -74,8 +92,14 @@ def report(db,identifier,allow_plan=False):
                       'ref':ref,'state':state,'observed_at':observed,'outcome':outcome})
     state='failed' if plan['status']=='error' else ('partial_failure' if errors else 'complete') if finished==len(actions) else 'running'
     deferred=max(0,json.loads(plan['specification']).get('keyword_total',0)-100)
+    scope = '共享目标执行进度，多个计划复用同一目标的实际采集结果。' if allow_plan else (
+        '采集当前市场的公开详情、素材、最多100条近期评论、总榜和分类榜，并搜索应用名和最多100个已跟踪关键词。')
+    if any(action['kind'] in ad_sources.KINDS for action in actions):
+        scope += '本轮包含公开推广素材和广告主榜单。'
+    if deferred:
+        scope += f'另有{deferred}个词需在采集中心分批安排。'
     return {'id':identifier,'state':state,'requested_at':plan['created_at'],'total':len(actions),'finished':finished,'errors':errors,'tasks':tasks,'deferred_keywords':deferred,
-            'scope':('共享目标执行进度，多个计划复用同一目标的实际采集结果。' if allow_plan else '当前市场的公开详情/素材、最多100条近期评论、可用总榜和分类榜、本市场最多100个已跟踪关键词及应用名（缺失时用ID）。会创建或启用对应任务；不承诺全历史评论或全网关键词。'+(f'另有{deferred}个词需在采集中心分批安排。' if deferred else ''))}
+            'scope':scope}
 
 
 def latest(db,m):
@@ -87,7 +111,7 @@ def latest(db,m):
     return report(db,rows['id']) if rows else None
 
 
-def collect(db,value):
+def collect(db,value,*,include_ads=False):
     m=market(value);base={k:m[k] for k in ('store','country','language')}
     app=db.execute('SELECT name,category FROM apps WHERE store=%s AND app_id=%s',(m['store'],m['app_id'])).fetchone()
     if not app:raise ValueError('应用尚未进入应用池')
@@ -111,6 +135,8 @@ def collect(db,value):
         for word in dict.fromkeys(names):
             actions.append({'kind':'keywords','value':validate_target(base|{'keyword':word,'depth':50,'refresh_hours':24})})
         if m['store']=='apple':actions.append({'kind':'featured','value':base|{'kind':'featured','depth':100,'refresh_hours':24}})
+        if include_ads:
+            actions.extend({'kind': kind, 'value': m} for kind in ad_sources.runnable(db,m))
         for action in actions:action['immediate']=True
         now=time.time()
         with db:

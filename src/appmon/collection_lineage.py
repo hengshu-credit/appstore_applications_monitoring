@@ -10,6 +10,7 @@ log = logging.getLogger(__name__)
 KINDS = dict(details='应用详情',keywords='关键词排名',chart='分类榜单',reviews='用户评论',
              featured='编辑推荐',permissions='声明权限',icons='应用图标',screenshots='应用截图',pool='全池详情')
 from .source_tasks import KINDS as SOURCE_KINDS
+from . import ad_sources, ad_channels
 KINDS.update(SOURCE_KINDS)
 SOURCES = {
     'aso_file':('ASO 上传文件','本地持久化上传','消费者解析热度响应或关键词报告，不产生外部 HTTP 请求'),
@@ -25,8 +26,15 @@ SOURCES = {
     'directory':('安装指标','数据管理中的接入地址','Android 安装量参考；按需读取'),
     'web_feed':('网页趋势','数据管理中的 RSS 接入','网页搜索热点词；按需导入'),
     'ads':('Apple Ads','api.ads.apple.com/v1/insights','授权关键词热度'),
+    'ad_repository':('Apple 广告资料库','adrepository.apple.com','公开广告位、文案和素材'),
+    'ad_goblin':('AppGoblin 广告观察','appgoblin.info','应用推广素材、广告网络及月度广告主公开样本'),
+    'ad_google':('Google 广告透明度中心','adstransparency.google.com','开发者域名样本与可核实的应用素材'),
+    'ad_meta':('Meta 广告资料库','graph.facebook.com','Facebook、Instagram 等实际发布版位'),
+    'ad_tiktok':('TikTok 商业内容库','open.tiktokapis.com','广告详情和应用下载链接'),
+    'ad_reddit':('Reddit Ads','ads-api.reddit.com','授权账户广告与推广帖'),
 }
 SINKS = dict(details=('应用资料','listings / snapshots / app_metrics_daily','应用观察'),
+             ad_tracking=('广告追踪','ad_observations / collection_source_tasks','广告记录'),
              aso_reports=('ASO 报告词库','keyword_reports / keyword_report_rows','关键词记录'),
              keywords=('关键词排名','keyword_runs / keyword_ranks','排名记录'),
              chart=('榜单记录','observation_runs / observation_items','榜单条目'),
@@ -42,6 +50,10 @@ SINKS = dict(details=('应用资料','listings / snapshots / app_metrics_daily',
 
 
 def source_for(kind, store):
+    if kind=='ad_google':return kind
+    if kind in ad_channels.SOCIAL:return kind
+    if kind=='ad_apple':return 'ad_repository' if store=='apple' else None
+    if kind in ('ad_creatives','ad_rankings'):return 'ad_goblin'
     if kind in ('aso_popularity','aso_import') and store!='apple':return None
     if kind in SOURCE_KINDS:return 'ads' if kind=='aso_popularity' else 'aso_file'
     if kind in ('icons','screenshots'):return 'cdn'
@@ -51,6 +63,11 @@ def source_for(kind, store):
 
 def http_source(url):
     parsed=urlsplit(url);host=parsed.hostname or '';path=parsed.path
+    if host=='adrepository.apple.com':return 'ad_repository'
+    if host in ('adstransparency.google.com','displayads-formats.googleusercontent.com'):return 'ad_google'
+    if host in ('graph.facebook.com','open.tiktokapis.com','ads-api.reddit.com'):
+        return {'graph.facebook.com':'ad_meta','open.tiktokapis.com':'ad_tiktok','ads-api.reddit.com':'ad_reddit'}[host]
+    if host=='appgoblin.info' and ('/ad-creatives/' in path or '/top-mobile-advertisers/' in path):return 'ad_goblin'
     if host=='play.google.com':return 'google'
     if host=='search.itunes.apple.com' or '/search' in path and host=='apps.apple.com':return 'search'
     if host=='itunes.apple.com':return 'rss' if '/rss/' in path else 'lookup'
@@ -121,6 +138,13 @@ def results(db,store,since,now):
             FROM {table}{join} WHERE {time_field}>=%s AND {time_field}<=%s{scope} GROUP BY {store_field}''',args).fetchall()
         for row in rows:output.append(dict(source=source_for(kind,row['store']),sink=kind,kind=kind,unit=unit,**row))
     collect('requests','details','应用观察')
+    scope = '' if store=='all' else ' AND store=%s'
+    args = (since,now) if store=='all' else (since,now,store)
+    ad_rows = db.execute('''SELECT kind,store,COUNT(*) attempts,SUM(JSON_EXTRACT(result,'$.returned')) records,
+        MAX(success_at) last_at FROM collection_source_tasks WHERE kind IN %s AND success_at BETWEEN %s AND %s'''
+        +scope+' GROUP BY kind,store', (tuple(ad_sources.KINDS),*args)).fetchall()
+    for row in ad_rows:
+        output.append(row|dict(source=source_for(row['kind'],row['store']),sink='ad_tracking',unit='广告记录',errors=None))
     collect('keyword_runs r','keywords','排名记录',' JOIN keyword_targets t ON t.id=r.target_id','t.store','COALESCE(r.returned_count,0)','r.observed_at')
     for kind in ('chart','reviews','featured'):
         collect('observation_runs r',kind,SINKS[kind][2],f" JOIN observation_targets t ON t.id=r.target_id AND t.kind='{kind}'",'t.store','COALESCE(r.returned_count,0)','r.observed_at')
@@ -215,6 +239,7 @@ def report(db,cfg,store='all',hours=24):
         batch=cfg.get('apple_lookup_batch_size',50) if kind in ('details','pool') else cfg.get('google_rpc_batch_size',20)
         if kind in ('featured','screenshots'):batch=1
         if kind in SOURCE_KINDS or kind=='icons':batch=cfg.get('collection_batch_size',2000)
+        if kind=='ad_apple' or kind in ad_channels.SOCIAL:batch=1
         direct_claims=max(0,claims.get(kind,0)-sum(v.get(kind,0) for v in mixed.values())) if kind in claims else None
         node('d:'+kind,'动态分配 · '+label,2,kind=kind,value=direct_claims,unit='已消费任务',eligible=eligible,
              batch_limit=batch,workers=worker['workers'],paused=control['paused'],note='兼容商店、国家、语言和协议才组批；多个消费者共享额度',link='#collection?view=tasks')
@@ -250,7 +275,7 @@ def report(db,cfg,store='all',hours=24):
         node('s:'+source,label,3,value=handled,unit='已处理任务',
              returned_records=sum(int(r['records'] or 0) for r in values) if values else None,
              allocated_tasks=sum(e.get('tasks',0) for e in edges if e['target']=='s:'+source),
-             records=values,endpoint=endpoint,note=note,requests=int(events.get('requests',0)) if first and source in ('google','lookup','search','rss','today','cdn','marketdata','ads') else None,
+             records=values,endpoint=endpoint,note=note,requests=int(events.get('requests',0)) if first and source in ('google','lookup','search','rss','today','cdn','marketdata','ads','ad_google','ad_repository','ad_goblin',*ad_channels.SOCIAL) else None,
              http_errors=int(events.get('errors') or 0),request_since=first['next_at'] if first else None,
              configured=accounts.get(source),link='#datasources' if source in ('marketdata','community','directory','web_feed') else '#collection?view=tasks')
     for sink,(label,tables,unit) in SINKS.items():

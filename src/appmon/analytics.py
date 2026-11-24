@@ -8,8 +8,9 @@ import re
 import time
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from urllib.parse import urlsplit
 
+from .ad_sources import link
+from .ad_channels import canonical
 from .db import dump
 from .intelligence import market, text
 from .keywords import app_coverage
@@ -61,14 +62,36 @@ def import_ad_observations(db, rows):
     prepared = []
     for row in rows:
         m = market(row | {"language": row.get("language", "en")})
-        source, keyword = text(row.get("source"), 255), text(row.get("keyword"), 255)
+        source = text(row.get("source"), 255)
+        keyword = text(row["keyword"], 255) if row.get("keyword") else ""
         url = row.get("evidence_url", "")
-        if not isinstance(url, str) or len(url) > 2000 or urlsplit(url).scheme not in ("https", "http") or not urlsplit(url).hostname or urlsplit(url).username:
+        if not link(url) or len(url) > 2000:
             raise ValueError("evidence_url must be an HTTP(S) evidence link without credentials")
         at = row.get("observed_at")
         if isinstance(at, bool) or not isinstance(at, (float, int)) or not math.isfinite(at) or not 0 < at <= time.time() + 300:
             raise ValueError("observed_at must be a valid past UTC epoch")
-        p = m | dict(source=source, keyword=keyword, evidence_url=url, observed_at=at, placement=text(row.get("placement", "search_ad")))
+        p = m | dict(source=source, keyword=keyword, evidence_url=url, observed_at=at,
+                     placement=text(row.get("placement") or ("search_ad" if keyword else "位置未披露")))
+        for key in ("channel", "title", "advertiser", "creative_language"):
+            if row.get(key):
+                p[key] = text(row[key], 255)
+        if 'channel' in p:
+            p['channel'] = canonical(p['channel'])
+        if row.get("body"):
+            body = row["body"]
+            if not isinstance(body, str) or len(body) > 16000:
+                raise ValueError("广告文案须为最多 16000 字的文本")
+            p["body"] = body.strip()
+        for key in ("ad_url", "landing_url", "creative_url"):
+            if row.get(key) and not link(row[key]):
+                raise ValueError(f"{key} 须为 HTTP(S) 链接")
+            if row.get(key) and key != "creative_url":
+                p[key] = row[key]
+        if row.get("creative_url"):
+            kind = row.get("creative_type") or "other"
+            if kind not in ("image", "video", "other"):
+                raise ValueError("creative_type 须为 image、video 或 other")
+            p["assets"] = [{"type": kind, "url": row["creative_url"]}]
         digest = hashlib.sha256(dump(p).encode()).hexdigest()
         prepared.append((digest, m["store"], m["app_id"], m["country"], keyword, at, source, url, p["placement"], dump(p)))
     with db:

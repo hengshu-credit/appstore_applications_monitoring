@@ -99,4 +99,7 @@ TABLES = {
         impressions BIGINT NOT NULL, taps BIGINT NOT NULL, installs BIGINT NOT NULL,
         spend DECIMAL(18,6) NOT NULL, currency CHAR(3) NOT NULL, source VARCHAR(255) NOT NULL,
         imported_at DOUBLE NOT NULL, INDEX report_app(app_id,country,report_date)''',
+    'ad_creative_versions': '''fingerprint CHAR(64) NOT NULL,
+        version_hash CHAR(64) CHARACTER SET ascii NOT NULL, first_observed_at DOUBLE NOT NULL,
+        last_observed_at DOUBLE NOT NULL, payload LONGTEXT NOT NULL, PRIMARY KEY(fingerprint,version_hash)''',
 }

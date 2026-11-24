@@ -17,6 +17,13 @@ export const taskKinds = {
   aso_popularity: "ASO 关键词热度",
   aso_import: "ASO 热度导入",
   aso_report: "ASO 报告入库",
+  ad_creatives: "AppGoblin 推广素材",
+  ad_rankings: "AppGoblin 广告主榜",
+  ad_apple: "Apple 广告资料库",
+  ad_google: "Google 广告透明度中心",
+  ad_meta: "Meta / Instagram 广告资料库",
+  ad_tiktok: "TikTok 商业内容库",
+  ad_reddit: "Reddit Ads 账户",
 };
 const states = {
   scheduled: "定时采集",
@@ -161,9 +168,12 @@ export function createCollectionCenter(ctx) {
     if (row.resource === "sources") {
       const task = await api(`/research/collection/source-tasks/${row.id}`);
       if (editRevision !== currentRevision()) return;
+      const resultLink = row.kind.startsWith("ad_")
+        ? `<button type="button" class="secondary" data-app="${esc(row.app_id)}" data-store="${esc(row.store)}" data-country="${esc(row.country)}" data-language="${esc(row.language)}" data-app-section="ads">查看广告追踪</button>`
+        : '<a class="button secondary" href="#keywords">查看关键词数据</a>';
       editor(
         "一次性任务详情",
-        `<p>${esc(taskKinds[row.kind])} · ${esc(row.label)}</p><p>提交来源：${esc(task.source)} · 状态：${esc(states[task.status])}</p><p>提交后由消费者领取，完成后不自动排期。</p>${task.last_error ? `<p>${esc(task.last_error)}</p>` : ""}${task.result ? `<p>已保存 <strong>${num(task.result.returned ?? task.result.rows ?? 0)}</strong> 条数据${task.result.rejected_rows ? `，${num(task.result.rejected_rows)} 条异常记录已保留` : ""}。</p>${task.result.period_start ? `<p>统计范围：${esc(task.result.period_start)} 至 ${esc(task.result.period_end)}</p>` : ""}<a class="button secondary" href="#keywords">查看关键词数据</a>` : ""}`,
+        `<p>${esc(taskKinds[row.kind])} · ${esc(row.label)}</p><p>提交来源：${esc(task.source)} · 状态：${esc(states[task.status])}</p><p>提交后由消费者领取，完成后不自动排期。</p>${task.last_error ? `<p>${esc(task.last_error)}</p>` : ""}${task.result ? `<p>已保存 <strong>${num(task.result.returned ?? task.result.rows ?? 0)}</strong> 条数据${task.result.rejected_rows ? `，${num(task.result.rejected_rows)} 条异常记录已保留` : ""}。</p>${task.result.period_start ? `<p>统计范围：${esc(task.result.period_start)} 至 ${esc(task.result.period_end)}</p>` : ""}${resultLink}` : ""}`,
       );
       return;
     }

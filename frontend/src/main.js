@@ -38,6 +38,7 @@ import {
   bindMonitoringCharts,
 } from "./monitoring-charts.js";
 import { createAppInsights } from "./app-insights.js";
+import { createAdTracking } from "./app-ad-tracking.js";
 import { createAvailabilityPage } from "./availability.js";
 import { createGroupWorkspace } from "./app-groups.js";
 import { createAppDetailRows } from "./app-detail-rows.js";
@@ -653,6 +654,20 @@ async function applications(rev, filters = {}, page = 1, limit = 50) {
 }
 let appProgressTimer = null;
 const detailLogs = createTaskLogViewer({ api, esc, stamp });
+function appChartRankings(store, rows, title = "榜单表现") {
+  return panel(title,
+    `<p class="sub">当前国家与语言的商店总榜及应用分类榜，按最近一次成功观察展示。</p>${table(
+      ["榜单 / 分类", "位置", "基榜位置 / 变化", "观察时间 / 来源", "状态"],
+      rows.map((r) => [
+        `${esc(r.name)}${r.mode === "derived" ? '<span class="badge warn">本站派生</span>' : ""}<div class="sub">${esc(selectors.categoryName(store, r.category))}</div>`,
+        num(r.position), num(r.base_position) + " / " + move(r.change),
+        stamp(r.observed_at) + `<div class="sub">${esc(r.source || "待采集")}</div>`,
+        r.status === "unsupported" ? esc(r.reason) : r.status === "not_checked" ? "未采集"
+          : r.position !== null ? "本次榜单内"
+          : `未进入本次 ${r.returned_count} 条结果${r.reason ? '<div class="sub">' + esc(r.reason) + "</div>" : ""}`,
+      ]),
+    )}`);
+}
 async function appDetail(store, id, rev = ++revision) {
   $("#page-title").textContent = "应用详情";
   $("#global-store").value = store;
@@ -677,26 +692,7 @@ async function appDetail(store, id, rev = ++revision) {
             badge(r.stale ? "queued" : r.status),
           ]),
         ),
-      )}${panel(
-        "榜单表现",
-        `<p class="sub">当前国家与语言的总榜及应用分类榜。本站派生榜会单独标记，未命中只表示不在本次返回范围。</p>${table(
-          ["榜单 / 分类", "位置", "基榜位置 / 变化", "观察时间 / 来源", "状态"],
-          (data.chart_rankings || []).map((r) => [
-            `${esc(r.name)}${r.mode === "derived" ? '<span class="badge warn">本站派生</span>' : ""}<div class="sub">${esc(selectors.categoryName(store, r.category))}</div>`,
-            num(r.position),
-            num(r.base_position) + " / " + move(r.change),
-            stamp(r.observed_at) +
-              `<div class="sub">${esc(r.source || "待采集")}</div>`,
-            r.status === "unsupported"
-              ? esc(r.reason)
-              : r.status === "not_checked"
-                ? "未采集"
-                : r.position !== null
-                  ? "本次榜单内"
-                  : `未进入本次 ${r.returned_count} 条结果${r.reason ? '<div class="sub">' + esc(r.reason) + "</div>" : ""}`,
-          ]),
-        )}`,
-      )}${panel("变更时间线", data.events.length ? `<div class="timeline">${data.events.map((r) => `<article><strong>${esc(kindLabel(r.kind))}</strong><div class="sub">${esc(stamp(r.observed_at))}</div><details><summary>查看字段差异</summary>${jsonBlock(JSON.parse(r.changes))}</details></article>`).join("")}</div>` : empty())}${panel("ASO 核查与候选词", '<button id="aso-check" class="secondary">根据已存记录生成建议</button><div id="aso-result" class="spacer"></div>')}`,
+      )}${appChartRankings(store, data.chart_rankings || [])}${panel("变更时间线", data.events.length ? `<div class="timeline">${data.events.map((r) => `<article><strong>${esc(kindLabel(r.kind))}</strong><div class="sub">${esc(stamp(r.observed_at))}</div><details><summary>查看字段差异</summary>${jsonBlock(JSON.parse(r.changes))}</details></article>`).join("")}</div>` : empty())}${panel("ASO 核查与候选词", '<button id="aso-check" class="secondary">根据已存记录生成建议</button><div id="aso-result" class="spacer"></div>')}`,
       rev,
       [
         data.listing
@@ -718,6 +714,7 @@ async function appDetail(store, id, rev = ++revision) {
     ["performance", "监控趋势"],
     ["markets", "国家 / 地区"],
     ["rankings", "关键词与榜单"],
+    ...(accounts.can("ads") ? [["ads", "广告追踪"]] : []),
     ["history", "版本与事件"],
     ["aso", "ASO 核查"],
   ];
@@ -764,6 +761,7 @@ async function appDetail(store, id, rev = ++revision) {
   }
   content.append(nav, wrapper);
   const loaded = new Set();
+  let adView;
   const showSection = (key) => {
     panels.forEach((el, k) => (el.hidden = k !== key));
     nav
@@ -774,6 +772,14 @@ async function appDetail(store, id, rev = ++revision) {
           String(b.dataset.detailSection === key),
         ),
       );
+    if (key === "ads") {
+      adView ??= createAdTracking(panels.get(key), m, appChartRankings(store, data.chart_rankings || [], "商店榜单排名"), {
+        api, esc, safeURL, stamp, num, table, panel,
+        canCollect: accounts.can("ads", "write") && accounts.can("collection", "write"),
+        canConfigure: accounts.can("datasources"),
+      });
+      adView.show();
+    } else adView?.hide();
     if (!loaded.has(key)) {
       loaded.add(key);
       if (key === "performance") appInsights.monitoring(m);
@@ -785,9 +791,18 @@ async function appDetail(store, id, rev = ++revision) {
   };
   nav.addEventListener("click", (e) => {
     const button = e.target.closest("[data-detail-section]");
-    if (button) showSection(button.dataset.detailSection);
+    if (button) {
+      const key = button.dataset.detailSection;
+      const [path, query] = location.hash.split("?");
+      const params = new URLSearchParams(query);
+      if (key === "profile") params.delete("section");
+      else params.set("section", key);
+      history.replaceState(null, "", path + (params.size ? "?" + params : ""));
+      showSection(key);
+    }
   });
-  showSection("profile");
+  const section = new URLSearchParams(location.hash.split("?")[1]).get("section");
+  showSection(panels.has(section) ? section : "profile");
   const progressState = {
     running: "采集中",
     complete: "本轮采集完成",
@@ -814,6 +829,13 @@ async function appDetail(store, id, rev = ++revision) {
                   keywords: "关键词",
                   chart: "榜单",
                   featured: "编辑推荐",
+                  ad_apple: "广告资料库",
+                  ad_google: "Google 广告透明度中心",
+                  ad_creatives: "广告素材",
+                  ad_rankings: "广告投放榜",
+                  ad_meta: "Meta / Instagram 广告",
+                  ad_tiktok: "TikTok 广告",
+                  ad_reddit: "Reddit 广告",
                 }[t.kind],
               ),
               esc(t.label),
@@ -835,7 +857,7 @@ async function appDetail(store, id, rev = ++revision) {
             ]),
           )}</details>`,
         )
-      : '<p class="sub">一键操作会创建或启用当前市场的相关采集任务：详情与素材、近期评论、可用榜单、已跟踪关键词和应用名搜索；公开来源无法保证全历史评论或全网关键词。</p>';
+      : `<p class="sub">一键采集会创建或启用当前市场的应用详情、素材、近期评论、榜单和关键词任务。${accounts.can("ads", "write") ? "同时采集该应用的公开广告和投放排名。" : ""}</p>`;
     $("#app-plan-logs")?.addEventListener("click", () =>
       detailLogs
         .open("plans", report.id, "应用采集计划")
@@ -1529,7 +1551,7 @@ async function adPage(rev) {
           ["应用", "市场 / 关键词", "位置", "时间", "证据"],
           r.observations.map((a) => [
             appLink(a.store, a.app_id),
-            esc(a.country) + " / " + esc(a.keyword),
+            esc(a.country?.toUpperCase() || "地区未披露") + (a.keyword ? " / " + esc(a.keyword) : ""),
             esc(a.placement),
             stamp(a.observed_at),
             `<a href="${safeURL(a.evidence_url)}" target="_blank" rel="noopener">${esc(a.source)} ↗</a>`,
@@ -1585,6 +1607,12 @@ async function adPage(rev) {
             store: "apple",
             app_id: "123456789",
             country: "us",
+            channel: "请填写实际投放渠道",
+            title: "请填写广告标题",
+            body: "请填写广告文案",
+            creative_type: "image",
+            creative_url: "https://example.com/replace-with-creative",
+            landing_url: "https://example.com/replace-with-landing-page",
             keyword: "请填写实际关键词",
             observed_at: Math.floor(Date.now() / 1000),
             source: "请填写证据来源",
@@ -2013,7 +2041,8 @@ document.addEventListener("click", async (event) => {
         "app/" +
         encodeURIComponent(el.dataset.store) +
         "/" +
-        encodeURIComponent(el.dataset.app);
+        encodeURIComponent(el.dataset.app) +
+        (el.dataset.appSection === "ads" ? "?section=ads" : "");
       if (location.hash.slice(1) === nextHash) await render();
       else location.hash = nextHash;
     } else if (el.dataset.target) location.hash = "target/" + el.dataset.target;

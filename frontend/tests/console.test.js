@@ -100,6 +100,7 @@ const newModules = (
       "monitoringChart,monitoringBars,bindMonitoringCharts",
     ),
     wrappedModule("app-insights.js", "createAppInsights"),
+    wrappedModule("app-ad-tracking.js", "createAdTracking"),
     wrappedModule("discovery.js", "createDiscoveryPages"),
     wrappedModule("global-chart-hover.js", "bindGlobalChartHover"),
     wrappedModule(
@@ -842,6 +843,48 @@ test("app collect button submits current storefront and shows asynchronous progr
   }
 });
 
+test("app advertising tab loads on demand, filters creatives and queues its current app", async () => {
+  const endpoint = "/api/ads/apps/apple/123";
+  const { window, calls } = await setup((path) => {
+    if (path.startsWith("/api/apps/apple/123?")) return emptyApp;
+    if (path === endpoint + "/collect") return { tasks: [] };
+    if (path.startsWith(endpoint + "?")) return {
+      sources: [{ kind: "ad_rankings", status: "done", result: { listed: false, sample_size: 100 } }],
+      reports: [], channels: ["Google","Meta","TikTok","Reddit","Instagram","Yandex","App Store"].map(channel => ({channel,count:channel==="Meta" ? 1 : 0})), total: 1,
+      items: [{channel: "Meta", placement: "Feed", source: "Observation", title: "<em>Creative copy</em>",
+        landing_url: "https://example.org/landing", evidence_url: "javascript:bad()", assets: [
+          {type: "video", preview_url: "https://example.org/preview.jpg"}]}],
+    };
+  });
+  try {
+    const doc = window.document;
+    window.location.hash = "app/apple/123";
+    await tick();
+    assert.equal(calls.some(c => c.path.startsWith(endpoint)), false);
+    doc.querySelector("#detail-tab-ads").click();
+    await tick();
+    const pane = doc.querySelector("#detail-section-ads");
+    assert.equal(pane.hidden, false);
+    assert.equal(pane.querySelector(".ad-creative h3").textContent, "<em>Creative copy</em>");
+    assert.equal(pane.querySelector(".ad-creative h3 em, video, a[href^='javascript:']"), null);
+    assert.ok(pane.querySelector("a[href='https://example.org/landing']"));
+    assert.match(pane.textContent, /未出现在本次返回的广告主样本中/);
+    assert.match(pane.textContent, /商店榜单排名/);
+    for (const channel of ["Google","Meta","TikTok","Reddit","Instagram","Yandex","App Store"])
+      assert.ok(pane.querySelector(`[data-ad-channel="${channel}"]`));
+    pane.querySelector('[data-ad-channel="Meta"]').click();
+    await tick();
+    assert.ok(calls.some(c => c.path.startsWith(endpoint + "?") && c.path.includes("channel=Meta")));
+    pane.querySelector("[data-ad-collect]").click();
+    await tick();
+    const posted = calls.find(c => c.path === endpoint + "/collect");
+    assert.equal(JSON.parse(posted.options.body).country, doc.querySelector("#global-country").value);
+    assert.match(window.location.hash, /section=ads/);
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
 test("chart center exposes seven views and requests the selected collection", async () => {
   const { window, calls } = await setup((path) => {
     if (path.startsWith("/api/charts/view?")) {
@@ -955,9 +998,9 @@ test("category cards drill into state and batch interval preserves scope", async
     await tick();
     assert.equal(
       window.document.querySelectorAll(".collection-category").length,
-      11,
+      18,
     );
-    for (const kind of ["aso_popularity", "aso_import", "aso_report"])
+    for (const kind of ["aso_popularity", "aso_import", "aso_report", "ad_creatives", "ad_rankings", "ad_apple", "ad_google", "ad_meta", "ad_tiktok", "ad_reddit"])
       assert.ok(window.document.querySelector(`[data-category="${kind}"]`));
     assert.equal(
       window.document.querySelectorAll(".collection-legend").length,

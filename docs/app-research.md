@@ -44,6 +44,24 @@ Apple 人气飙升榜只比较同一国家、语言、分类、来源与解析�
 
 这项操作不代表取得开发者私有后台、无限历史评论或全球完整关键词库。图片仍保存公开来源 URL；原始响应按既有机制压缩留存。
 
+## 广告追踪
+
+打开「应用详情 → 广告追踪」，可在当前应用下按渠道筛选投放记录，查看文案、素材、展示媒体、来源日期和证据链接。「采集广告数据」将可用来源加入后台队列。具备广告写入权限时，「立即采集全部公开信息」也会安排这些任务。采集来源栏显示进度、最近成功时间和失败原因。
+
+Google、Meta、TikTok、Reddit、Instagram、Yandex 和 App Store 均有独立渠道入口。AppGoblin 的网络观测覆盖 Google、Yandex 等移动广告网络。已核实的自动采集记录会按内容保存文案、素材 URL 和目标链接的版本，在卡片中可展开查看各版本首次和最近采集时间。
+
+| 来源 | 可查看的内容 | 覆盖范围 |
+|---|---|---|
+| Google 广告透明度中心 | 开发者官网域名对应的公开广告、广告主、观察日期、原页和可解析的素材 | 每轮查看至多 8 条跨地区域名样本。素材中能核对商店应用链接的记录计入投放，其余可在域名线索中核查。公开查询和预览解析参考[开源实现](https://github.com/block-town/google-ads-transparency-mcp)。 |
+| AppGoblin 应用推广素材 | 广告网络、图片或视频预览图、展示广告的应用、最近观测日期 | 按商店应用 ID 匹配。公开样本缺少投放国家时显示「地区未披露」。[推广素材示例](https://appgoblin.info/apps/com.einnovation.temu/ad-creatives) |
+| Apple 广告资料库 | 广告位、文案、图片、视频、投放观察期和广告详情链接 | 按应用 ID 和资料库支持的欧洲市场查询近 90 天，日期以来源返回的窗口为准。分页入库，失败可续采。[Apple 接口文档](https://developer.apple.com/support/downloads/Ad-Repository.pdf) |
+| Meta / Instagram | 两个独立的渠道筛选、广告原页、文案、版位和应用链接 | 配置 Meta Ad Library API 授权后查询欧盟及英国的商业广告。两个平台都有投放的广告可分别查看。[Meta 接口文档](https://developers.facebook.com/docs/graph-api/reference/ads_archive/) |
+| TikTok | 广告原页、图片或视频、文案、下载链接和落地链接 | 配置 Commercial Content API 授权后检索所选市场近 30 天发布的广告，按详情中的应用地址确认归属。[TikTok 接口文档](https://developers.tiktok.com/docs/en/commercial-content-api-get-ad-details) |
+| Reddit | 账户广告状态、推广帖、标题、媒体及目标链接 | 需配置广告账户 ID 和只读令牌。读取该账户中能通过商店链接核实归属的广告。[Reddit 广告接口](https://ads-api.reddit.com/docs/v3/api/list-ads) |
+| AppGoblin 月度广告主榜 | 公开样本内按素材数和覆盖媒体应用数计算的两个排名 | 同值并列，每个指标仅使用该指标有值的样本。页面列出样本量和观察时间。[公开榜单](https://appgoblin.info/top-mobile-advertisers) |
+
+商店总榜和分类榜使用当前国家、语言的已采集快照。自有账户日报只显示当前 Apple 应用和地区的最近 30 条记录。「广告观察」导入的证据也在该应用下可见，可附带 `channel`、`title`、`body`、`ad_url`、`landing_url`、`creative_type` 和 `creative_url`。素材链接保留来源地址。来源仅公开缩略图时，页面标注为预览图。
+
 ## 容器网络与界面
 
 本地 Docker 采集器可通过 `.env` 的 `APPMON_HTTP_PROXY` / `APPMON_HTTPS_PROXY` 配置可达代理，例如 Docker Desktop 的 `http://host.docker.internal:7897`；不需要代理时留空。TLS 证书校验保持开启。网页和 MySQL 本地通信被 `NO_PROXY` 排除。

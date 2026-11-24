@@ -62,7 +62,7 @@ export function createDataSourcePage({
             ? esc(accountSummary(data[source.id] || source.account))
             : source.account?.configured
               ? "凭据已保存"
-              : "无需账户 / 未配置",
+              : source.editable_token ? "待配置授权" : "无需账户 / 未配置",
           source.editable
             ? `<button type="button" class="link" data-source-edit="${esc(source.id)}">${source.editable_origin ? "配置地址" : "配置"}${source.batch_size ? ` · 每批 ${source.batch_size}` : ""}</button>${["community", "directory", "marketdata"].includes(source.id) ? `<br><button type="button" class="link" data-source-account="${source.id}">配置账户 / 查看授权</button>` : ""}`
             : "内置协议",
@@ -254,7 +254,8 @@ export function createDataSourcePage({
       );
       const dialog = document.createElement("dialog");
       dialog.className = "collection-editor";
-      dialog.innerHTML = `<form id="source-binding-form" class="form-grid"><h2 class="full">${esc(sourceTitle(source))}</h2><div class="full">${sourceGuide(esc, source)}</div>${source.editable_origin ? `<label class="full">HTTPS 接入地址<input name="origin" type="url" required value="${esc(source.origin || "")}"></label><label class="full">允许的域名（逗号分隔）<input name="hosts" required value="${esc((source.hosts || []).join(", "))}"></label>` : source.editable_token ? `<label>广告账户 ID<input name="ad_account_id" required value="${esc(source.ad_account_id || "")}"></label><label>访问令牌<input name="access_token" type="password" autocomplete="new-password" placeholder="${source.account?.configured ? "已保存，留空保留" : "填写访问令牌"}"></label>` : `<label class="full">每次请求最大任务数<input name="batch_size" type="number" min="1" max="${source.batch_max}" required value="${source.batch_size}"></label><p class="sub full">已验证最大 ${source.batch_max}。${esc(source.batch_scope || "同市场应用详情")}。保持国家、语言隔离和完整字段；超大请求会拆分补采。</p>`}<p class="sub full" role="status"></p><button type="submit">保存配置</button><button type="button" class="secondary" data-close-source>关闭</button></form>`;
+      const accountIdField = source.account_id_required === false ? "" : `<label>广告账户 ID<input name="ad_account_id" required value="${esc(source.ad_account_id || "")}"></label>`;
+      dialog.innerHTML = `<form id="source-binding-form" class="form-grid"><h2 class="full">${esc(sourceTitle(source))}</h2><div class="full">${sourceGuide(esc, source)}</div>${source.editable_origin ? `<label class="full">HTTPS 接入地址<input name="origin" type="url" required value="${esc(source.origin || "")}"></label><label class="full">允许的域名（逗号分隔）<input name="hosts" required value="${esc((source.hosts || []).join(", "))}"></label>` : source.editable_token ? `${accountIdField}<label>访问令牌<input name="access_token" type="password" autocomplete="new-password" placeholder="${source.account?.configured ? "已保存，留空保留" : "填写访问令牌"}"></label>` : `<label class="full">每次请求最大任务数<input name="batch_size" type="number" min="1" max="${source.batch_max}" required value="${source.batch_size}"></label><p class="sub full">已验证最大 ${source.batch_max}。${esc(source.batch_scope || "同市场应用详情")}。保持国家、语言隔离和完整字段；超大请求会拆分补采。</p>`}<p class="sub full" role="status"></p><button type="submit">保存配置</button><button type="button" class="secondary" data-close-source>关闭</button></form>`;
       root.append(dialog);
       dialog.querySelector("[data-close-source]").onclick = () =>
         dialog.close();
@@ -275,7 +276,7 @@ export function createDataSourcePage({
             }
           : source.editable_token
             ? {
-                ad_account_id: form.elements.ad_account_id.value.trim(),
+                ...(form.elements.ad_account_id ? { ad_account_id: form.elements.ad_account_id.value.trim() } : {}),
                 access_token: form.elements.access_token.value,
               }
             : { batch_size: Number(form.elements.batch_size.value) };

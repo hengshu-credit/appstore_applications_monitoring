@@ -1,6 +1,6 @@
 # 数据源配置与首轮采集容量
 
-管理菜单的“数据源配置”（`#datasources`）统一列出商店、RSS、图片 CDN、AppGoblin 批量包、已授权市场数据与 Apple Ads 等 12 类来源。
+管理菜单的“数据源配置”（`#datasources`）统一列出商店、RSS、图片 CDN、公开数据包、市场数据与广告授权来源。
 
 ## 配置迁入与回显
 
@@ -11,6 +11,7 @@
 - 接入地址修改后，原凭据保留但被标记为 `endpoint_changed`；重新保存凭据前不向新地址发送旧凭据。
 - Apple Ads 支持后台保存广告账户 ID 和 Token；已有环境变量凭据可幂等迁入，Token 留空保留，前端仅显示配置状态。
 - 配置 API 位于 `/api/data-sources/config/{name}`，沿用不可委派的管理员权限。
+- 广告追踪的 Meta / Instagram、TikTok 和 Reddit 令牌分别加密保存。Reddit 另需提供授权广告账户 ID，三个来源都只向其固定的官方 API 发送令牌。授权到期时可在此替换。
 
 ## 经过实测的详情批量
 

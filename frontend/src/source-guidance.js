@@ -61,6 +61,21 @@ const guides = {
       ],
     ],
   },
+  ad_meta: {
+    setup: "保存已获 Ad Library API 读取权限的 Meta 访问令牌。系统查询所选市场，并按实际发布版位区分 Meta 和 Instagram。",
+    scope: "普通商业广告采用欧盟及英国资料库。按广告内容中的商店链接核对当前应用。",
+    links: [["申请访问", "https://www.facebook.com/ads/library/api/"], ["接口文档", "https://developers.facebook.com/docs/graph-api/reference/ads_archive/"]],
+  },
+  ad_tiktok: {
+    setup: "在 TikTok for Developers 的已批准项目取得具备 research.adlib.basic 权限的客户端访问令牌，保存到此处。令牌到期后可更换。",
+    scope: "采集支持市场近 30 天发布的广告，按广告详情的下载或落地链接匹配应用。",
+    links: [["申请与授权说明", "https://developers.tiktok.com/products/commercial-content-api"], ["广告详情接口", "https://developers.tiktok.com/docs/en/commercial-content-api-get-ad-details"]],
+  },
+  ad_reddit: {
+    setup: "填写 Reddit 广告账户 ID（t2_ 或 a2_ 开头）及该账户具有 adsread 权限的 OAuth 令牌。",
+    scope: "读取授权账户的广告及推广帖，并验证其商店目标链接。来源未披露地区时按应用展示。",
+    links: [["账户广告接口", "https://ads-api.reddit.com/docs/v3/api/list-ads"], ["推广帖接口", "https://ads-api.reddit.com/docs/v3/api/get-structured-post"]],
+  },
   apple_lookup: {
     setup:
       "内置 Apple 公开查询接口，不需要 App Store 账号或密码。配置项只控制同市场应用详情的请求批量。",

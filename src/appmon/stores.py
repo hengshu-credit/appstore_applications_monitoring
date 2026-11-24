@@ -156,6 +156,9 @@ class Client:
             from .collection_lineage import record_http
             record_http(self.db,store,url,r.status_code,time.monotonic()-started,lane=getattr(self,'lineage_lane',None))
             self.report('response', f'HTTP {r.status_code}；响应耗时 {time.monotonic()-started:.2f} 秒')
+            if r.status_code in (401,403) and (kwargs.get('headers') or {}).get('Authorization'):
+                r.close()
+                raise FetchError(f'HTTP {r.status_code} · 请在数据源配置检查令牌和读取权限')
             if r.status_code in (403, 429) or r.status_code >= 500:
                 if kwargs.get('stream') and callable(getattr(r,'close',None)):r.close()
                 delay = 300
