@@ -1093,6 +1093,47 @@ test("pool pause refreshes the independent queue without touching configured tas
   }
 });
 
+test("checked rows drive all five task controls and show priority while collection is paused", async () => {
+  const requests = [];
+  const items = ["icons", "icons", "keywords"].map((resource, index) => ({
+    resource, id: index+1, kind: resource, store: "google", country: "kz", language: "kk",
+    label: "example", enabled: 1, due: -1795523975, task_state: "pending", refresh_hours: 24,
+  }));
+  const { window } = await setup((path, options) => {
+    if (path.startsWith("/api/research/collection/tasks?"))
+      return { items, total: items.length, summary: { pending: items.length } };
+    if (path === "/api/research/collection/limits") return { paused: true };
+    if (path === "/api/research/collection/tasks/batch") {
+      requests.push(JSON.parse(options.body));
+      return { updated: 2, waiting_for_resume: requests.at(-1).action === "refresh" ? 2 : 0 };
+    }
+  });
+  try {
+    window.location.hash = "collection";
+    await tick();
+    const doc = window.document;
+    assert.match(doc.querySelector("#content").textContent, /优先 · 等待整体采集恢复/);
+    assert.doesNotMatch(doc.querySelector("#content").textContent, /1913/);
+    for (const action of ["refresh","pause","resume","interval","retry"]) {
+      doc.querySelector('[data-task-index="0"]').click();
+      doc.querySelector('[data-task-index="2"]').click();
+      assert.equal(doc.querySelector("#retry-failed-tasks").textContent,"重试已选失败任务");
+      doc.querySelector(action === "retry" ? "#retry-failed-tasks" : `[data-batch="${action}"]`).click();
+      if (action === "interval") {
+        const form = doc.querySelector("#batch-interval-form");
+        form.elements.refresh_hours.value = "12";
+        form.dispatchEvent(new window.Event("submit",{bubbles:true,cancelable:true}));
+      }
+      await tick();
+      assert.deepEqual(requests.at(-1),{action,scope:"selected",
+        ...(action === "interval" ? {refresh_hours:12} : {}),
+        tasks:[{resource:"icons",id:1},{resource:"keywords",id:3}]});
+      if (action === "refresh") assert.match(doc.querySelector("#toast").textContent,/2 项等待整体采集恢复/);
+    }
+    assert.equal(doc.querySelector("#retry-failed-tasks").textContent,"重试筛选内失败任务");
+  } finally { await window.happyDOM.close(); }
+});
+
 test("pending task controls block editing and cannot replace a newly selected page", async () => {
   let release;
   const { window } = await setup((path) => {

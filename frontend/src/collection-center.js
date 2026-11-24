@@ -532,9 +532,13 @@ export function createCollectionCenter(ctx) {
                   t.task_state === "done"
                     ? "—"
                     : t.enabled
-                      ? t.due
-                        ? stamp(t.due)
-                        : "尽快执行"
+                      ? t.task_state === "running"
+                        ? "采集中"
+                        : t.due < 0
+                          ? limits.paused && !["aso_report", "aso_import"].includes(t.kind)
+                            ? "优先 · 等待整体采集恢复"
+                            : "优先采集"
+                          : t.due ? stamp(t.due) : "尽快执行"
                       : "已暂停",
                   `<span class="badge ${t.task_state === "error" ? "warn" : t.task_state === "running" ? "good" : ""}">${esc(states[t.task_state])}</span>`,
                   `<div class="task-actions">${t.resource === "media" && t.success_at ? `<a class="link" href="/api/media/${t.id}" target="_blank" rel="noopener">查看图片</a>` : ""}<button class="link" data-task-logs="${index}">日志${t.task_state === "running" ? " · 实时" : ""}</button><button class="link" data-edit-task="${index}">${t.resource === "sources" ? "详情" : "编辑"}</button><button class="link" data-task-action="${index}" data-action="${t.enabled ? "pause" : "resume"}">${t.enabled ? "暂停" : "恢复"}</button><button class="link" data-task-action="${index}" data-action="refresh" ${t.enabled ? "" : "disabled"}>${t.resource === "sources" ? "重新入队" : "立即采集"}</button></div>`,
@@ -696,6 +700,8 @@ export function createCollectionCenter(ctx) {
         "PUT",
       );
       toast("整体控频设置已保存，新请求即时生效");
+      recentRegistry = null;
+      if (rev === currentRevision()) await refresh();
     });
     const storeFilter = $('#task-filters [name="store"]');
     if (storeFilter)
@@ -870,19 +876,22 @@ export function createCollectionCenter(ctx) {
         (el) => tasks.items[Number(el.dataset.taskIndex)],
       );
     const selectionChange = () => {
+      const count = selected().length;
+      $("#retry-failed-tasks").textContent =
+        selectionScope === "selected" && count ? "重试已选失败任务" : "重试筛选内失败任务";
       $("#selected-count").textContent =
         selectionScope === "all"
           ? "已选全部配置任务（所有商店、所有页，不含全池）"
           : selectionScope === "filtered"
             ? `已选筛选结果 ${tasks.total} 项（所有页，配置任务）`
-            : `已选 ${selected().length} 项`;
+            : `已选 ${count} 项`;
       document
         .querySelectorAll("[data-batch]")
         .forEach(
           (b) =>
             (b.disabled =
               selectionScope === "selected"
-                ? !selected().length
+                ? !count
                 : b.dataset.batch === "refresh" ||
                   (selectionScope === "filtered" && !tasks.total)),
         );
@@ -982,11 +991,14 @@ export function createCollectionCenter(ctx) {
           }
           return;
         }
-        toast(
-          action === "refresh"
-            ? "已安排采集，后台按限速执行"
-            : `已更新 ${result.updated} 个任务`,
-        );
+        const message = [action === "refresh" || (action === "retry" && scope === "selected")
+          ? `已优先安排 ${num(result.updated)} 项`
+          : action === "retry" ? `已安排 ${num(result.updated)} 个失败任务重试` : `已更新 ${num(result.updated)} 个任务`];
+        if (result.waiting_for_resume) message.push(`${num(result.waiting_for_resume)} 项等待整体采集恢复`);
+        if (result.running) message.push(`${num(result.running)} 项已在采集`);
+        if (result.out_of_scope) message.push(`${num(result.out_of_scope)} 项超出素材采集范围`);
+        if (result.skipped) message.push(`${num(result.skipped)} 项无需操作`);
+        toast(message.join("，"));
         if (rev === currentRevision()) await refresh();
       } finally {
         controls.forEach((b, i) => {
@@ -995,8 +1007,11 @@ export function createCollectionCenter(ctx) {
         if (rev === currentRevision()) selectionChange();
       }
     }
-    $("#retry-failed-tasks").onclick = () =>
-      control("retry", [], "filtered").catch((e) => toast(e.message));
+    $("#retry-failed-tasks").onclick = () => {
+      const rows = selected();
+      const scope = selectionScope === "selected" && rows.length ? "selected" : "filtered";
+      control("retry", rows, scope).catch((e) => toast(e.message));
+    };
     document
       .querySelectorAll("[data-batch]")
       .forEach(

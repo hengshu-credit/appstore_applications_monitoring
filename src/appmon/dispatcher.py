@@ -12,16 +12,18 @@ log = logging.getLogger(__name__)
 LANES = ('details', 'keywords', 'chart', 'reviews', 'featured', 'permissions', 'icons', 'screenshots', 'pool', 'sources')
 
 
-def ready(db, cfg, lane, now):
+def ready(db, cfg, lane, now, *, priority=False):
+    # Explicit refresh uses a negative Unix timestamp; leases still use wall clock time.
+    due_by = -1 if priority else now
     if lane=='screenshots':
         from .app_media import active_predicate
-        return db.execute('SELECT 1 FROM app_media_assets a WHERE enabled=1 AND due<=%s AND lease_until<=%s AND '+active_predicate()+' LIMIT 1',(now,now)).fetchone() is not None
+        return db.execute('SELECT 1 FROM app_media_assets a WHERE enabled=1 AND due<=%s AND lease_until<=%s AND '+active_predicate()+' LIMIT 1',(due_by,now)).fetchone() is not None
     if lane == 'sources':
-        return db.execute('SELECT 1 FROM collection_source_tasks WHERE enabled=1 AND due<=%s AND lease_until<=%s AND failures<3 LIMIT 1',(now,now)).fetchone() is not None
+        return db.execute('SELECT 1 FROM collection_source_tasks WHERE enabled=1 AND due<=%s AND lease_until<=%s AND failures<3 LIMIT 1',(due_by,now)).fetchone() is not None
     if lane == 'details':
         sql = '''SELECT 1 FROM watchlist w JOIN jobs j USING(store,app_id,country,language)
             WHERE w.enabled=1 AND j.due<=%s AND j.lease_until<=%s LIMIT 1'''
-        args = (now, now)
+        args = (due_by, now)
     elif lane == 'pool':
         from .pipelines import configured
         enabled, pool = configured(db, cfg, 'pool')
@@ -35,7 +37,7 @@ def ready(db, cfg, lane, now):
     else:
         table = {'keywords':'keyword_targets','permissions':'app_permission_targets','icons':'app_icons'}.get(lane,'observation_targets')
         sql = f'SELECT 1 FROM {table} WHERE enabled=1 AND due<=%s AND lease_until<=%s'
-        args = (now, now)
+        args = (due_by, now)
         if table == 'observation_targets':
             sql += ' AND kind=%s'
             args += (lane,)
@@ -64,12 +66,15 @@ def choose(db, cfg):
         if cfg.get('collection_priority_mode')=='focus':
             preferred=[lane for lane in lanes if lane!='pool']
             lanes=(['pool']+preferred) if (int(turn)+1)%10==0 else (preferred+['pool'])
-        for lane in lanes:
-            if ready(db,cfg,lane,time.time()):
-                db.execute("UPDATE schedules SET next_at=%s WHERE name='dispatch:turn'",(turn+1,))
-                db.execute('INSERT INTO schedules VALUES(%s,%s) ON DUPLICATE KEY UPDATE next_at=VALUES(next_at)',
-                           ('dispatch:'+lane,turn+1))
-                return lane
+        now = time.time()
+        lane = next((lane for lane in lanes if lane!='pool' and ready(db,cfg,lane,now,priority=True)), None)
+        if lane is None:
+            lane = next((lane for lane in lanes if ready(db,cfg,lane,now)), None)
+        if lane:
+            db.execute("UPDATE schedules SET next_at=%s WHERE name='dispatch:turn'",(turn+1,))
+            db.execute('INSERT INTO schedules VALUES(%s,%s) ON DUPLICATE KEY UPDATE next_at=VALUES(next_at)',
+                       ('dispatch:'+lane,turn+1))
+            return lane
     return None
 
 

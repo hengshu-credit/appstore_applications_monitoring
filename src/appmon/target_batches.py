@@ -22,6 +22,11 @@ def claim_targets(db, table, lease_seconds, size, kind=None, *, on_claim=None):
         from .collection_batch import claim_mode
         mode=claim_mode(db,'claim:'+table);retry=mode=='retry'
         first=None
+        if mode!='fresh':
+            first=db.claim(f'''SELECT {columns} FROM {table} WHERE enabled=1 AND due<0 AND lease_until<=%s
+                {extra} ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED''',(now,*extra_args)).fetchone()
+            if first:
+                mode='fresh';retry=False
         if retry:
             first=db.claim(f'''SELECT {columns} FROM {table} FORCE INDEX (target_retry) WHERE enabled=1 AND due<=%s AND lease_until<=%s
                 AND failures>0 {extra} ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED''',(now,now,*extra_args)).fetchone()

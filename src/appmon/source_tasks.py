@@ -86,7 +86,7 @@ def work(db,cfg):
                 if not first:return {'processed':0}
                 rows=db.claim('''SELECT id,language,failures,JSON_EXTRACT(payload,'$.limit') requested_limit
                     FROM collection_source_tasks WHERE batch_key=%s AND enabled=1 AND due<=%s
-                    AND lease_until<=%s AND failures<3 ORDER BY id LIMIT %s FOR UPDATE SKIP LOCKED''',(first['batch_key'],now,now,cfg.get('collection_batch_size',2000))).fetchall()
+                    AND lease_until<=%s AND failures<3 ORDER BY due,id LIMIT %s FOR UPDATE SKIP LOCKED''',(first['batch_key'],now,now,cfg.get('collection_batch_size',2000))).fetchall()
                 for row in rows:
                     db.execute('UPDATE collection_source_tasks SET token=%s,lease_until=%s WHERE id=%s',(token,now+max(600,cfg.get('lease_seconds',600)),row['id']))
                 touch(db)

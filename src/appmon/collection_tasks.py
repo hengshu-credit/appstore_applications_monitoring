@@ -92,11 +92,15 @@ def task_query(*, kind='', store='', country='', language='', state='', q='', li
         WHEN failures>0 THEN 'error' WHEN COALESCE(due,0)<={now} THEN 'pending'
         ELSE 'scheduled' END task_state FROM ({union}) task ({columns})'''
     where = []
-    for key, value in [('kind',kind),('store',store),('country',country.lower()),('language',language.lower())]:
+    for key, value in [('kind',kind),('store',store)]:
         if value:
-            if key in ('country','language'):
-                where.append(f"({key}=%s OR (resource='media' AND EXISTS(SELECT 1 FROM app_media_refs mr WHERE mr.asset_id=classified.id AND mr.{key}=%s)))");args.extend([value,value])
-            else:where.append(key+'=%s'); args.append(value)
+            where.append(key+'=%s'); args.append(value)
+    market = {k:v.lower() for k,v in [('country',country),('language',language)] if v}
+    if market:
+        own_market = ' AND '.join(f'{key}=%s' for key in market)
+        ref_market = ' AND '.join(f'mr.{key}=%s' for key in market)
+        where.append(f"(({own_market}) OR (resource='media' AND EXISTS(SELECT 1 FROM app_media_refs mr WHERE mr.asset_id=classified.id AND {ref_market})))")
+        args.extend(market.values()); args.extend(market.values())
     if q:
         where.append('(LOCATE(%s,label)>0 OR LOCATE(%s,CONVERT(app_id USING utf8mb4))>0 OR LOCATE(%s,CONVERT(category USING utf8mb4))>0)')
         args.extend([q,q,q])
@@ -172,7 +176,39 @@ def edit_task(db, resource, identifier, value):
     return {'id':identifier,'resource':resource,'saved':True}
 
 
-def control_tasks(db, value):
+def _enqueue_selected(db, cfg, resource, table, row, action, due, now):
+    if not row['enabled']:
+        if action=='refresh':
+            raise ValueError('已暂停的任务须先恢复，再安排采集')
+        return 'skipped'
+    key = (row['id'],)
+    where = 'id=%s'
+    if resource=='watchlist':
+        key = tuple(row[k] for k in ('store','app_id','country','language'))
+        where = 'store=%s AND app_id=%s AND country=%s AND language=%s'
+        table = 'jobs'
+        if action=='refresh':
+            db.execute('''INSERT INTO jobs(store,app_id,country,language) VALUES(%s,%s,%s,%s)
+                ON DUPLICATE KEY UPDATE app_id=jobs.app_id''',key)
+        row = db.execute('SELECT failures,lease_until FROM jobs WHERE '+where+' FOR UPDATE',key).fetchone()
+    if not row or (action=='retry' and not row['failures']):
+        return 'skipped'
+    if row['lease_until']>now:
+        return 'running'
+    if resource=='icons':
+        from .storage_policy import media_allowed
+        if not row['requested'] or not media_allowed(db,cfg,row['store'],row['app_id']):
+            return 'out_of_scope'
+    if resource=='media':
+        from .app_media import active_predicate
+        if not db.execute('SELECT 1 FROM app_media_assets a WHERE id=%s AND '+active_predicate(),key).fetchone():
+            return 'out_of_scope'
+    reset = ',failures=0,last_error=NULL' if resource=='sources' else ''
+    db.execute(f'UPDATE {table} SET due=%s{reset} WHERE {where}',(due,*key))
+    return 'updated'
+
+
+def control_tasks(db, value, cfg=None):
     refs, action = value.get('tasks'), value.get('action')
     scope = value.get('scope', 'selected')
     if scope not in ('selected','filtered','all'):
@@ -196,18 +232,35 @@ def control_tasks(db, value):
             args.append(time.time())
         interval = hours(value.get('refresh_hours')) if action=='interval' else None
         return _control_scope(db, query, args, action, interval)
-    elif not isinstance(refs,list) or not 1<=len(refs)<=100 or action not in ('pause','resume','refresh','interval'):
-        raise ValueError('每次请选择1–100个任务及有效操作')
+    elif not isinstance(refs,list) or not 1<=len(refs)<=200 or action not in ('pause','resume','refresh','interval','retry'):
+        raise ValueError('每次请选择1–200个任务及有效操作')
     interval = hours(value.get('refresh_hours')) if action=='interval' else None
+    counts = dict(updated=0,running=0,out_of_scope=0,skipped=0)
+    network_queued = 0
+    submitted = time.time()
     with db:
         if any(not isinstance(ref,dict) or ref.get('resource') not in TABLES or type(ref.get('id')) is not int for ref in refs):
             raise ValueError('任务标识无效')
         refs = [dict(resource=r,id=i) for r,i in sorted({(ref['resource'],ref['id']) for ref in refs})]
         for ref in refs:
-            if not isinstance(ref,dict): raise ValueError('任务标识无效')
             resource, identifier = ref.get('resource'), ref.get('id')
             if resource=='sources' and action=='interval':raise ValueError('一次性任务不设置周期，请仅选择周期任务')
             table, row = _target(db, resource, identifier)
+            if action in ('refresh','retry'):
+                outcome = _enqueue_selected(db,cfg or {},resource,table,row,action,-submitted,time.time())
+                counts[outcome] += 1
+                if outcome=='updated':
+                    if row.get('kind') not in ('aso_report','aso_import'):
+                        network_queued += 1
+                    emit(db,resource,identifier,action,'已优先安排采集，等待后台领取')
+                continue
+            if resource=='watchlist' and action in ('resume','interval'):
+                db.execute('''INSERT INTO jobs(store,app_id,country,language) VALUES(%s,%s,%s,%s)
+                    ON DUPLICATE KEY UPDATE app_id=jobs.app_id''',tuple(row[k] for k in ('store','app_id','country','language')))
+            if action=='resume' and row['enabled']:
+                counts['skipped'] += 1
+                continue
+            counts['updated'] += 1
             if action=='interval':
                 db.execute(f'UPDATE {table} SET refresh_hours=%s WHERE id=%s',(interval,identifier))
                 if resource=='watchlist':
@@ -217,28 +270,23 @@ def control_tasks(db, value):
                     db.execute(f'UPDATE {table} SET due=%s,token=NULL,lease_until=0 WHERE id=%s',(time.time()+interval*3600,identifier))
                 emit(db,resource,identifier,action,f'刷新周期已改为 {interval} 小时，从现在重新排期')
                 continue
-            if action=='refresh' and not row['enabled']:
-                raise ValueError('已暂停的任务须先恢复，再安排采集')
             if resource=='watchlist':
                 keys = tuple(row[k] for k in ('store','app_id','country','language'))
-                if action in ('pause','resume'):
-                    db.execute('UPDATE watchlist SET enabled=%s WHERE id=%s',(action=='resume',identifier))
-                    db.execute('''UPDATE jobs SET token=NULL,lease_until=0
-                        WHERE store=%s AND app_id=%s AND country=%s AND language=%s''',keys)
-                else:
-                    now=time.time()
-                    db.execute('''UPDATE jobs SET due=%s WHERE store=%s AND app_id=%s AND country=%s
-                        AND language=%s AND lease_until<=%s''',(-now,*keys,now))
-            elif action in ('pause','resume'):
+                db.execute('UPDATE watchlist SET enabled=%s WHERE id=%s',(action=='resume',identifier))
+                db.execute('''UPDATE jobs SET token=NULL,lease_until=0
+                    WHERE store=%s AND app_id=%s AND country=%s AND language=%s''',keys)
+            else:
                 db.execute(f'UPDATE {table} SET enabled=%s,token=NULL,lease_until=0'+
                     (f',manual_paused={int(action=="pause")}' if resource=='media' else '')+' WHERE id=%s', (action=='resume',identifier))
-            else:
-                # Explicit refresh must precede the potentially huge due=0 import backlog.
-                # Keep active leases, pause state and observation history intact.
-                now=time.time()
-                db.execute(f'UPDATE {table} SET due=%s'+(',failures=0,last_error=NULL' if resource=='sources' else '')+' WHERE id=%s AND lease_until<=%s', (-now,identifier,now))
-            emit(db,resource,identifier,action,{'pause':'任务已暂停，当前租约已失效','resume':'任务已恢复，等待到期后领取','refresh':'已请求立即采集；由后台按租约和限速执行'}[action])
-    return {'updated':len(refs),'action':action}
+            emit(db,resource,identifier,action,{'pause':'任务已暂停，当前租约已失效','resume':'任务已恢复，等待到期后领取'}[action])
+        if counts['updated']:
+            from .collection_batch import touch
+            touch(db)
+        if network_queued and cfg is not None:
+            from .collection_limits import settings
+            if settings(db,cfg)['paused']:
+                counts['waiting_for_resume'] = network_queued
+    return counts | {'action':action}
 
 
 def _control_scope(db, query, args, action, interval):

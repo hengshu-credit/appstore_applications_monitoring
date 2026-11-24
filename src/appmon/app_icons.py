@@ -68,7 +68,7 @@ def remember(db,store,app_id,country,language,url,name=None):
     db.execute('''INSERT INTO app_icons(store,app_id,country,language,name,source_url,source_updated)
         VALUES(%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE
         status=IF(app_icons.requested=1 AND NOT(app_icons.source_url<=>VALUES(source_url)),'queued',app_icons.status),
-        due=IF(app_icons.requested=1 AND NOT(app_icons.source_url<=>VALUES(source_url)),0,app_icons.due),
+        due=IF(app_icons.requested=1 AND NOT(app_icons.source_url<=>VALUES(source_url)),LEAST(app_icons.due,0),app_icons.due),
         token=IF(NOT(app_icons.source_url<=>VALUES(source_url)),NULL,app_icons.token),
         lease_until=IF(NOT(app_icons.source_url<=>VALUES(source_url)),0,app_icons.lease_until),
         source_url=VALUES(source_url),source_updated=VALUES(source_updated),name=COALESCE(VALUES(name),app_icons.name)''',
@@ -104,7 +104,7 @@ def request_icon(db,cfg,value,force=False):
         if force:
             db.execute("UPDATE app_icons SET requested=1,enabled=1,status='queued',due=0 WHERE id=%s AND lease_until<=%s",(row['id'],time.time()))
         elif not cached_path(cfg,row) and (not row['requested'] or row['status']=='ready'):
-            db.execute("UPDATE app_icons SET requested=1,status='queued',due=0 WHERE id=%s",(row['id'],))
+            db.execute("UPDATE app_icons SET requested=1,status='queued',due=LEAST(due,0) WHERE id=%s",(row['id'],))
         row=db.execute('SELECT * FROM app_icons WHERE id=%s',(row['id'],)).fetchone()
     return public(cfg,row)
 

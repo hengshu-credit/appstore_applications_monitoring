@@ -310,6 +310,11 @@ def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=Fa
         from .collection_batch import claim_mode
         mode=claim_mode(db,'claim:details');retry=mode=='retry'
         first=None
+        if watchlist and mode!='fresh':
+            first=db.claim(f'SELECT {columns} FROM {source} WHERE {where} AND j.due<0 ORDER BY j.due LIMIT 1 FOR UPDATE SKIP LOCKED',
+                           args,candidate_hint='LEADING(j w) USE_NL(w) INDEX(j jobs_dispatch)').fetchone()
+            if first:
+                mode='fresh';retry=False
         if retry:
             retry_source=source.replace('jobs j','jobs j FORCE INDEX (jobs_retry)')
             first=db.claim(f'SELECT {columns} FROM {retry_source} WHERE {where} AND j.failures>0 ORDER BY j.due LIMIT 1 FOR UPDATE SKIP LOCKED',args,**candidate_options).fetchone()

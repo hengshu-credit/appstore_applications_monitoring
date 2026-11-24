@@ -557,7 +557,7 @@ def create_app(cfg):
     @api.post("/control/{resource}/{identifier}")
     def control(resource: str, identifier: int, value: dict = Body(...), db=DB):
         if resource in collection_tasks.TABLES:
-            return collection_tasks.control_tasks(db, {'tasks':[{'resource':resource,'id':identifier}], 'action':value.get('action')})
+            return collection_tasks.control_tasks(db, {'tasks':[{'resource':resource,'id':identifier}], 'action':value.get('action')},cfg)
         table = {"watchlist": "watchlist", "targets": "observation_targets", "keywords": "keyword_targets", "rules": "alert_rules"}.get(resource)
         if not table or not db.execute(f"SELECT id FROM {table} WHERE id=%s", (identifier,)).fetchone():
             raise HTTPException(404, "任务不存在")
@@ -764,7 +764,7 @@ def create_app(cfg):
         return task_logs.read_logs(db,resource,identifier,after_id,before_id,limit)
 
     @api.post('/research/collection/tasks/batch')
-    def batch_collection(value:dict=Body(...),db=DB):return collection_tasks.control_tasks(db,value)
+    def batch_collection(value:dict=Body(...),db=DB):return collection_tasks.control_tasks(db,value,cfg)
 
     @api.post('/research/collection/tasks/batch/{identifier}/retry')
     def retry_bulk_control(identifier:int,db=DB):

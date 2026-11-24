@@ -134,7 +134,7 @@ def work(cfg,db,limit=5,client=None,max_requests=None):
                                 url=source_url(result.payload.get('icon'))
                                 if not url:raise FetchError('商店未提供受支持的图标地址')
                                 saved=writer.execute('''UPDATE app_icons SET source_url=%s,source_updated=%s,name=COALESCE(%s,name),
-                                    status='queued',due=0,token=NULL,lease_until=0 WHERE id=%s AND token=%s AND enabled=1 AND lease_until>%s''',
+                                    status='queued',due=LEAST(due,0),token=NULL,lease_until=0 WHERE id=%s AND token=%s AND enabled=1 AND lease_until>%s''',
                                     (url,time.time(),result.payload.get('name'),row['id'],row['token'],time.time())).rowcount
                                 if saved:
                                     prepared.add(row['id']);log.write('metadata','图标地址已保存，等待共享下载')
