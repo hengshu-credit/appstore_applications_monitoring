@@ -767,6 +767,41 @@ test("app country changes keep app identity while store changes leave cross-stor
   }
 });
 
+test("app detail orders the profile, observed version changes and rating beside the open listing", async () => {
+  const icon = "https://example.test/icon.png";
+  const screenshots = Array.from({ length: 6 }, (_, i) => `https://example.test/screen-${i}.png`);
+  const versions = ["1.0.4", "1.0.5", "1.0.5", null, "1.0.4"];
+  const app = {
+    ...emptyApp,
+    listing: { payload: { version: "1.0.4", description: "Store description" } },
+    snapshots: versions.map((version, i) => ({
+      observed_at: 100 + i,
+      payload: { version, icon, screenshots: [...screenshots, ...screenshots] },
+    })).reverse(),
+  };
+  const { window } = await setup((path) => path.startsWith("/api/apps/apple/123?") ? app : undefined);
+  try {
+    window.location.hash = "app/apple/123";
+    await tick();
+    const doc = window.document;
+    const layout = doc.querySelector("#detail-section-profile .app-profile-layout");
+    assert.deepEqual(Array.from(layout.firstElementChild.querySelectorAll("h2"), (h) => h.textContent),
+      ["应用档案", "版本变更记录", "评分变化"]);
+    const listing = layout.lastElementChild;
+    assert.equal(listing.querySelector("h2").textContent, "当前商店资料");
+    assert.equal(listing.querySelector("details").open, true);
+    assert.match(listing.querySelector("details").textContent, /Store description/);
+    const rows = layout.firstElementChild.children[1].querySelectorAll("tbody tr");
+    assert.deepEqual(Array.from(rows, (r) => [r.cells[1].textContent, r.cells[2].textContent]),
+      [["1.0.5", "1.0.4"], ["1.0.4", "1.0.5"]]);
+    doc.querySelector("#detail-tab-history").click();
+    assert.equal(doc.querySelector(".snapshot-icon img").src, icon);
+    assert.deepEqual(Array.from(doc.querySelectorAll(".snapshot-gallery img"), (img) => img.src), screenshots);
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
 test("app collect button submits current storefront and shows asynchronous progress", async () => {
   let request;
   const { window } = await setup((path, options) => {

@@ -128,6 +128,67 @@ export function createAppInsights(ctx) {
       )}<p class="sub">商店日期与本系统观察日期分开记录；空值表示来源未返回。</p>`,
     );
   }
+  function versionHistory(snapshots) {
+    const rows = [];
+    let previous = "";
+    // The API returns newest first. Keep rollbacks and skip snapshots with no version.
+    for (const { payload, observed_at } of [...snapshots].reverse()) {
+      const current = String(payload?.version ?? "").trim();
+      if (!current) continue;
+      if (previous && previous !== current) {
+        rows.push([
+          esc(stamp(observed_at)),
+          esc(previous),
+          esc(current),
+          esc(payload.release_notes || "—"),
+        ]);
+      }
+      previous = current;
+    }
+    return panel(
+      "版本变更记录",
+      (rows.length
+        ? table(["观察时间", "原版本", "新版本", "版本说明"], rows.reverse())
+        : '<p class="sub">暂无已观察到的版本变更。</p>') +
+        (snapshots.length === 100 ? '<p class="sub">依据本市场最近 100 个资料快照。</p>' : ""),
+    );
+  }
+
+  function profile(data, listing) {
+    const archived = facts(listing, data.app);
+    const rating = panel(
+      "评分变化",
+      chart(
+        [...data.snapshots].reverse().map((r) => ({ at: r.observed_at, value: r.payload?.rating })),
+        false, stamp, { label: "评分", domain: [0, 5], precision: 2 },
+      ),
+    );
+    const url = ctx.safeURL(listing.url);
+    const store = panel(
+      "当前商店资料",
+      `<h3>${esc(listing.name || "等待采集")}</h3>
+       <p>版本 ${esc(listing.version || "—")} · ${esc(data.app.category_name || listing.category || "—")}</p>
+       <p>${esc(listing.summary || "")}</p>
+       <details open><summary>描述与版本说明</summary>
+         <div class="review-text">${esc(listing.description || "暂无描述")}</div>
+         <h3 class="spacer">版本说明</h3><div class="review-text">${esc(listing.release_notes || "暂无版本说明")}</div>
+       </details>
+       ${url ? `<a href="${url}" target="_blank" rel="noopener">查看商店原页 ↗</a>` : ""}`,
+    );
+    return `<div id="app-profile-layout" class="app-profile-layout"><div class="app-profile-history">${archived}${versionHistory(data.snapshots)}${rating}</div>${store}</div>`;
+  }
+
+  function snapshotMedia(payload) {
+    const icon = ctx.safeURL(payload.icon);
+    const urls = Array.isArray(payload.screenshots) ? payload.screenshots : [];
+    const shots = [...new Set(urls.map(ctx.safeURL).filter(Boolean))].filter((url) => url !== icon);
+    const images = shots.map((url, i) => `<img src="${url}" alt="商店截图 ${i + 1}" loading="lazy">`).join("");
+    return `<div class="snapshot-media">
+      ${icon ? `<figure class="snapshot-icon"><figcaption>应用图标</figcaption><img src="${icon}" alt="应用图标" loading="lazy"></figure>` : ""}
+      ${shots.length ? `<figure class="snapshot-gallery"><figcaption>商店截图（${shots.length} 张）</figcaption><div class="screenshots">${images}</div></figure>` : '<p class="sub">此快照未收录商店截图。</p>'}
+    </div>`;
+  }
+
   async function monitoring(m) {
     const host = document.querySelector("#monitoring-trends");
     if (!host) return;
@@ -189,5 +250,5 @@ export function createAppInsights(ctx) {
     days.addEventListener("change", load);
     await load();
   }
-  return { discovery, facts, monitoring };
+  return { discovery, profile, snapshotMedia, monitoring };
 }
