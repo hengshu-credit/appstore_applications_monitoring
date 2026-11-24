@@ -129,8 +129,9 @@ export function filterBar({
   resetValues = {},
   resetSubmit = true,
   submitDisabled = false,
+  appScope = "market",
 }) {
-  return `<form id="${escapeFilter(id)}" class="toolbar filter-bar ${escapeFilter(className)}" data-filter-reset="${escapeFilter(JSON.stringify(resetValues))}" data-filter-reset-submit="${resetSubmit}" data-filter-bar>${filterFields(id, fields, values)}<button type="submit" ${submitDisabled ? "disabled" : ""}>${escapeFilter(submit)}</button><button type="button" class="secondary" data-filter-reset-button>重置</button>${actions}${after}</form>`;
+  return `<form id="${escapeFilter(id)}" class="toolbar filter-bar ${escapeFilter(className)}" data-filter-reset="${escapeFilter(JSON.stringify(resetValues))}" data-filter-reset-submit="${resetSubmit}" data-app-scope="${escapeFilter(appScope)}" data-filter-bar>${filterFields(id, fields, values)}<button type="submit" ${submitDisabled ? "disabled" : ""}>${escapeFilter(submit)}</button><button type="button" class="secondary" data-filter-reset-button>重置</button>${actions}${after}</form>`;
 }
 
 export function bindFilterBar(form, onApply, onError) {
@@ -249,7 +250,7 @@ export function initFilterBars({
       .map((o) => [o.value, o.textContent, o.dataset.alias || ""])
       .filter((r) => !needle || r.join(" ").toLowerCase().includes(needle));
     draw(free ? local.slice(0, 12) : local);
-    if (!free || !suggest || !root.dataset.filterSource || needle.length < 2)
+    if (!free || !suggest || !root.dataset.filterSource || !needle || (needle.length < 2 && root.dataset.filterSource !== "app"))
       return;
     timer = win.setTimeout(async () => {
       try {

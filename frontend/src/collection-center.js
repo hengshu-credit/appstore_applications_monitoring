@@ -446,6 +446,7 @@ export function createCollectionCenter(ctx) {
                     name: "q",
                     label: "搜索目标",
                     placeholder: "应用 ID / 名称 / 关键词",
+                    source: "app",
                     options: tasks.items.map((r) => [
                       r.app_id || r.label,
                       r.label || r.app_id,

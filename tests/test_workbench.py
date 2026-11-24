@@ -64,6 +64,32 @@ class WorkbenchTest(OceanBaseTestCase):
         self.assertEqual(filter_options(self.db,'app',q='x',**common),[])
         with self.assertRaises(ValueError):filter_options(self.db,'unexpected',q='loan',**common)
 
+    def test_app_name_filters_match_localized_reviews_events_and_annotations(self):
+        m=self.seed_listing('com.example.app',store='google',name='Быстрые займы Кз')
+        self.db.execute("UPDATE apps SET name='Loans' WHERE app_id='com.example.app'")
+        self.seed_review()
+        now=time.time()
+        self.db.execute('INSERT INTO events(store,app_id,country,language,observed_at,kind,changes) VALUES(%s,%s,%s,%s,%s,%s,%s)',
+                        (*m.values(),now,'first_verified','{}'))
+        add_annotation(self.db,m|{'event_at':now,'title':'Release'})
+        client=self.login_admin(TestClient(create_app(self.cfg)))
+        for term in ('Быстрые займы Кз','ЗАЙМ','EXAMPLE','Loans','com.example.app','%'):
+            scope=dict(store='all',country='us',language='en',app_query=term)
+            total=0 if term=='%' else 1
+            reviews=client.get('/api/research/reviews',params=scope).json()
+            self.assertEqual(reviews['summary']['total'],total,term)
+            self.assertEqual(len(reviews['items']),total)
+            events=client.get('/api/research/events',params=scope).json()
+            self.assertEqual((events['total'],len(events['items']),len(events['annotations'])),(total,total,total))
+        empty=client.get('/api/research/reviews',params=scope|{'app_query':'займы','q':'missing content'}).json()
+        self.assertEqual(empty['ratings'],[])
+        self.assertEqual(empty['daily'],[])
+        options=client.get('/api/apps/filter-options',params=m|{'field':'app','q':'займы'}).json()
+        self.assertEqual(options,[['com.example.app','Быстрые займы Кз']])
+        add_apps(self.db,[('google','org.seed.app','Seed only',None)],'fixture')
+        options=client.get('/api/apps/filter-options',params=m|{'field':'app','q':'seed'}).json()
+        self.assertEqual(options,[['org.seed.app','Seed only']])
+
     def test_numbered_app_pages_cover_uneven_stores_and_clamp_past_end(self):
         from appmon.scoped_views import apps
         add_apps(self.db,[('apple',str(100+i),'App '+str(i),None) for i in range(7)]+[('google','com.test.one','Only google',None)],'test')

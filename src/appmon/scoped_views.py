@@ -4,6 +4,7 @@ import time
 from datetime import date,datetime,timezone
 from . import locales,catalog,insights,review_desk
 from .ingest import valid_id
+from .app_search import LISTING_NAME, identity_filter
 
 
 def overview(db,store='all'):
@@ -22,22 +23,31 @@ def overview(db,store='all'):
         'failures':{table:db.execute(f'SELECT id,store,last_error,failures FROM {table} WHERE failures>0 AND {scope} ORDER BY id DESC LIMIT 20',args).fetchall() for table in ('keyword_targets','observation_targets')}}
 
 
-def filter_options(db, field, store, country, language, q):
+def filter_options(db, field, store, country, language, q, resolve=False):
     """Suggest observed application identities or developers within the requested market."""
     if field not in ('app', 'developer'):
         raise ValueError('未知筛选字段')
-    if len(q.strip()) < 2:
+    if not q.strip() or (len(q.strip()) < 2 and not resolve):
         return []
     scope, args = locales.where(store, country, language)
-    column = 'name' if field == 'app' else 'developer'
-    label = f"NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.{column}')),'null')"
-    value = 'app_id' if field == 'app' else label
-    query = f"SELECT DISTINCT {value} value,{label} label FROM listings WHERE {scope} AND {label} IS NOT NULL AND {label}<>'' AND (LOCATE(LOWER(%s),LOWER({label}))>0"
-    search = [q.strip()]
+    query = q.strip()
     if field == 'app':
-        query += ' OR LOCATE(LOWER(%s),LOWER(app_id))>0'
-        search.append(q.strip())
-    rows = db.execute(query + ') ORDER BY label,value LIMIT 12', (*args,*search)).fetchall()
+        scope, args = locales.where(store, country, language, alias='l')
+        match, terms = identity_filter('l.app_id', query)
+        catalog_scope, stores = locales.where(store, alias='a')
+        rows = db.execute(f"""SELECT value,MIN(label) label FROM (
+            SELECT l.app_id value,COALESCE({LISTING_NAME},a.name,l.app_id) label
+            FROM listings l LEFT JOIN apps a USING(store,app_id) WHERE {scope} AND {match}
+            UNION ALL
+            SELECT a.app_id value,COALESCE(a.name,a.app_id) label FROM apps a
+            WHERE {catalog_scope} AND (LOCATE(LOWER(%s),LOWER(a.name))>0 OR
+            LOCATE(LOWER(%s),LOWER(CONVERT(a.app_id USING utf8mb4)))>0)
+            AND NOT EXISTS (SELECT 1 FROM listings other WHERE other.store=a.store AND other.app_id=a.app_id)
+            ) candidates GROUP BY value ORDER BY label,value LIMIT 12""", (*args,*terms,*stores,query,query)).fetchall()
+    else:
+        label = "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.developer')),'null')"
+        rows = db.execute(f"""SELECT DISTINCT {label} value,{label} label FROM listings WHERE {scope}
+            AND LOCATE(LOWER(%s),LOWER({label}))>0 ORDER BY label LIMIT 12""", (*args,query)).fetchall()
     return [[r['value'],r['label']] for r in rows]
 
 
@@ -115,11 +125,14 @@ def apps(db,*,store='',country='us',language='en',q='',category='',developer='',
         clauses.append(f'(a.category IS NULL OR a.category NOT IN ({marks}))' if category=='__unknown__' else f'a.category IN ({marks})');args.extend(aliases)
     if q and (q_match=='id' or q_match=='auto' and valid_id(store,q)):
         clauses.append('a.app_id=%s');args.append(q)
+    elif q and q_match == 'contains':
+        match, terms = identity_filter('a.app_id', q)
+        clauses.append(match)
+        args.extend(terms)
     elif q:
         pattern = '%' + q.replace('!','!!').replace('%','!%').replace('_','!_') + '%'
-        id_clause = "a.app_id LIKE %s ESCAPE '!'" if q_match=='contains' else 'a.app_id=%s'
-        clauses.append(f"({id_clause} OR a.name COLLATE utf8mb4_0900_ai_ci LIKE %s ESCAPE '!')")
-        args.extend([pattern if q_match=='contains' else q, pattern])
+        clauses.append(f"(a.app_id=%s OR a.name COLLATE utf8mb4_0900_ai_ci LIKE %s ESCAPE '!' OR LOCATE(LOWER(%s),LOWER({LISTING_NAME}))>0)")
+        args.extend([q, pattern, q])
     if developer:
         expression = "JSON_UNQUOTE(JSON_EXTRACT(l.payload,'$.developer'))"
         clauses.append(expression+'=%s' if developer_match=='exact' else f'LOCATE(LOWER(%s),LOWER({expression}))>0')

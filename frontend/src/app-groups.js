@@ -772,6 +772,7 @@ export function createGroupWorkspace(ctx) {
                   label: "搜索列表",
                   wide: true,
                   placeholder: "应用名称 / ID",
+                  source: "app",
                   options: data.items.map((r) => [
                     r.app_id,
                     r.name || r.app_id,

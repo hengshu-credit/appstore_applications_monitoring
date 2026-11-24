@@ -5,6 +5,7 @@ import time
 from urllib.parse import urlsplit
 from .intelligence import market, text, compare_apps
 from .db import dump
+from .app_search import identity_filter, market_joins, LISTING_NAME
 
 
 def event_feed(db, filters, markets=None):
@@ -28,21 +29,34 @@ def event_feed(db, filters, markets=None):
         clauses.append("JSON_CONTAINS_PATH(e.changes,'one',%s)");args.append('$.'+filters['field'])
     if filters.get('group_name'):
         clauses.append('EXISTS (SELECT 1 FROM watchlist w WHERE w.store=e.store AND w.app_id=e.app_id AND w.country=e.country AND w.language=e.language AND w.group_name=%s)');args.append(filters['group_name'])
+    app_join = ''
+    app_name = 'a.name'
+    app_clause = ''
+    app_args = []
+    if filters.get('app_query'):
+        match, app_args = identity_filter('e.app_id', filters['app_query'])
+        app_join = market_joins('e')
+        app_name = f'COALESCE({LISTING_NAME},a.name)'
+        app_clause = ' AND ' + match
+        clauses.append(match)
+        args.extend(app_args)
     where=' WHERE '+' AND '.join(clauses)
-    daily=db.execute('SELECT FLOOR(e.observed_at/86400)*86400 day,e.kind,count(*) count FROM events e'+where+' GROUP BY day,e.kind ORDER BY day',args).fetchall()
+    daily=db.execute('SELECT FLOOR(e.observed_at/86400)*86400 day,e.kind,count(*) count FROM events e'+app_join+where+' GROUP BY day,e.kind ORDER BY day',args).fetchall()
     summary={}
     for row in daily:summary[row['kind']]=summary.get(row['kind'],0)+row['count']
     total=sum(r['count'] for r in daily if at is None or r['day']==at)
     row_where=where;row_args=list(args)
     if at is not None:row_where+=' AND e.observed_at>=%s AND e.observed_at<%s';row_args.extend([at,at+86400])
-    rows=list(db.execute('SELECT e.*,a.name FROM events e LEFT JOIN apps a USING(store,app_id)'+row_where+' ORDER BY e.id DESC LIMIT %s OFFSET %s',(*row_args,limit,offset)).fetchall())
+    rows=list(db.execute(f'SELECT e.*,{app_name} name FROM events e'+(app_join or ' LEFT JOIN apps a USING(store,app_id)')+row_where+' ORDER BY e.id DESC LIMIT %s OFFSET %s',(*row_args,limit,offset)).fetchall())
     for row in rows:row['changes']=json.loads(row['changes'])
     annotations_where=' WHERE '+scope+' AND e.event_at>=%s';annotation_args=[*market_args,args[len(market_args)]]
     if filters.get('app_id'):annotations_where+=' AND e.app_id=%s';annotation_args.append(filters['app_id'])
+    annotations_where += app_clause
+    annotation_args.extend(app_args)
     if at is not None:annotations_where+=' AND e.event_at>=%s AND e.event_at<%s';annotation_args.extend([at,at+86400])
     if filters.get('group_name'):
         annotations_where+=' AND EXISTS (SELECT 1 FROM watchlist w WHERE w.store=e.store AND w.app_id=e.app_id AND w.country=e.country AND w.language=e.language AND w.group_name=%s)';annotation_args.append(filters['group_name'])
-    annotations=[] if filters.get('kind') or filters.get('field') else db.execute('SELECT e.* FROM event_annotations e'+annotations_where+' ORDER BY e.event_at DESC LIMIT 100',annotation_args).fetchall()
+    annotations=[] if filters.get('kind') or filters.get('field') else db.execute('SELECT e.* FROM event_annotations e'+app_join+annotations_where+' ORDER BY e.event_at DESC LIMIT 100',annotation_args).fetchall()
     groups=[r['group_name'] for r in db.execute('SELECT DISTINCT e.group_name FROM watchlist e WHERE '+scope+' ORDER BY e.group_name',market_args).fetchall()]
     return {'items':rows,'daily':daily,'summary':[{'kind':k,'count':v} for k,v in summary.items()],'annotations':annotations,'groups':groups,
             'scope':'事件时间为本系统观察时间；首次验证不是新上架。','limit':limit,'offset':offset,'total':total,'has_more':offset+len(rows)<total,'day':day}

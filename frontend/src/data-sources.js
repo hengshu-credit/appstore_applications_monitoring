@@ -10,6 +10,7 @@ import { marketDataPanel, bindMarketData } from "./marketdata.js";
 export function createDataSourcePage({
   $,
   api,
+  resolveAppId,
   esc,
   panel,
   table,
@@ -82,7 +83,7 @@ export function createDataSourcePage({
         `${panel("数据源配置", `<p class="sub">官方商店公开接口无需账号。第三方来源先核对接入地址，再在对应区域填写该网站的账户或 Token；这里填写的不是观星平台登录账号。点击“配置地址”只修改接入地址；账户和密码请在对应接入区域填写并保存。第三方网页登录不会自动配置本系统。</p><div id="source-config-list">${sourceTable()}</div><p class="sub">配置保存在后台并实时回显。批量设置在新批次生效；修改接入地址后须重新保存账户凭据。</p>`)}${panel("首轮 24 小时容量", `<div id="initial-capacity">正在核算全库容量…</div>`)}${panel("公开批量数据包", `<div id="bulk-source-imports">正在读取本地数据包…</div>`)}${panel("公开指标接入", `${help("community")}<p id="provider-state" role="status">${esc(accountSummary(state))}${state.checked_at ? " · " + new Date(state.checked_at * 1000).toLocaleString() : ""}</p><form id="provider-account" class="source-account-form"><label>账户邮箱<input type="email" name="email" required autocomplete="off" value="${esc(state.email || "")}" placeholder="${state.configured ? "已保存，更换账户时填写" : "AppGoblin 登录邮箱"}"></label>${secretField(esc, "password", "密码", credentials.community?.password, true)}<div class="source-account-actions"><button type="submit">保存并检查授权</button><button type="button" id="provider-authorize" class="secondary" ${state.configured ? "" : "disabled"}>重新检查授权</button><button type="button" id="provider-datasets" class="secondary">读取免费数据目录</button></div></form><p class="sub">密码加密保存，默认隐藏；点击输入框右侧小眼睛查看。填写后点击保存，页面会分别显示保存结果和授权结果。邮箱验证等步骤需在 AppGoblin 完成，再回此页面重新检查；网页登录状态不会自动同步。</p><div id="provider-result"></div>`)}${panel("安装指标接入", `${help("directory")}<p id="directory-state" role="status">${esc(accountSummary(directory))}</p><form id="directory-account" class="source-account-form"><label>账户邮箱<input name="email" type="email" required autocomplete="off" value="${esc(directory.email || "")}" placeholder="${directory.configured ? "已保存，更换时填写" : "AppBrain 登录邮箱"}"></label>${secretField(esc, "password", "密码", credentials.directory?.password, true)}<div class="source-account-actions"><button type="submit">保存并检查授权</button><button type="button" id="directory-authorize" class="secondary" ${directory.configured ? "" : "disabled"}>重新检查授权</button></div></form><p class="sub">填写 AppBrain 自身的邮箱密码后点击保存；密码可通过右侧小眼睛查看。官网单点登录或验证码不会把浏览器会话同步到本系统；若持续要求验证，当前自动登录方式无法完成授权。</p>`)}${panel(
           "获取应用公开指标",
           `${filterBar({
-            id: "source-app-query",
+            id: "source-app-query", appScope: "store",
             submit: "获取来源快照",
             resetSubmit: false,
             values: { provider: "auto", store: "google" },
@@ -108,7 +109,7 @@ export function createDataSourcePage({
               },
               {
                 name: "app_id",
-                label: "应用 ID",
+                label: "应用 ID / 名称 / 关键词",
                 required: true,
                 wide: true,
                 placeholder: "com.openai.chatgpt 或 6448311069",
@@ -347,11 +348,13 @@ export function createDataSourcePage({
     bindFilterBar(
       queryForm,
       async (values, form) => {
+        const appId = await resolveAppId(values.app_id, form);
+        if (!form.isConnected) return;
         $("#source-app-result").textContent = "正在获取所选应用的来源快照…";
         const result = await api("/data-sources/app-metrics", {
-          provider: form.elements.provider.value,
-          store: form.elements.store.value,
-          app_id: form.elements.app_id.value,
+          provider: values.provider,
+          store: values.store,
+          app_id: appId,
         }).catch((error) => {
           if (form.isConnected)
             $("#source-app-result").textContent =

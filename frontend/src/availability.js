@@ -42,7 +42,7 @@ export function createAvailabilityPage(ctx) {
     if (!anchor?.isConnected || revision !== watchedRevision) return;
     anchor.innerHTML = `<p class="sub">名单跟随顶部商店与国家，包含该国全部请求语言。未验证不代表下架；跨国分类看板请进入<a href="#groups">应用分组</a>。</p>
       ${filterBar({
-        id: "watched-filter",
+        id: "watched-filter", appScope: "country",
         values: watchedFilters,
         fields: [
           {
@@ -54,6 +54,7 @@ export function createAvailabilityPage(ctx) {
           {
             name: "q",
             label: "应用名称 / ID",
+            source: "app",
             wide: true,
             options: data.items.map((r) => [r.app_id, r.name || r.app_id]),
           },

@@ -1,6 +1,7 @@
 """One paginated task registry and atomic controls for all observation workers."""
 import time
 from .intelligence import hours, text
+from .app_search import LISTING_NAME
 from .task_logs import emit
 from .source_tasks import KINDS as SOURCE_KINDS
 
@@ -102,8 +103,15 @@ def task_query(*, kind='', store='', country='', language='', state='', q='', li
         where.append(f"(({own_market}) OR (resource='media' AND EXISTS(SELECT 1 FROM app_media_refs mr WHERE mr.asset_id=classified.id AND {ref_market})))")
         args.extend(market.values()); args.extend(market.values())
     if q:
-        where.append('(LOCATE(%s,label)>0 OR LOCATE(%s,CONVERT(app_id USING utf8mb4))>0 OR LOCATE(%s,CONVERT(category USING utf8mb4))>0)')
-        args.extend([q,q,q])
+        where.append(f"""(LOCATE(LOWER(%s),LOWER(CONVERT(label USING utf8mb4)))>0
+            OR LOCATE(LOWER(%s),LOWER(CONVERT(app_id USING utf8mb4)))>0
+            OR LOCATE(LOWER(%s),LOWER(CONVERT(category USING utf8mb4)))>0
+            OR EXISTS (SELECT 1 FROM apps a WHERE a.store=classified.store AND a.app_id=classified.app_id
+                AND LOCATE(LOWER(%s),LOWER(a.name))>0)
+            OR EXISTS (SELECT 1 FROM listings l WHERE l.store=classified.store AND l.app_id=classified.app_id
+                AND l.country=classified.country AND l.language=classified.language
+                AND LOCATE(LOWER(%s),LOWER({LISTING_NAME}))>0))""")
+        args.extend([q.strip()] * 5)
     if state:
         if state not in STATES: raise ValueError('未知任务状态')
         where.append('task_state=%s'); args.append(state)

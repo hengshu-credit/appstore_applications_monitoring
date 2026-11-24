@@ -176,8 +176,8 @@ def create_app(cfg):
             return cached
 
     @api.get("/apps/filter-options")
-    def app_filter_options(field:str,q:str=Query("",max_length=255),store:str="",country:str="us",language:str="en",db=DB):
-        return scoped_views.filter_options(db,field,store,country,language,q)
+    def app_filter_options(field:str,q:str=Query("",max_length=255),store:str="",country:str="us",language:str="en",resolve:bool=False,db=DB):
+        return scoped_views.filter_options(db,field,store,country,language,q,resolve)
 
     @api.get("/apps")
     def apps(q: str = Query("", max_length=255), store: str = "", country: str = "us", language: str = "en", category: str = "",
@@ -656,9 +656,9 @@ def create_app(cfg):
         raise ValueError("Unknown ad import kind")
 
     @api.get('/research/events')
-    def event_center(store: str, country: str='us', language: str='en', app_id: str='', kind: str='', field: str='',
+    def event_center(store: str, country: str='us', language: str='en', app_id: str='', app_query:str=Query('',max_length=255), kind: str='', field: str='',
                      group_name: str='', days: int=Query(30,ge=1,le=365), day:str='', offset:int=Query(0,ge=0), limit:int=Query(50,ge=1,le=200), db=DB):
-        return scoped_views.events(db,dict(store=store,country=country,language=language,app_id=app_id,kind=kind,field=field,group_name=group_name,days=days,day=day,offset=offset,limit=limit))
+        return scoped_views.events(db,dict(store=store,country=country,language=language,app_id=app_id,app_query=app_query,kind=kind,field=field,group_name=group_name,days=days,day=day,offset=offset,limit=limit))
 
     @api.post('/research/annotations')
     def annotate(value:dict=Body(...),db=DB):return insights.add_annotation(db,value)
@@ -694,9 +694,9 @@ def create_app(cfg):
     def draft_get(identifier:int,db=DB):return aso.draft_detail(db,identifier)
 
     @api.get('/research/reviews')
-    def review_records(store:str,country:str='us',language:str='en',app_id:str='',q:str='',version:str='',reply_status:str='',
+    def review_records(store:str,country:str='us',language:str='en',app_id:str='',app_query:str=Query('',max_length=255),q:str='',version:str='',reply_status:str='',
                      rating:int|None=Query(None,ge=1,le=5),since:float|None=Query(None,ge=0),offset:int=Query(0,ge=0,le=100000),db=DB):
-        return scoped_views.reviews(db,dict(store=store,country=country,language=language,app_id=app_id,q=q,version=version,reply_status=reply_status,rating=rating,since=since,offset=offset))
+        return scoped_views.reviews(db,dict(store=store,country=country,language=language,app_id=app_id,app_query=app_query,q=q,version=version,reply_status=reply_status,rating=rating,since=since,offset=offset))
 
     @api.post('/research/reviews/history')
     def review_versions(value:dict=Body(...),db=DB):return review_desk.review_history(db,value)

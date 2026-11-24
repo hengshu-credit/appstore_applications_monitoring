@@ -82,6 +82,7 @@ export function createChartDetail(ctx) {
               {
                 name: "q",
                 label: "搜索应用 / ID / 开发者",
+                source: "app",
                 options: d.items
                   .flatMap((r) => [r.name, r.app_id, r.metadata?.developer])
                   .filter(Boolean),

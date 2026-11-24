@@ -132,6 +132,38 @@ const qs = (obj) =>
   new URLSearchParams(
     Object.entries(obj).filter(([, v]) => v !== "" && v != null),
   ).toString();
+function filterScope(form) {
+  const fields = form?.elements;
+  const scope = market(fields?.store?.value || market().store);
+  if (form?.dataset.appScope === "store") return { ...scope, country: "", language: "" };
+  if (form?.dataset.appScope === "country") scope.language = "";
+  if (fields?.country) {
+    scope.country = fields.country.value;
+    scope.language = "";
+  }
+  if (fields?.language) scope.language = fields.language.value;
+  return scope;
+}
+function suggestApplications(field, q, form) {
+  return api("/apps/filter-options?" + new URLSearchParams({ ...filterScope(form), field, q, resolve: field === "app" }));
+}
+function isAppId(value, store) {
+  return (store !== "apple" && /^\w+(?:\.\w+)+$/.test(value)) ||
+    (store !== "google" && /^\d+$/.test(value));
+}
+function resolveAppId(value, form) {
+  const q = value.trim();
+  if (!q || isAppId(q, filterScope(form).store)) return q;
+  return suggestApplications("app", q, form).then((matches) => {
+    if (matches.length === 1) return matches[0][0];
+    if (matches.length) {
+      const input = form.elements.app_id;
+      input.focus();
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    throw Error(matches.length ? "匹配到多个应用，请从候选项中选择" : "未找到匹配应用，请检查名称、关键词或应用 ID");
+  });
+}
 initFilterBars({
   chooseCountry: (options) => selectors.chooseCountry(options),
   suggest: (field, q, form) =>
@@ -139,15 +171,7 @@ initFilterBars({
       ? api("/research/developers?" + qs({ store: market().store, q })).then(
           (rows) => rows.map((r) => r.name),
         )
-      : api(
-          "/apps/filter-options?" +
-            qs({
-              ...market(),
-              store: form?.elements.store?.value || market().store,
-              field,
-              q,
-            }),
-        ),
+      : suggestApplications(field, q, form),
 });
 const kindLabel = (v) =>
   ({
@@ -640,7 +664,7 @@ async function appDetail(store, id, rev = ++revision) {
   const p = data.listing?.payload || {};
   if (
     !mount(
-      `<div class="panel-heading"><div>${appLink(store, id, p.name || data.app.name, p.icon)}<p class="sub"><span class="member-store">${storeLogo(store)}<span>${store === "apple" ? "App Store" : "Google Play"}</span></span> · ${esc(m.country.toUpperCase())} · ${esc(m.language)} · ${esc(p.developer || "开发者待采集")}</p></div><div class="actions"><button id="collect-app-now">立即采集全部公开信息</button><button id="quick-watch" class="secondary">管理采集配置</button><button class="secondary" id="open-aso-workbench">ASO 工作台</button></div></div><div id="app-collection-progress"></div>${panel("应用明细", await appRows([{ ...data.app, ...p, store, app_id: id }], { scope: m }))}<div class="cards">${metric("商店评分", p.rating, "来自最近一次商店观察")}${metric("评分数", p.ratings, "累计公开评分数量")}${metric("版本快照", data.snapshots.length, "显示最近最多100次变更")}${metric("历史命中过的关键词", data.keywords.coverage.length, "包含当前未命中词；有效覆盖见下方监控")}</div><div class="grid2">${panel("当前商店资料", `<h3>${esc(p.name || "等待采集")}</h3><p>版本 ${esc(p.version || "—")} · ${esc(data.app.category_name || p.category || "—")}</p><p>${esc(p.summary || "")}</p><details><summary>描述与版本说明</summary><div class="review-text">${esc(p.description || "暂无描述")}</div><h3 class="spacer">版本说明</h3><div class="review-text">${esc(p.release_notes || "暂无版本说明")}</div></details>${safeURL(p.url) ? `<a href="${safeURL(p.url)}" target="_blank" rel="noopener">查看商店原页 ↗</a>` : ""}`)}${panel(
+      `<div class="panel-heading"><div>${appLink(store, id, p.name || data.app.name, p.icon)}<p class="sub app-detail-meta"><span class="member-store">${storeLogo(store)}<span>${store === "apple" ? "App Store" : "Google Play"}</span></span><span>·</span><span>${esc(m.country.toUpperCase())}</span><span>·</span><span>${esc(m.language)}</span><span>·</span><span class="app-detail-developer" title="${esc(p.developer || "开发者待采集")}">${esc(p.developer || "开发者待采集")}</span></p></div><div class="actions"><button id="collect-app-now">立即采集全部公开信息</button><button id="quick-watch" class="secondary">管理采集配置</button><button class="secondary" id="open-aso-workbench">ASO 工作台</button></div></div><div id="app-collection-progress"></div>${panel("应用明细", await appRows([{ ...data.app, ...p, store, app_id: id }], { scope: m }))}<div class="cards">${metric("商店评分", p.rating, "来自最近一次商店观察")}${metric("评分数", p.ratings, "累计公开评分数量")}${metric("版本快照", data.snapshots.length, "显示最近最多100次变更")}${metric("历史命中过的关键词", data.keywords.coverage.length, "包含当前未命中词；有效覆盖见下方监控")}</div><div class="grid2">${panel("当前商店资料", `<h3>${esc(p.name || "等待采集")}</h3><p>版本 ${esc(p.version || "—")} · ${esc(data.app.category_name || p.category || "—")}</p><p>${esc(p.summary || "")}</p><details><summary>描述与版本说明</summary><div class="review-text">${esc(p.description || "暂无描述")}</div><h3 class="spacer">版本说明</h3><div class="review-text">${esc(p.release_notes || "暂无版本说明")}</div></details>${safeURL(p.url) ? `<a href="${safeURL(p.url)}" target="_blank" rel="noopener">查看商店原页 ↗</a>` : ""}`)}${panel(
         "评分变化",
         chart(
           [...data.snapshots]
@@ -1735,6 +1759,7 @@ async function exportPage(rev) {
 }
 
 const researchPages = createResearchPages({
+  resolveAppId,
   appRows,
   $,
   api,
@@ -1784,6 +1809,7 @@ const availabilityPage = createAvailabilityPage({
   nextRevision: () => ++revision,
 });
 const discoveryPages = createDiscoveryPages({
+  resolveAppId,
   appRows,
   $,
   api,
@@ -1869,6 +1895,7 @@ const routes = {
   alerts: alertPage,
   exports: exportPage,
   datasources: createDataSourcePage({
+    resolveAppId,
     $,
     api,
     esc,

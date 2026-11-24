@@ -47,6 +47,14 @@ class CollectionCenterTest(OceanBaseTestCase):
         add_observation_target(self.db,m|{'kind':'reviews','app_id':'com.example.app'})
         return m
 
+    def test_task_search_finds_review_and_detail_tasks_by_application_name(self):
+        self.seed()
+        self.db.execute("UPDATE apps SET name='Быстрые займы' WHERE app_id='com.example.app'")
+        for q in ('займ','EXAMPLE'):
+            result=list_tasks(self.db,q=q)
+            self.assertEqual(result['total'],2)
+            self.assertEqual({r['kind'] for r in result['items']},{'reviews','details'})
+
     def test_background_pause_snapshots_filter_and_resumes_after_chunk_failure(self):
         self.seed()
         add_targets(self.db,[dict(store='apple',country='us',language='en',keyword=f'match {i}') for i in range(125)])

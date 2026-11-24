@@ -1352,6 +1352,29 @@ test("ASO workbench edits a versioned local draft and never submits to a store",
   }
 });
 
+test("review search sends typed names as app queries and keeps review text independent", async () => {
+  const { window, calls } = await setup((path) => {
+    if (path.startsWith("/api/research/reviews?"))
+      return { items: [], summary: { total: 0, apps: 0 }, ratings: [], daily: [] };
+  });
+  try {
+    window.location.hash = "reviews";
+    await tick();
+    const form = window.document.querySelector("#review-record-filter");
+    form.elements.app_id.value = "Быстрые займы Кз";
+    form.elements.q.value = "одобрено";
+    form.requestSubmit();
+    await tick();
+    const path = calls.filter((call) => call.path.startsWith("/api/research/reviews?")).at(-1).path;
+    const params = new URL(path, "https://example.org").searchParams;
+    assert.equal(params.get("app_query"), "Быстрые займы Кз");
+    assert.equal(params.get("q"), "одобрено");
+    assert.equal(params.has("app_id"), false);
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
 test("review records provide original content and history without handling controls", async () => {
   const row = {
     store: "google",

@@ -1,5 +1,6 @@
 """Read-only archive of collected store reviews and their observed revisions."""
 import json
+from .app_search import identity_filter, market_joins, LISTING_NAME
 from .intelligence import market, text
 
 JOIN = ' FROM reviews r LEFT JOIN apps a ON a.store=r.store AND a.app_id=r.app_id '
@@ -13,6 +14,14 @@ def desk(db, filters):
         if filters.get(field) not in (None, ''):
             clauses.append(f'r.{field}=%s')
             args.append(filters[field])
+    join = JOIN
+    app_name = 'a.name'
+    if filters.get('app_query'):
+        match, terms = identity_filter('r.app_id', filters['app_query'])
+        clauses.append(match)
+        args.extend(terms)
+        join = ' FROM reviews r' + market_joins('r')
+        app_name = f'COALESCE({LISTING_NAME},a.name)'
     if filters.get('q'):
         clauses.append('(r.content LIKE %s OR r.title LIKE %s)')
         args.extend(['%' + str(filters['q'])[:255] + '%'] * 2)
@@ -29,10 +38,10 @@ def desk(db, filters):
     offset = filters.get('offset', 0)
     if type(offset) is not int or not 0 <= offset <= 100000:
         raise ValueError('分页偏移无效')
-    summary = db.execute('SELECT COUNT(*) total,COUNT(DISTINCT r.app_id) apps,AVG(r.rating) mean_review_rating,MIN(r.first_seen) oldest_observation,MAX(r.last_seen) latest_observation' + JOIN + where, args).fetchone()
-    rating_counts = db.execute('SELECT r.rating,count(*) count' + JOIN + where + ' GROUP BY r.rating ORDER BY r.rating', args).fetchall()
-    daily = db.execute('SELECT FLOOR(r.first_seen/86400)*86400 day,count(*) count' + JOIN + where + ' GROUP BY day ORDER BY day DESC LIMIT 90', args).fetchall()
-    rows = db.execute('SELECT r.*,a.name app_name' + JOIN + where +
+    summary = db.execute('SELECT COUNT(*) total,COUNT(DISTINCT r.app_id) apps,AVG(r.rating) mean_review_rating,MIN(r.first_seen) oldest_observation,MAX(r.last_seen) latest_observation' + join + where, args).fetchone()
+    rating_counts = db.execute('SELECT r.rating,count(*) count' + join + where + ' GROUP BY r.rating ORDER BY r.rating', args).fetchall()
+    daily = db.execute('SELECT FLOOR(r.first_seen/86400)*86400 day,count(*) count' + join + where + ' GROUP BY day ORDER BY day DESC LIMIT 90', args).fetchall()
+    rows = db.execute(f'SELECT r.*,{app_name} app_name' + join + where +
         ' ORDER BY r.last_seen DESC,r.app_id,r.review_id LIMIT 51 OFFSET %s', (*args, offset)).fetchall()
     for row in rows:
         payload = json.loads(row['payload'])

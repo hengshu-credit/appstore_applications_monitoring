@@ -148,6 +148,14 @@ export function createResearchPages(ctx) {
     });
   }
 
+  // The list accepts free text; a chosen suggestion or drill-down keeps its exact ID.
+  function appListFilters({ app_id, app_match, ...rest }) {
+    const value = app_id.trim();
+    return app_match === "id" ? { ...rest, app_id: value } : { ...rest, app_query: value };
+  }
+  function appFilterValues(filters) {
+    return { ...filters, app_id: filters.app_id || filters.app_query || "", app_match: filters.app_id ? "id" : "contains" };
+  }
   async function events(rev, filters = {}) {
     const data = await api(
       "/research/events?" + query({ ...market(), ...filters }),
@@ -164,13 +172,16 @@ export function createResearchPages(ctx) {
           "事件筛选",
           `${filterBar({
             id: "event-filter",
-            values: { days: 30, ...filters },
+            values: { days: 30, ...appFilterValues(filters) },
             resetValues: { days: 30 },
             submit: "查询",
             fields: [
               {
                 name: "app_id",
-                label: "应用 ID",
+                label: "应用 ID / 名称 / 关键词",
+                source: "app",
+                matchKey: "app_match",
+                pickedMode: "id",
                 options: data.items.map((r) => [r.app_id, r.name || r.app_id]),
               },
               {
@@ -239,7 +250,7 @@ export function createResearchPages(ctx) {
       );
     };
     renderRows(data.items);
-    bindForm("#event-filter", (v) => events(nextRevision(), v));
+    bindForm("#event-filter", (v) => events(nextRevision(), appListFilters(v)));
     bindPagination(document, "event-pages", (offset, limit) =>
       events(nextRevision(), { ...filters, offset, limit }),
     );
@@ -305,12 +316,15 @@ export function createResearchPages(ctx) {
     }
     if (
       !mount(
-        `${panel("选择应用市场", `${filterBar({ id: "aso-load", submit: "加载已采文案", values: { app_id: appId }, fields: [{ name: "app_id", label: "应用 ID", source: "app", wide: true }] })}<p class="sub">${esc(marketCaption(market()))}。Apple后台关键词和未采集副标题需由用户提供。</p>`)}<div id="aso-workspace">${empty("选择应用开始文案核查", "公开详情会作为基准快照；不会读取竞品私有后台。")}</div>`,
+        `${panel("选择应用市场", `${filterBar({ id: "aso-load", submit: "加载已采文案", values: { app_id: appId }, fields: [{ name: "app_id", label: "应用 ID / 名称 / 关键词", source: "app", wide: true }] })}<p class="sub">${esc(marketCaption(market()))}。Apple后台关键词和未采集副标题需由用户提供。</p>`)}<div id="aso-workspace">${empty("选择应用开始文案核查", "公开详情会作为基准快照；不会读取竞品私有后台。")}</div>`,
         rev,
       )
     )
       return;
-    bindForm("#aso-load", (v) => aso(nextRevision(), v.app_id));
+    bindForm("#aso-load", async (v, form) => {
+      const id = await ctx.resolveAppId(v.app_id, form);
+      if (rev === currentRevision()) await aso(nextRevision(), id);
+    });
     if (!appId) return;
     const m = { ...market(), app_id: appId };
     const data = await api("/research/aso?" + query(m));
@@ -541,11 +555,14 @@ export function createResearchPages(ctx) {
           `${filterBar({
             id: "review-record-filter",
             submit: "查询",
-            values: { ...filters, since_day: dateInput(filters.since) },
+            values: { ...appFilterValues(filters), since_day: dateInput(filters.since) },
             fields: [
               {
                 name: "app_id",
-                label: "应用 ID",
+                label: "应用 ID / 名称 / 关键词",
+                source: "app",
+                matchKey: "app_match",
+                pickedMode: "id",
                 options: data.items.map((r) => [
                   r.app_id,
                   r.app_name || r.app_id,
@@ -594,24 +611,26 @@ export function createResearchPages(ctx) {
     bindForm("#review-record-filter", (v) => {
       const { since_day, ...rest } = v;
       return reviews(nextRevision(), {
-        ...rest,
+        ...appListFilters(rest),
         since: since_day ? Date.parse(since_day + "T00:00:00Z") / 1000 : null,
       });
     });
     bindPagination(document, "review-pages", (offset) =>
       reviews(nextRevision(), { ...filters, offset }),
     );
-    bindButton("#configure-reviews", () =>
-      ctx.reviewTargets(
-        $("#review-record-filter").elements.app_id.value.trim(),
-      ),
-    );
+    bindButton("#configure-reviews", async () => {
+      const form = $("#review-record-filter");
+      const id = ctx.resolveAppId(form.elements.app_id.value, form);
+      const appId = typeof id === "string" ? id : await id;
+      if (rev === currentRevision()) ctx.reviewTargets(appId);
+    });
     $("#content")
       .querySelectorAll("[data-review-app]")
       .forEach((button) => {
         button.onclick = () =>
           reviews(nextRevision(), {
             ...filters,
+            app_query: "",
             app_id: data.items[Number(button.dataset.reviewApp)].app_id,
             offset: 0,
           }).catch((e) => toast(e.message));

@@ -235,7 +235,7 @@ def adjust_member(db, identifier, member_id, value, actor):
 
 def member_rows(db, identifier, store='all'):
     where,args=_scope(identifier,store)
-    rows=db.execute('''SELECT m.*,a.name,a.category,w.enabled,w.refresh_hours,l.state,l.checked_at,l.last_success,
+    rows=db.execute('''SELECT m.*,a.name,JSON_UNQUOTE(JSON_EXTRACT(l.payload,'$.name')) listing_name,a.category,w.enabled,w.refresh_hours,l.state,l.checked_at,l.last_success,
         j.failures,j.last_error,j.due,j.lease_until,
         JSON_UNQUOTE(JSON_EXTRACT(l.payload,'$.rating')) rating,
         JSON_UNQUOTE(JSON_EXTRACT(l.payload,'$.ratings')) ratings,
@@ -446,7 +446,7 @@ def dashboard(db, cfg, identifier, store='all', country='', state='', q='', days
     rows=[r for r in all_rows if (not country or r['country']==country) and
           (not classification or r['classification']==classification) and
           (not state or (bool(r['failures']) if state=='error' else r['state']==state)) and
-          (not q or q.casefold() in (r['app_id']+' '+(r['name'] or '')).casefold())]
+          (not q or q.casefold() in ' '.join((r['app_id'],r['name'] or '',r['listing_name'] or '')).casefold())]
     now = time.time()
     keywords,charts,keyword_samples,chart_samples=rankings(db,identifier,store,country,now)
     for r in rows:

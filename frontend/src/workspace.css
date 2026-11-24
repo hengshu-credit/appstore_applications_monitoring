@@ -54,6 +54,19 @@ select:not([multiple]) {
   min-width: 0;
   max-width: 100%;
 }
+.app-detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  white-space: nowrap;
+}
+.app-detail-developer {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-detail-meta .member-store {
+  flex-shrink: 0;
+}
 .panel-heading .actions {
   flex-wrap: wrap;
 }

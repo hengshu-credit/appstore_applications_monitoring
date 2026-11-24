@@ -2,6 +2,7 @@
 import json
 import time
 from .db import dump
+from .app_search import identity_filter
 from .intelligence import market
 
 
@@ -21,7 +22,9 @@ def watched(db, store='all', country='', group_name='', q='', offset=0, limit=10
     if state=='unobserved':clauses.append('l.state IS NULL')
     elif state:clauses.append('l.state=%s');args.append(state)
     if q:
-        clauses.append('(LOCATE(%s,w.app_id)>0 OR LOCATE(%s,a.name)>0)');args.extend([q,q])
+        match, terms = identity_filter('w.app_id', q)
+        clauses.append(match)
+        args.extend(terms)
     where=' AND '.join(clauses)
     base=' FROM watchlist w LEFT JOIN apps a USING(store,app_id) LEFT JOIN listings l USING(store,app_id,country,language) '
     total=db.execute('SELECT COUNT(*) n'+base+'WHERE '+where,args).fetchone()['n']

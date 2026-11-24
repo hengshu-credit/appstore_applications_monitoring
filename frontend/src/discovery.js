@@ -151,7 +151,7 @@ export function createDiscoveryPages(ctx) {
         ? (d.items || []).filter(
             (r) =>
               !s.q ||
-              (r.name || r.app_id).toLowerCase().includes(s.q.toLowerCase()),
+              [r.name, r.app_id, r.developer].some((value) => value?.toLowerCase().includes(s.q.trim().toLowerCase())),
           )
         : d.items || [];
     const status = {
@@ -268,8 +268,9 @@ export function createDiscoveryPages(ctx) {
             },
             {
               name: "q",
-              label: "搜索应用",
-              options: rows.map((r) => r.name || r.app_id),
+              label: "应用 ID / 名称 / 关键词",
+              source: "app",
+              options: rows.map((r) => [r.app_id, r.name || r.app_id]),
             },
           ],
           actions: `<a class="button secondary" href="#collection?new=chart&collection=${encodeURIComponent(d.definition?.base_collection || s.collection)}&category=${encodeURIComponent(s.category)}">配置采集</a>`,
@@ -526,7 +527,8 @@ export function createDiscoveryPages(ctx) {
           fields: [
             {
               name: "app_id",
-              label: "查看应用ID的关键词",
+              label: "应用 ID / 名称 / 关键词",
+              source: "app",
               options: data.apps.map((r) => [r.app_id, r.name || r.app_id]),
             },
             {
@@ -848,7 +850,7 @@ export function createDiscoveryPages(ctx) {
         "/discovery/keywords/markets?" +
           query({ store: m.store, app_id: appQuery }),
       );
-      content = `<p class="callout">${esc(data.note)}</p>${filterBar({ id: "coverage-app-form", submit: "查看市场覆盖", values: { app_id: appQuery }, fields: [{ name: "app_id", label: "应用 ID（可选）" }] })}${table(
+      content = `<p class="callout">${esc(data.note)}</p>${filterBar({ id: "coverage-app-form", submit: "查看市场覆盖", appScope: "store", values: { app_id: appQuery }, fields: [{ name: "app_id", label: "应用 ID / 名称 / 关键词（可选）", source: "app" }] })}${table(
         ["国家", "语言", "跟踪词", "有效词", "应用覆盖词", "应用Top10"],
         data.items.map((r) => [
           esc(r.country),
@@ -909,8 +911,10 @@ export function createDiscoveryPages(ctx) {
         keywords(nextRevision()).catch((e) => toast(e.message));
       }),
     );
-    bindForm("#coverage-app-form", async (v) => {
-      appQuery = v.app_id;
+    bindForm("#coverage-app-form", async (v, form) => {
+      const id = await ctx.resolveAppId(v.app_id, form);
+      if (rev !== currentRevision()) return;
+      appQuery = id;
       keywordQuery = v.q ?? keywordQuery;
       coverageOffsets = { apps: 0, keywords: 0, app_keywords: 0 };
       if (rev === currentRevision()) await keywords(nextRevision());
