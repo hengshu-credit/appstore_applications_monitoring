@@ -4,7 +4,7 @@ import traceback
 
 ALLOWED = {'error_type','cause_type','stage','method','host','status_code','timeout_seconds',
            'retry_after_seconds','duration_seconds','stack','note',
-           'store','tasks','lane','status','elapsed_ms','failed'}
+           'store','tasks','lane','status','elapsed_ms','failed','submitted_by'}
 
 
 def clean(value,limit=8000):

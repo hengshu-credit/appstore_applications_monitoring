@@ -119,10 +119,15 @@ def target_state(db,resource,identifier):
     else:
         table={'keywords':'keyword_targets','targets':'observation_targets','icons':'app_icons','media':'app_media_assets','permissions':'app_permission_targets','sources':'collection_source_tasks'}.get(resource)
         if table is None: raise ValueError('未知日志类型')
-        row=db.execute(f'SELECT enabled,lease_until,due,failures,last_error FROM {table} WHERE id=%s',(int(identifier),)).fetchone()
+        extra = ''
+        if resource=='sources':
+            from .source_tasks import admitted
+            extra = ','+admitted()+' AS admitted'
+        row=db.execute(f'SELECT enabled,lease_until,due,failures,last_error{extra} FROM {table} WHERE id=%s',(int(identifier),)).fetchone()
     if not row: raise ValueError('任务不存在')
     now=time.time()
-    status=('done' if resource=='sources' and row['due'] is None else 'paused' if not row['enabled'] else 'running' if (row['lease_until'] or 0)>now
+    status=('done' if resource=='sources' and row['due'] is None else 'stopped' if not row.get('admitted',True)
+            else 'paused' if not row['enabled'] else 'running' if (row['lease_until'] or 0)>now
             else 'error' if row['failures'] else 'pending' if (row['due'] or 0)<=now else 'scheduled')
     return {**row,'status':status}
 

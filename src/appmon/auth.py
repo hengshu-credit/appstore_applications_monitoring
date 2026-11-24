@@ -252,7 +252,7 @@ def requirements(path, method, params=None):
                      '/discovery/reports/preview', '/research/plans/preview', '/charts/global/preview', '/apps/detail-rows'):
                 action = 'read'
             result = [f'{resource}:{action}']
-            if p.endswith('/collect') or p == '/charts/global/plan':
+            if p.endswith('/collect') or p == '/charts/global/plan' or (p.startswith('/ads/apps/') and p.endswith('/schedule') and action=='write'):
                 result.append('collection:write')
             if p.startswith('/groups/') and p.endswith('/members') and action=='write':
                 result.append('watchlist:write')

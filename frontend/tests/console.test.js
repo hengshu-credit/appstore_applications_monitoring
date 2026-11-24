@@ -887,10 +887,58 @@ test("app advertising tab loads on demand, filters creatives and queues its curr
     await tick();
     const posted = calls.find(c => c.path === endpoint + "/collect");
     assert.equal(JSON.parse(posted.options.body).country, doc.querySelector("#global-country").value);
+    assert.equal(JSON.parse(posted.options.body).mode, "once");
+    assert.equal(Object.hasOwn(JSON.parse(posted.options.body),"refresh_hours"), false);
     assert.match(window.location.hash, /section=ads/);
   } finally {
     await window.happyDOM.close();
   }
+});
+
+test("ad schedules only start on submit and can be stopped from the same market", async () => {
+  const endpoint = "/api/ads/apps/apple/123";
+  let schedule = null;
+  const { window, calls } = await setup((path, options) => {
+    if (path.startsWith("/api/apps/apple/123?")) return emptyApp;
+    if (path.startsWith(endpoint + "?")) return {sources:[],reports:[],channels:[],items:[],total:0,schedule};
+    if (path === endpoint + "/collect") {
+      const spec = JSON.parse(options.body);
+      schedule = {enabled:true,refresh_hours:spec.refresh_hours,next_due:Date.now()/1000+7200};
+      return {schedule,tasks:[{id:1}]};
+    }
+    if (path.startsWith(endpoint + "/schedule?")) {
+      schedule = {...schedule,enabled:false,next_due:null};
+      return {schedule};
+    }
+  });
+  try {
+    window.location.hash = "app/apple/123?section=ads";
+    await tick();
+    const pane = window.document.querySelector("#detail-section-ads");
+    assert.equal(pane.querySelector("[data-ad-interval]").hidden,true);
+    const form = pane.querySelector("[data-ad-task]");
+    form.elements.mode.value = "periodic";
+    form.elements.mode.dispatchEvent(new window.Event("change"));
+    assert.equal(pane.querySelector("[data-ad-interval]").hidden,false);
+    form.elements.refresh_hours.value = "2";
+    pane.querySelector("[data-ad-refresh]").click();
+    await tick();
+    assert.equal(calls.filter(c => c.path === endpoint+"/collect").length,0);
+    pane.querySelector("[data-ad-collect]").click();
+    await tick();
+    const submitted = JSON.parse(calls.find(c => c.path === endpoint+"/collect").options.body);
+    assert.equal(submitted.mode, "periodic");
+    assert.equal(submitted.refresh_hours, 2);
+    assert.match(pane.querySelector("[data-ad-schedule]").textContent,/每 2 小时/);
+    const stop=pane.querySelector("[data-ad-stop]");
+    assert.equal(stop.hidden,false);
+    stop.click(); await tick();
+    const cancelled=calls.find(c=>c.path.startsWith(endpoint+"/schedule?"));
+    assert.equal(cancelled.options.method,"DELETE");
+    assert.equal(new URLSearchParams(cancelled.path.split("?")[1]).get("country"),submitted.country);
+    assert.match(pane.querySelector("[data-ad-schedule]").textContent,/已停止/);
+    assert.equal(stop.hidden,true);
+  } finally { await window.happyDOM.close(); }
 });
 
 test("chart center exposes seven views and requests the selected collection", async () => {

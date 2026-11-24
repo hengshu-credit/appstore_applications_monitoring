@@ -13,6 +13,14 @@ from .stores import CollectionDeferred
 KINDS = {'aso_popularity':'ASO 关键词热度', 'aso_import':'ASO 热度导入', 'aso_report':'ASO 报告入库', **ad_sources.KINDS}
 
 
+def admitted(alias='collection_source_tasks', schedule_alias=None):
+    # app-ads is the existing explicit per-app submit endpoint. Old catch-all
+    # collection-plan receipts have no user submission for advertising.
+    schedule = (f'{schedule_alias}.enabled=1' if schedule_alias else
+                f'EXISTS (SELECT 1 FROM ad_tracking_schedules ads WHERE ads.receipt_source={alias}.source AND ads.enabled=1)')
+    return f"(LEFT({alias}.kind,3)<>'ad_' OR {alias}.source IN ('app-ads','user-ad-plan') OR {schedule})"
+
+
 def normalize(kind, value):
     from . import apple_popularity, keyword_reports
     if kind not in KINDS:
@@ -54,9 +62,18 @@ def batch_key(kind, payload):
     return hashlib.sha256(dump([kind,grouping]).encode()).hexdigest()
 
 
-def enqueue(db, kind, value, source='aso', request_id=None):
+def enqueue(db, kind, value, source='aso', request_id=None, *, submitted_by=None):
     payload = normalize(kind,value)
     source = text(source,64); request_id = text(uuid.uuid4().hex if request_id is None else request_id,120)
+    if kind in ad_sources.KINDS:
+        if type(submitted_by) is not int or submitted_by <= 0:
+            raise ValueError('广告任务需要用户明确提交')
+        if source not in ('app-ads','user-ad-plan'):
+            schedule = db.execute('''SELECT kinds FROM ad_tracking_schedules WHERE receipt_source=%s AND enabled=1
+                AND submitted_by=%s AND store=%s AND app_id=%s AND country=%s AND language=%s''',
+                (source,submitted_by,*[payload[k] for k in ('store','app_id','country','language')])).fetchone()
+            if not schedule or kind not in json.loads(schedule['kinds']):
+                raise ValueError('没有生效的用户广告周期任务')
     fingerprint = batch_key(kind, payload)
     with db.named_lock('source-intake:'+dump([source,request_id]),timeout=10):
         old = db.execute('SELECT id,kind,payload FROM collection_source_tasks WHERE source=%s AND request_id=%s',(source,request_id)).fetchone()
@@ -70,16 +87,18 @@ def enqueue(db, kind, value, source='aso', request_id=None):
                 VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
                 (payload['store'],payload.get('app_id',''),payload['country'],payload['language'],kind,label,dump(payload),fingerprint,source,request_id,time.time()))
             identifier=db.cursor.lastrowid
-            emit(db,'sources',identifier,'queued','一次性任务已入队：'+KINDS[kind])
+            emit(db,'sources',identifier,'queued','采集任务已入队：'+KINDS[kind],
+                 details={'submitted_by':submitted_by} if submitted_by is not None else None)
             touch(db)
     return receipt(db,identifier) | {'reused':False}
 
 
 def receipt(db, identifier):
-    row = db.execute('''SELECT id,kind,source,request_id,enabled,due,lease_until,failures,last_error,result,created_at,success_at
+    row = db.execute(f'''SELECT id,kind,source,request_id,enabled,due,lease_until,failures,last_error,result,created_at,success_at,
+        {admitted()} AS admitted
         FROM collection_source_tasks WHERE id=%s''',(identifier,)).fetchone()
     if not row: raise ValueError('任务不存在')
-    status = ('done' if row['due'] is None else 'paused' if not row['enabled'] else
+    status = ('done' if row['due'] is None else 'stopped' if not row['admitted'] else 'paused' if not row['enabled'] else
               'running' if row['lease_until']>time.time() else 'error' if row['failures'] else 'pending')
     return row | {'resource':'sources','status':status,'result':json.loads(row['result']) if row['result'] else None}
 
@@ -97,15 +116,15 @@ def work(db,cfg):
         # File batches share a payload; read the uploaded bytes once, not once per receipt.
         with db.named_lock('source-claim'):
             with db:
-                first=db.claim('''SELECT * FROM collection_source_tasks WHERE enabled=1 AND due<=%s AND lease_until<=%s
+                first=db.claim(f'''SELECT * FROM collection_source_tasks WHERE {admitted()} AND enabled=1 AND due<=%s AND lease_until<=%s
                     AND failures<3'''+local_scope+' ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED',(now,now)).fetchone()
                 if not first:return {'processed':0}
                 if first['kind'] == 'ad_apple' or first['kind'] in ad_channels.SOCIAL:
                     # Each receipt advances its own durable page cursor.
                     rows = [first]
                 else:
-                    rows=db.claim('''SELECT id,language,failures,JSON_EXTRACT(payload,'$.limit') requested_limit
-                        FROM collection_source_tasks WHERE batch_key=%s AND enabled=1 AND due<=%s
+                    rows=db.claim(f'''SELECT id,language,failures,JSON_EXTRACT(payload,'$.limit') requested_limit
+                        FROM collection_source_tasks WHERE {admitted()} AND batch_key=%s AND enabled=1 AND due<=%s
                         AND lease_until<=%s AND failures<3 ORDER BY due,id LIMIT %s FOR UPDATE SKIP LOCKED''',(first['batch_key'],now,now,cfg.get('collection_batch_size',2000))).fetchall()
                 for row in rows:
                     db.execute('UPDATE collection_source_tasks SET token=%s,lease_until=%s WHERE id=%s',(token,now+max(600,cfg.get('lease_seconds',600)),row['id']))
@@ -120,9 +139,14 @@ def work(db,cfg):
     error=None; data=None
     try:
         if kind in ad_sources.KINDS:
+            def guard():
+                if not db.execute(f'''SELECT 1 FROM collection_source_tasks WHERE id IN %s AND token=%s AND enabled=1
+                    AND lease_until>%s AND {admitted()} LIMIT 1''',(tuple(r['id'] for r in rows),token,time.time())).fetchone():
+                    raise CollectionDeferred('广告任务已停止或租约已结束',1)
+            guard()
             previous = json.loads(first['result'] or '{}')
             progress = previous.pop('progress', {})
-            data = ad_sources.fetch(db, cfg, kind, payload, progress.get('page', 0))
+            data = ad_sources.fetch(db, cfg, kind, payload, progress.get('page', 0), request_guard=guard)
         elif kind=='aso_popularity':
             delay=collection_limits.admission(db,cfg,'apple')
             if delay is None or delay>0:

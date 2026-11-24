@@ -91,7 +91,11 @@ def apply_chunk(db, op):
         assignments += ['token=NULL', 'lease_until=0']
     if resource == 'media':
         assignments.append('manual_paused=' + ('0' if enabled else '1'))
-    db.execute(f'UPDATE {table} SET ' + ','.join(assignments) + f' WHERE id IN ({marks})', (enabled, *ids))
+    eligible = ''
+    if enabled and resource=='sources':
+        from .source_tasks import admitted
+        eligible = ' AND '+admitted()
+    db.execute(f'UPDATE {table} SET ' + ','.join(assignments) + f' WHERE id IN ({marks})'+eligible, (enabled, *ids))
     if resource == 'watchlist':
         db.execute(
             f'''UPDATE watchlist w JOIN jobs j USING(store,app_id,country,language)
@@ -101,7 +105,7 @@ def apply_chunk(db, op):
     message = '任务已恢复，等待到期后领取' if enabled else '任务已暂停，当前租约已失效'
     db.execute(
         f'''INSERT INTO collection_logs(resource,target_key,created_at,level,event,message)
-        SELECT %s,CAST(id AS CHAR),%s,'info',%s,%s FROM {table} WHERE id IN ({marks})''',
+        SELECT %s,CAST(id AS CHAR),%s,'info',%s,%s FROM {table} WHERE id IN ({marks}){eligible}''',
         (resource, time.time(), op['action'], message, *ids),
     )
     db.execute(

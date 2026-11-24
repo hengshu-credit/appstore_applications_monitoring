@@ -32,6 +32,7 @@ const states = {
   paused: "已暂停",
   error: "失败待重试",
   done: "已完成",
+  stopped: "已停用",
 };
 
 export function createCollectionCenter(ctx) {
@@ -171,9 +172,10 @@ export function createCollectionCenter(ctx) {
       const resultLink = row.kind.startsWith("ad_")
         ? `<button type="button" class="secondary" data-app="${esc(row.app_id)}" data-store="${esc(row.store)}" data-country="${esc(row.country)}" data-language="${esc(row.language)}" data-app-section="ads">查看广告追踪</button>`
         : '<a class="button secondary" href="#keywords">查看关键词数据</a>';
+      const periodic = task.source.startsWith("ad-schedule-");
       editor(
-        "一次性任务详情",
-        `<p>${esc(taskKinds[row.kind])} · ${esc(row.label)}</p><p>提交来源：${esc(task.source)} · 状态：${esc(states[task.status])}</p><p>提交后由消费者领取，完成后不自动排期。</p>${task.last_error ? `<p>${esc(task.last_error)}</p>` : ""}${task.result ? `<p>已保存 <strong>${num(task.result.returned ?? task.result.rows ?? 0)}</strong> 条数据${task.result.rejected_rows ? `，${num(task.result.rejected_rows)} 条异常记录已保留` : ""}。</p>${task.result.period_start ? `<p>统计范围：${esc(task.result.period_start)} 至 ${esc(task.result.period_end)}</p>` : ""}${resultLink}` : ""}`,
+        periodic ? "周期广告任务执行记录" : "一次性任务详情",
+        `<p>${esc(taskKinds[row.kind])} · ${esc(row.label)}</p><p>提交来源 · ${periodic ? "用户周期任务" : esc(task.source)} · ${esc(states[task.status])}</p><p>${periodic ? "本条记录对应一轮采集。在应用的广告追踪页可调整间隔或停止后续采集。" : "本任务执行一轮。"} </p>${task.last_error ? `<p>${esc(task.last_error)}</p>` : ""}${task.result ? `<p>已保存 <strong>${num(task.result.returned ?? task.result.rows ?? 0)}</strong> 条数据${task.result.rejected_rows ? `，${num(task.result.rejected_rows)} 条异常记录已保留` : ""}。</p>${task.result.period_start ? `<p>统计范围：${esc(task.result.period_start)} 至 ${esc(task.result.period_end)}</p>` : ""}` : ""}${row.kind.startsWith("ad_") || task.result ? resultLink : ""}`,
       );
       return;
     }
@@ -528,7 +530,7 @@ export function createCollectionCenter(ctx) {
                     ? esc(selectors.categoryName(t.store, t.category))
                     : "—",
                   t.resource === "sources"
-                    ? "一次性"
+                    ? t.refresh_hours ? `每 ${num(t.refresh_hours)} 小时 · 本轮` : "一次性"
                     : `${t.refresh_hours} 小时`,
                   t.depth
                     ? num(t.depth) + " 条"

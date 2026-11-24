@@ -10,7 +10,7 @@ export function createAdTracking(host, m, storeRankings, ctx) {
     generation = 0,
     timer,
     galleryKey,
-    activeTasks = false,
+    schedule,
     submitting = false;
   const find = (selector) => host.querySelector(selector);
   const live = () => host.isConnected && !host.hidden;
@@ -27,6 +27,7 @@ export function createAdTracking(host, m, storeRankings, ctx) {
     done: "已完成",
     error: "采集失败",
     paused: "已暂停",
+    stopped: "已停用，需重新提交",
     needs_auth: "待配置授权",
     unsupported: "此商店或地区未覆盖",
   };
@@ -109,16 +110,19 @@ export function createAdTracking(host, m, storeRankings, ctx) {
   }
 
   function render(data) {
-    activeTasks = data.sources.some(
+    const activeTasks = data.sources.some(
       (s) =>
         ["pending", "running"].includes(s.status) ||
         (s.status === "error" && s.failures < 3),
     );
-    const collect = find("[data-ad-collect]");
-    if (collect) {
-      collect.disabled = activeTasks || submitting;
-      collect.textContent = activeTasks ? "采集任务进行中" : "采集广告数据";
-    }
+    schedule = data.schedule;
+    find("[data-ad-schedule]").textContent = schedule?.enabled
+      ? `周期任务每 ${num(schedule.refresh_hours)} 小时执行，下一轮计划于 ${stamp(schedule.next_due)}。`
+      : schedule
+        ? "周期任务已停止。"
+        : "当前市场尚未设置周期任务。";
+    const stop = find("[data-ad-stop]");
+    if (stop) stop.hidden = !schedule?.enabled;
     const total = data.channels.reduce((n, c) => n + c.count, 0);
     find("[data-ad-total]").textContent =
       `${num(total)} 条投放记录 · 已观察到 ${num(data.channels.filter((c) => c.count && c.channel !== "渠道未披露").length)} 个渠道`;
@@ -219,10 +223,21 @@ export function createAdTracking(host, m, storeRankings, ctx) {
             ),
         )
       : "";
-    if (activeTasks)
-      timer = setTimeout(() => {
-        if (live()) load();
-      }, 5000);
+    if (activeTasks || schedule?.enabled)
+      timer = setTimeout(
+        () => {
+          if (live()) load();
+        },
+        activeTasks
+          ? 5000
+          : Math.max(
+              5000,
+              Math.min(
+                2147483647,
+                schedule.next_due * 1000 - Date.now() + 1000,
+              ),
+            ),
+      );
   }
 
   async function load() {
@@ -249,7 +264,16 @@ export function createAdTracking(host, m, storeRankings, ctx) {
   host.innerHTML =
     panel(
       "投放素材",
-      `<div class="ad-toolbar"><strong data-ad-total></strong><div class="actions"><button type="button" class="secondary" data-ad-refresh>刷新记录</button>${canCollect ? '<button type="button" data-ad-collect>采集广告数据</button>' : ""}</div></div>
+      `<div class="ad-toolbar"><strong data-ad-total></strong><button type="button" class="secondary" data-ad-refresh>刷新记录</button></div>
+    ${
+      canCollect
+        ? `<form class="ad-task-form" data-ad-task><label>采集方式<select name="mode"><option value="once">一次性</option><option value="periodic">周期性</option></select></label>
+      <label data-ad-interval hidden>执行间隔（小时）<input name="refresh_hours" type="number" min="0.25" max="8760" step="any" value="24" disabled></label>
+      <button type="submit" data-ad-collect>提交采集任务</button></form>`
+        : ""
+    }
+    <div class="ad-schedule"><span class="sub" data-ad-schedule></span>${canCollect ? '<button type="button" class="link" data-ad-stop hidden>停止周期任务</button>' : ""}</div>
+    <p class="sub" role="status" data-ad-task-result></p>
     <div class="ad-channel-filters" role="group" aria-label="投放渠道" data-ad-filters></div><p class="sub" data-ad-channel-status></p><p class="sub">显示 ${esc(m.country.toUpperCase())} 的投放记录和来源未披露地区的素材。</p>
     <details class="ad-source-details"><summary>查看采集来源与进度</summary><div data-ad-sources></div></details>
     <p role="status" data-ad-status>正在读取广告记录…</p><div data-ad-items></div><div data-ad-leads></div>`,
@@ -321,24 +345,66 @@ export function createAdTracking(host, m, storeRankings, ctx) {
     },
     true,
   );
-  const collect = find("[data-ad-collect]");
-  if (collect)
-    collect.onclick = async () => {
-      submitting = collect.disabled = true;
+  const form = find("[data-ad-task]");
+  if (form) {
+    const mode = form.elements.mode,
+      interval = form.elements.refresh_hours;
+    const collect = find("[data-ad-collect]"),
+      stop = find("[data-ad-stop]");
+    const feedback = find("[data-ad-task-result]");
+    mode.onchange = () => {
+      const periodic = mode.value === "periodic";
+      find("[data-ad-interval]").hidden = !periodic;
+      interval.disabled = !periodic;
+      interval.required = periodic;
+      if (periodic && schedule?.enabled)
+        interval.value = schedule.refresh_hours;
+      feedback.textContent = periodic
+        ? schedule?.enabled
+          ? "修改间隔后提交，即可调整下一轮的执行时间。"
+          : "提交后先执行一轮，随后按间隔采集。"
+        : "";
+    };
+    const submit = async (stopping) => {
+      if (submitting) return;
+      submitting = collect.disabled = stop.disabled = true;
+      feedback.textContent = "";
       clearTimeout(timer);
       try {
-        await api(base + "/collect", {
-          country: m.country,
-          language: m.language,
-        });
+        const market = { country: m.country, language: m.language };
+        if (stopping) {
+          await api(
+            base + "/schedule?" + new URLSearchParams(market),
+            undefined,
+            "DELETE",
+          );
+          feedback.textContent = "已撤销该周期任务尚未完成的来源任务。";
+        } else {
+          const periodic = mode.value === "periodic";
+          const result = await api(base + "/collect", {
+            ...market,
+            mode: mode.value,
+            ...(periodic ? { refresh_hours: Number(interval.value) } : {}),
+          });
+          feedback.textContent = periodic
+            ? result.tasks.length
+              ? "周期任务已提交，首轮已入队。"
+              : "周期设置已保存。"
+            : `一次性任务已提交，共 ${num(result.tasks.length)} 个来源。`;
+        }
         if (live()) await load();
       } catch (error) {
-        if (live()) find("[data-ad-status]").textContent = error.message;
+        if (live()) feedback.textContent = error.message;
       } finally {
-        submitting = false;
-        collect.disabled = activeTasks;
+        submitting = collect.disabled = stop.disabled = false;
       }
     };
+    form.onsubmit = (event) => {
+      event.preventDefault();
+      if (form.reportValidity()) submit(false);
+    };
+    stop.onclick = () => submit(true);
+  }
   return {
     show: load,
     hide() {

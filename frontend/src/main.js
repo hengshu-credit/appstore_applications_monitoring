@@ -682,7 +682,7 @@ async function appDetail(store, id, rev = ++revision) {
   const p = data.listing?.payload || {};
   if (
     !mount(
-      `<div class="panel-heading"><div>${appLink(store, id, p.name || data.app.name, p.icon)}<p class="sub app-detail-meta"><span class="member-store">${storeLogo(store)}<span>${store === "apple" ? "App Store" : "Google Play"}</span></span><span>·</span><span>${esc(m.country.toUpperCase())}</span><span>·</span><span>${esc(m.language)}</span><span>·</span><span class="app-detail-developer" title="${esc(p.developer || "开发者待采集")}">${esc(p.developer || "开发者待采集")}</span></p></div><div class="actions"><button id="collect-app-now">立即采集全部公开信息</button><button id="quick-watch" class="secondary">管理采集配置</button><button class="secondary" id="open-aso-workbench">ASO 工作台</button></div></div><div id="app-collection-progress"></div>${panel("应用明细", await appRows([{ ...data.app, ...p, store, app_id: id }], { scope: m }))}<div class="cards">${metric("商店评分", p.rating, "来自最近一次商店观察")}${metric("评分数", p.ratings, "累计公开评分数量")}${metric("版本快照", data.snapshots.length, "显示最近最多100次变更")}${metric("历史命中过的关键词", data.keywords.coverage.length, "包含当前未命中词；有效覆盖见下方监控")}</div>${appInsights.profile(data, p)}<div id="monitoring-trends"></div><div id="app-market-matrix"></div><div id="app-keyword-markets"></div>${panel("素材与版本历史", '<div id="snapshot-comparison"></div>')}${panel(
+      `<div class="panel-heading"><div>${appLink(store, id, p.name || data.app.name, p.icon)}<p class="sub app-detail-meta"><span class="member-store">${storeLogo(store)}<span>${store === "apple" ? "App Store" : "Google Play"}</span></span><span>·</span><span>${esc(m.country.toUpperCase())}</span><span>·</span><span>${esc(m.language)}</span><span>·</span><span class="app-detail-developer" title="${esc(p.developer || "开发者待采集")}">${esc(p.developer || "开发者待采集")}</span></p></div><div class="actions"><button id="collect-app-now">立即采集商店公开信息</button><button id="quick-watch" class="secondary">管理采集配置</button><button class="secondary" id="open-aso-workbench">ASO 工作台</button></div></div><div id="app-collection-progress"></div>${panel("应用明细", await appRows([{ ...data.app, ...p, store, app_id: id }], { scope: m }))}<div class="cards">${metric("商店评分", p.rating, "来自最近一次商店观察")}${metric("评分数", p.ratings, "累计公开评分数量")}${metric("版本快照", data.snapshots.length, "显示最近最多100次变更")}${metric("历史命中过的关键词", data.keywords.coverage.length, "包含当前未命中词；有效覆盖见下方监控")}</div>${appInsights.profile(data, p)}<div id="monitoring-trends"></div><div id="app-market-matrix"></div><div id="app-keyword-markets"></div>${panel("素材与版本历史", '<div id="snapshot-comparison"></div>')}${panel(
         "关键词覆盖",
         table(
           ["关键词", "最近位置", "变化", "数据时间", "状态"],
@@ -817,7 +817,7 @@ async function appDetail(store, id, rev = ++revision) {
     $("#collect-app-now").disabled = active;
     $("#collect-app-now").textContent = active
       ? "正在采集…"
-      : "立即采集全部公开信息";
+      : "立即采集商店公开信息";
     $("#app-collection-progress").innerHTML = report
       ? panel(
           "本轮采集进度",
@@ -851,6 +851,7 @@ async function appDetail(store, id, rev = ++revision) {
                   failed: "失败",
                   paused: "已暂停",
                   error: "等待重试",
+                  skipped: "已跳过，需手动提交",
                 }[t.state] || t.state,
               ),
               t.ref
@@ -859,7 +860,7 @@ async function appDetail(store, id, rev = ++revision) {
             ]),
           )}</details>`,
         )
-      : `<p class="sub">一键采集会创建或启用当前市场的应用详情、素材、近期评论、榜单和关键词任务。${accounts.can("ads", "write") ? "同时采集该应用的公开广告和投放排名。" : ""}</p>`;
+      : '<p class="sub">一键采集会创建或启用当前市场的商店资料、素材、近期评论、榜单和关键词任务。</p>';
     $("#app-plan-logs")?.addEventListener("click", () =>
       detailLogs
         .open("plans", report.id, "应用采集计划")

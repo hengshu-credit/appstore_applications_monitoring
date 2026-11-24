@@ -6,6 +6,31 @@
   flex-wrap: wrap;
   gap: 10px 16px;
 }
+.ad-task-form,
+.ad-schedule {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: end;
+  margin: 10px 0;
+}
+.ad-task-form label {
+  max-width: 100%;
+}
+.ad-task-form label:first-child {
+  width: min(9rem, 100%);
+}
+.ad-task-form [hidden],
+.ad-schedule [hidden] {
+  display: none;
+}
+.ad-schedule {
+  align-items: center;
+}
+.ad-task-form input {
+  width: 10em;
+  max-width: 100%;
+}
 .ad-toolbar,
 .ad-creative-meta {
   justify-content: space-between;

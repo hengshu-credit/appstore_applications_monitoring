@@ -190,8 +190,9 @@ def buyer_rankings(page, m):
     return {'sample_size': len(rows), 'listed': target is not None, 'ranks': ranks, 'evidence_url': BUYERS}
 
 
-def fetch(db, cfg, kind, m, page_number=0):
+def fetch(db, cfg, kind, m, page_number=0, *, request_guard=None):
     client = Client(cfg, db)
+    client.request_guard = request_guard
     client.lineage_lane = kind
     def get(url, params=None):
         with client.request(m['store'], 'GET', url, params=params, headers={'Accept': 'application/json'},

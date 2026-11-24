@@ -1,12 +1,14 @@
 import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 
 from appmon import ad_sources, ad_tracking, ad_channels, ad_libraries, analytics, app_collection, collection, source_tasks, source_registry
 from appmon.auth import requirements
-from appmon.db import add_apps
+from appmon.db import add_apps, connect, dump
+from appmon import dispatcher, collection_tasks
 from appmon.web import create_app
 from appmon import google_ad_transparency
 from test_monitor import OceanBaseTestCase
@@ -158,8 +160,9 @@ class AppAdTrackingTest(OceanBaseTestCase):
 
     def test_source_queue_checkpoints_and_retries_retain_evidence_and_last_success(self):
         m = self.m
-        task = source_tasks.enqueue(self.db,'ad_apple',m)
-        def page(db,cfg,kind,spec,index):
+        task = source_tasks.enqueue(self.db,'ad_apple',m,source='app-ads',submitted_by=1)
+        def page(db,cfg,kind,spec,index,*,request_guard):
+            request_guard()
             ad = ad_sources.apple_ad({'appId':123,'countryOrRegion':'DE','adId':str(index),
                                       'placement':'APPSTORE_SEARCH_RESULTS','adBanner':{'subtitle':'Ad '+str(index)}},m)
             return {'items':[ad],'next_page':1 if index==0 else None,'total':2,'period_end':'2026-01-10'}
@@ -232,7 +235,7 @@ class AppAdTrackingTest(OceanBaseTestCase):
         with self.assertRaises(ValueError):
             ad_tracking.versions(self.db,self.m|{'country':'fr'},item['id'],0)
 
-    def test_full_collection_creates_app_scoped_ad_receipts_and_reports_progress(self):
+    def test_full_collection_excludes_ads_until_user_explicitly_submits(self):
         for name in ad_channels.SOCIAL:
             value = {'access_token':'test-'+name}
             if name=='ad_reddit':value['ad_account_id']='t2_abc'
@@ -240,16 +243,168 @@ class AppAdTrackingTest(OceanBaseTestCase):
             self.assertTrue(settings['account']['configured'])
             self.assertNotIn('test-'+name,str(settings))
             self.assertEqual(source_registry.ads_credentials(self.db,self.cfg,name),value)
-        plan = app_collection.collect(self.db,self.m,include_ads=True)
+        client = self.login_admin(TestClient(create_app(self.cfg)))
+        plan = client.post('/api/apps/apple/123/collect',json=self.m|{'include_ads':True}).json()
         while collection.work_plans(self.db)['status']!='complete':
             pass
         tasks = [t for t in app_collection.report(self.db,plan['id'])['tasks'] if t['kind'] in ad_sources.KINDS]
-        self.assertEqual({t['kind'] for t in tasks},set(ad_sources.KINDS))
-        self.assertTrue(all(t['ref']['resource']=='sources' and t['state']=='pending' for t in tasks))
-        with patch('appmon.ad_sources.fetch',side_effect=lambda db,cfg,k,m,page:
-                {'listed':False,'sample_size':20,'ranks':{}} if k=='ad_rankings' else {'items':[]}):
-            for _ in tasks:
+        self.assertEqual(tasks,[])
+        self.assertIn('chart', {t['kind'] for t in plan['tasks']})
+        with patch('appmon.ad_sources.fetch') as fetch:
+            self.assertIsNone(client.get('/api/ads/apps/apple/123',params=self.m).json()['schedule'])
+            ad_tracking.schedule_due(self.db)
+            self.assertEqual(source_tasks.work(self.db,self.cfg)['processed'],0)
+            fetch.assert_not_called()
+        response = client.post('/api/ads/apps/apple/123/collect',json=self.m|{'mode':'once'})
+        self.assertEqual(response.status_code,200,response.text)
+        explicit = response.json()
+        self.assertEqual({t['kind'] for t in explicit['tasks']}, set(ad_sources.KINDS))
+        self.assertIsNone(ad_tracking.schedule_for(self.db,self.m))
+        with patch('appmon.ad_sources.fetch',side_effect=self.empty_source):
+            for _ in explicit['tasks']:
                 self.assertEqual(source_tasks.work(self.db,self.cfg)['ok'],1)
-        completed = app_collection.report(self.db,plan['id'])
-        self.assertEqual(completed['finished'],len(tasks))
-        self.assertEqual(completed['errors'],0)
+            ad_tracking.schedule_due(self.db)
+            self.assertEqual(source_tasks.work(self.db,self.cfg)['processed'],0)
+        self.assertTrue(all(source_tasks.receipt(self.db,t['id'])['due'] is None for t in explicit['tasks']))
+
+    @staticmethod
+    def empty_source(db,cfg,kind,m,page,*,request_guard):
+        request_guard()
+        return {'listed':False,'sample_size':20,'ranks':{}} if kind=='ad_rankings' else {'items':[]}
+
+    def test_periodic_submission_update_nonoverlapping_rounds_and_stop(self):
+        client = self.login_admin(TestClient(create_app(self.cfg)))
+        path='/api/ads/apps/apple/123'
+        before=time.time()
+        spec=self.m|{'mode':'periodic','refresh_hours':2}
+        for invalid in ({'mode':'auto'},{'mode':'periodic'},{'mode':'periodic','refresh_hours':0},{'mode':'once','refresh_hours':2}):
+            self.assertEqual(client.post(path+'/collect',json=self.m|invalid).status_code,400)
+        self.assertIsNone(ad_tracking.schedule_for(self.db,self.m))
+        first=client.post(path+'/collect',json=spec|{'submitted_by':12345678}).json()
+        saved=first['schedule'];self.assertTrue(saved['enabled'])
+        self.assertEqual((saved['refresh_hours'],saved['run_number']),(2,1))
+        self.assertGreaterEqual(saved['next_due'],before+7200)
+        actor=self.db.execute('SELECT submitted_by FROM ad_tracking_schedules').fetchone()['submitted_by']
+        self.assertEqual(actor,client.get('/api/auth/me').json()['user']['id'])
+        same=client.post(path+'/collect',json=spec).json()
+        self.assertEqual((same['schedule'],same['tasks']),(saved,[]))
+        updated=client.post(path+'/collect',json=spec|{'refresh_hours':6}).json()
+        self.assertEqual(updated['schedule']['id'],saved['id'])
+        self.assertEqual(updated['tasks'],[])
+        self.assertGreaterEqual(updated['schedule']['next_due'],before+21600)
+        self.assertIsNone(ad_tracking.schedule_for(self.db,self.m|{'country':'fr'}))
+        # A later credential change alone must not expand an existing schedule.
+        source_registry.save(self.db,self.cfg,'ad_meta',{'access_token':'test-meta-token'})
+        self.db.execute('UPDATE ad_tracking_schedules SET next_due=0')
+        ad_tracking.schedule_due(self.db)
+        self.assertEqual(ad_tracking.schedule_for(self.db,self.m)['run_number'],1)
+        with patch('appmon.ad_sources.fetch',side_effect=self.empty_source):
+            for _ in first['tasks']:
+                self.assertEqual(source_tasks.work(self.db,self.cfg)['ok'],1)
+        def tick(_):
+            db=connect(self.cfg)
+            try:ad_tracking.schedule_due(db)
+            finally:db.close()
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            list(pool.map(tick,range(3)))
+        second=client.get(path,params=self.m).json()['schedule']
+        self.assertEqual(second['run_number'],2)
+        count=self.db.execute('SELECT COUNT(*) n FROM collection_source_tasks').fetchone()['n']
+        self.assertEqual(count,2*len(first['tasks']))
+        self.assertIsNone(self.db.execute("SELECT id FROM collection_source_tasks WHERE kind='ad_meta'").fetchone())
+        pending=self.db.execute('SELECT id FROM collection_source_tasks WHERE due IS NOT NULL').fetchall()
+        with patch('appmon.ad_sources.fetch',side_effect=self.empty_source):
+            self.assertEqual(dispatcher.dispatch_once(self.db,self.cfg,'ad-test')['ok'],1)
+        once=client.post(path+'/collect',json=self.m).json()['tasks']
+        stopped=client.delete(path+'/schedule',params=self.m).json()['schedule']
+        self.assertFalse(stopped['enabled']);self.assertIsNone(stopped['next_due'])
+        self.assertTrue(all(source_tasks.receipt(self.db,r['id'])['status'] in ('done','stopped') for r in pending))
+        self.assertTrue(all(source_tasks.receipt(self.db,t['id'])['status']=='pending' for t in once))
+        restarted=client.post(path+'/collect',json=spec).json()['schedule']
+        self.assertEqual(restarted['run_number'],1)
+        self.assertTrue(all(source_tasks.receipt(self.db,r['id'])['status'] in ('done','stopped') for r in pending))
+        self.assertEqual(set(requirements('/api/ads/apps/{store}/{app_id}/schedule','DELETE')),{'ads:write','collection:write'})
+
+    def test_implicit_legacy_receipts_cannot_be_dispatched_or_batched_with_new_manual_tasks(self):
+        m=self.m;kind='ad_creatives';actions=[{'kind':kind,'value':m},{'kind':'ad_apple','value':m}]
+        plan=self.db.execute('''INSERT INTO collection_plans(name,specification,actions,total,created_at,updated_at)
+            VALUES('legacy',%s,%s,2,1,1)''',(dump({'app_request':m}),dump(actions))).lastrowid
+        old=self.db.execute('''INSERT INTO collection_source_tasks(store,app_id,country,language,kind,label,payload,batch_key,source,request_id,created_at)
+            VALUES(%s,%s,%s,%s,%s,'legacy',%s,%s,'collection-plan',%s,1)''',
+            (*[m[k] for k in ad_tracking.MARKET_FIELDS],kind,dump(m),source_tasks.batch_key(kind,m),f'{plan}:0')).lastrowid
+        with patch('appmon.ad_sources.fetch') as fetch:
+            self.assertEqual(collection.work_plans(self.db)['status'],'complete')
+            report=app_collection.report(self.db,plan)
+            self.assertEqual((report['state'], report['skipped'],report['finished']),('complete',2,2))
+            self.assertEqual(source_tasks.receipt(self.db,old)['status'],'stopped')
+            self.assertFalse(dispatcher.ready(self.db,self.cfg,'sources',time.time()))
+            self.assertEqual(source_tasks.work(self.db,self.cfg)['processed'],0)
+            fetch.assert_not_called()
+        with self.assertRaisesRegex(ValueError,'用户'):
+            collection.enqueue(self.db,{'source':'app-ads','ad_requested_by':7,'tasks':[m|{'kind':kind}]})
+        explicit=collection.enqueue(self.db,{'source':'external','tasks':[m|{'kind':kind}]},ad_requested_by=1)
+        self.assertEqual(collection.work_plans(self.db)['status'],'complete')
+        upgraded=connect(self.cfg,initialize=True)
+        upgraded.close()
+        self.assertFalse(self.db.execute('SELECT enabled FROM collection_source_tasks WHERE id=%s',(old,)).fetchone()['enabled'])
+        collection_tasks.control_tasks(self.db,{'action':'resume','scope':'filtered','filters':{'kind':kind}})
+        with patch('appmon.ad_sources.fetch',side_effect=self.empty_source):
+            self.assertEqual(source_tasks.work(self.db,self.cfg)['processed'],1)
+        self.assertIsNone(source_tasks.receipt(self.db,old)['result'])
+        self.assertEqual(app_collection.report(self.db,explicit['id'],allow_plan=True)['state'],'complete')
+        self.assertEqual(collection_tasks.control_tasks(self.db,{'action':'refresh','tasks':[{'resource':'sources','id':old}]})['skipped'],1)
+
+    def test_failed_submission_rolls_back_and_stopping_fences_a_claimed_run(self):
+        spec=self.m|{'mode':'periodic','refresh_hours':24}
+        original=source_tasks.enqueue
+        def fail_second(db,kind,*args,**kwargs):
+            if kind=='ad_rankings':raise RuntimeError('simulated intake interruption')
+            return original(db,kind,*args,**kwargs)
+        with patch('appmon.source_tasks.enqueue',side_effect=fail_second), self.assertRaises(RuntimeError):
+            ad_tracking.enqueue(self.db,spec,submitted_by=1)
+        self.assertIsNone(ad_tracking.schedule_for(self.db,self.m))
+        self.assertIsNone(self.db.execute('SELECT id FROM collection_source_tasks').fetchone())
+        submitted=ad_tracking.enqueue(self.db,spec,submitted_by=1)
+        def stop_during_fetch(db,cfg,kind,m,page,*,request_guard):
+            request_guard()
+            ad_tracking.stop_schedule(db,m)
+            request_guard()
+            self.fail('stopped run admitted an additional HTTP request')
+        with patch('appmon.ad_sources.fetch',side_effect=stop_during_fetch):
+            self.assertEqual(source_tasks.work(self.db,self.cfg)['processed'],0)
+        self.assertTrue(all(source_tasks.receipt(self.db,t['id'])['status']=='stopped' for t in submitted['tasks']))
+        self.assertIsNone(self.db.execute('SELECT id FROM ad_observations').fetchone())
+
+    def test_collection_only_user_cannot_submit_ads_by_forging_origin(self):
+        api=create_app(self.cfg)
+        admin=self.login_admin(TestClient(api));client=TestClient(api)
+        account={'username':'collector-user','password':'test-user-password'}
+        self.assertEqual(client.post('/api/auth/register',json=account).status_code,200)
+        self.assertEqual(admin.put('/api/auth/admin/roles/user',json={'permissions':['ads:read','collection:write']}).status_code,200)
+        session=client.post('/api/auth/login',json=account).json()
+        client.headers['X-CSRF-Token']=session['csrf_token']
+        forged=self.m|{'source':'app-ads','submitted_by':1,'mode':'periodic','refresh_hours':24}
+        self.assertEqual(client.post('/api/ads/apps/apple/123/collect',json=forged).status_code,403)
+        self.assertEqual(client.delete('/api/ads/apps/apple/123/schedule',params=self.m).status_code,403)
+        self.assertEqual(client.post('/api/research/collection/enqueue',json={
+            'source':'app-ads','ad_requested_by':1,'tasks':[self.m|{'kind':'ad_apple'}]}).status_code,403)
+        self.assertIsNone(ad_tracking.schedule_for(self.db,self.m))
+        self.assertIsNone(self.db.execute('SELECT id FROM collection_source_tasks').fetchone())
+
+    def test_explicit_replay_of_legacy_api_request_reuses_success_and_queues_only_missing_ads(self):
+        m=self.m
+        spec={'source':'console-api','request_id':'older-submission','tasks':[m|{'kind':k} for k in ('ad_creatives','ad_rankings')]}
+        actions=[{'kind':t['kind'],'value':m} for t in spec['tasks']]
+        plan=self.db.execute('''INSERT INTO collection_plans(name,specification,actions,total,completed,status,created_at,updated_at,
+            request_source,request_id) VALUES('old API',%s,%s,2,2,'complete',1,1,%s,%s)''',
+            (dump({'input_source':spec['source'],'request_id':spec['request_id']}),dump(actions),spec['source'],spec['request_id'])).lastrowid
+        completed=self.db.execute('''INSERT INTO collection_source_tasks(store,app_id,country,language,kind,label,payload,batch_key,
+            source,request_id,created_at,due,success_at,result) VALUES(%s,%s,%s,%s,'ad_creatives','old',%s,%s,'collection-plan',%s,1,NULL,42,'{}')''',
+            (*[m[k] for k in ad_tracking.MARKET_FIELDS],dump(m),source_tasks.batch_key('ad_creatives',m),f'{plan}:0')).lastrowid
+        for _ in range(2):
+            receipt=collection.enqueue(self.db,spec,ad_requested_by=9)
+            self.assertTrue(receipt['reused']);self.assertEqual(receipt['id'],plan)
+        tasks=app_collection.report(self.db,plan,allow_plan=True)['tasks']
+        self.assertEqual([(t['kind'],t['state']) for t in tasks],[('ad_creatives','complete'),('ad_rankings','pending')])
+        self.assertEqual(tasks[0]['ref']['id'],completed)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) n FROM collection_source_tasks WHERE source='user-ad-plan'").fetchone()['n'],2)

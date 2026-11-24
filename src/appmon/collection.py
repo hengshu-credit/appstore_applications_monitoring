@@ -9,6 +9,7 @@ from .catalog import BY_ID
 from .task_logs import emit
 from .log_details import diagnostics
 from .source_tasks import KINDS as SOURCE_KINDS
+from . import ad_sources
 
 SOURCES = [
     {'id':'details','name':'应用详情与版本','source':'Apple lookup / Google Play详情','method':'public','cadence':'重点池默认24小时，可配置',
@@ -21,7 +22,7 @@ SOURCES = [
      'fields':'原文、星级、版本、时间、公开回复字段（来源提供时）','coverage':'每轮最多500条，最多10页；无法获取的回复状态为未知'},
     {'id':'featured','name':'编辑推荐','source':'Apple Today公开结构化页面','method':'public','cadence':'默认24小时',
      'fields':'卡片、关联应用、故事链接、观察时间','coverage':'iPhone Today可见卡片，卡片顺序不等于商店排名'},
-    {'id':'ad_tracking','name':'应用广告追踪','source':'AppGoblin、Google、Apple 及已授权的广告 API','method':'public / authorization','cadence':'按应用提交采集',
+    {'id':'ad_tracking','name':'应用广告追踪','source':'AppGoblin、Google、Apple 及已授权的广告 API','method':'public / authorization','cadence':'用户提交一次性任务或指定周期间隔',
      'fields':'投放渠道与广告位、推广素材及版本、文案、证据链接、广告主样本排名','coverage':'Google、Meta、Instagram、TikTok、Reddit、Yandex、App Store，覆盖依来源市场和授权范围而定'},
     {'id':'owned','name':'自有后台与广告报表','source':'用户导入 / 开发者授权接口','method':'authorization',
      'cadence':'按报表覆盖期间与授权配额配置','fields':'真实广告指标、后台关键词、转化与回复权限',
@@ -86,7 +87,7 @@ def create_plan(db, value):
     return {'id':identifier,'total':result['total'],'status':'queued'}
 
 
-def enqueue(db, value):
+def enqueue(db, value, *, ad_requested_by=None):
     """Durable intake for APIs, other systems and schedulers; retries reuse the receipt."""
     source = text(value.get('source','api'),64)
     request_id = text(value.get('request_id',uuid.uuid4().hex),120)
@@ -97,6 +98,13 @@ def enqueue(db, value):
     for task in tasks:
         if not isinstance(task,dict):raise ValueError('采集任务须为对象')
         kind = task.get('kind')
+        if not isinstance(kind,str):
+            raise ValueError('未知采集类型')
+        if kind in ad_sources.KINDS:
+            if type(ad_requested_by) is not int or ad_requested_by <= 0:
+                raise ValueError('广告任务需要用户明确提交')
+            if task.get('mode','once') != 'once' or task.get('refresh_hours') is not None:
+                raise ValueError('请在应用广告追踪中设置周期任务')
         if kind in SOURCE_KINDS:
             from .source_tasks import normalize
             actions.append({'kind':kind,'value':normalize(kind,task)})
@@ -115,16 +123,38 @@ def enqueue(db, value):
             actions.extend(result['actions'])
         else:
             raise ValueError('未知采集类型')
+    ad_actions = [(index,action) for index,action in enumerate(actions) if action['kind'] in ad_sources.KINDS]
     with db.named_lock('enqueue:'+dump([source,request_id]),timeout=10):
-        old = db.execute('''SELECT id,total,status,actions FROM collection_plans WHERE
+        old = db.execute('''SELECT id,total,status,actions,specification FROM collection_plans WHERE
             request_source=%s AND request_id=%s LIMIT 1''',(source,request_id)).fetchone()
         if old:
             if json.loads(old['actions'])!=actions:raise ValueError('同一来源请求编号不能对应不同任务')
+            spec = json.loads(old['specification'])
+            if ad_actions and not spec.get('ad_requested_by'):
+                # An authenticated user has now explicitly re-submitted an old
+                # intake receipt. Keep successful observations and schedule
+                # only the advertising work, without replaying unrelated tasks.
+                from .collection_batch import write_batch
+                from .source_tasks import enqueue as enqueue_source
+                with write_batch(db) as writer:
+                    for index, action in ad_actions:
+                        key = f'{old["id"]}:{index}'
+                        saved = writer.execute("""UPDATE collection_source_tasks SET source='user-ad-plan'
+                            WHERE source='collection-plan' AND request_id=%s AND due IS NULL AND success_at IS NOT NULL""",(key,)).rowcount
+                        if not saved:
+                            enqueue_source(writer,action['kind'],action['value'],source='user-ad-plan',request_id=key,
+                                           submitted_by=ad_requested_by)
+                    spec['ad_requested_by'] = ad_requested_by
+                    writer.execute('UPDATE collection_plans SET specification=%s,updated_at=%s WHERE id=%s',
+                                   (dump(spec),time.time(),old['id']))
             return {k:old[k] for k in ('id','total','status')} | {'reused':True,'request_id':request_id}
+        specification = {'input_source':source,'request_id':request_id}
+        if ad_actions:
+            specification['ad_requested_by'] = ad_requested_by
         now=time.time()
         with db:
             db.execute('INSERT INTO collection_plans(name,specification,actions,total,created_at,updated_at,request_source,request_id) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)',
-                (text(value.get('name',source+' 采集请求')),dump({'input_source':source,'request_id':request_id}),dump(actions),len(actions),now,now,source,request_id))
+                (text(value.get('name',source+' 采集请求')),dump(specification),dump(actions),len(actions),now,now,source,request_id))
             identifier=db.cursor.lastrowid
             emit(db,'plans',identifier,'queued',f'统一入队：{source}，{len(actions)} 个请求目标')
         return {'id':identifier,'total':len(actions),'status':'queued','reused':False,'request_id':request_id}
@@ -174,12 +204,20 @@ def work_plans(db, limit=20):
             row=db.execute("SELECT * FROM collection_plans WHERE status IN ('queued','running') ORDER BY id LIMIT 1").fetchone()
             if not row:return {'processed':0,'error':0}
             actions=json.loads(row['actions']);completed=row['completed']
+            specification=json.loads(row['specification'])
             db.execute("UPDATE collection_plans SET status='running',updated_at=%s WHERE id=%s",(time.time(),row['id']))
             processed=0
             emit(db,'plans',row['id'],'started',f'开始配置目标，从 {completed}/{len(actions)} 继续')
             try:
                 for action in actions[completed:completed+limit]:
-                    if action['kind'] in SOURCE_KINDS:
+                    if action['kind'] in ad_sources.KINDS:
+                        if specification.get('input_source') and specification.get('ad_requested_by'):
+                            from .source_tasks import enqueue as enqueue_source
+                            enqueue_source(db,action['kind'],action['value'],source='user-ad-plan',request_id=f'{row["id"]}:{completed}',
+                                           submitted_by=specification['ad_requested_by'])
+                        else:
+                            emit(db,'plans',row['id'],'skipped','已跳过旧计划附带的广告任务')
+                    elif action['kind'] in SOURCE_KINDS:
                         from .source_tasks import enqueue as enqueue_source
                         enqueue_source(db,action['kind'],action['value'],source='collection-plan',request_id=f'{row["id"]}:{completed}')
                     elif action.get('immediate'):
@@ -189,11 +227,11 @@ def work_plans(db, limit=20):
                     elif action['kind']=='keywords':add_targets(db,[action['value']],merge_existing=True)
                     elif action['kind'] in ('icons','permissions'):configure_asset(db,action)
                     else:add_observation_target(db,action['value'],preserve_existing=action.get('preserve_existing',False),merge_existing=not action.get('preserve_existing',False))
-                    if 'input_source' in json.loads(row['specification']) and action['kind'] not in SOURCE_KINDS:
+                    if 'input_source' in specification and action['kind'] not in SOURCE_KINDS:
                         schedule_submission(db,action,row['created_at'])
                     completed+=1;processed+=1
                     db.execute("UPDATE collection_plans SET completed=%s,updated_at=%s WHERE id=%s",(completed,time.time(),row['id']))
-                    emit(db,'plans',row['id'],'progress',f'已配置 {completed}/{len(actions)} 个目标；类型 {action["kind"]}')
+                    emit(db,'plans',row['id'],'progress',f'已处理 {completed}/{len(actions)} 个目标；类型 {action["kind"]}')
                 status='complete' if completed==len(actions) else 'running'
                 db.execute('UPDATE collection_plans SET status=%s,error=NULL WHERE id=%s',(status,row['id']))
                 emit(db,'plans',row['id'],status,'计划目标已全部配置' if status=='complete' else '本批次已完成，等待下一批')

@@ -19,7 +19,8 @@ def ready(db, cfg, lane, now, *, priority=False):
         from .app_media import active_predicate
         return db.execute('SELECT 1 FROM app_media_assets a WHERE enabled=1 AND due<=%s AND lease_until<=%s AND '+active_predicate()+' LIMIT 1',(due_by,now)).fetchone() is not None
     if lane == 'sources':
-        return db.execute('SELECT 1 FROM collection_source_tasks WHERE enabled=1 AND due<=%s AND lease_until<=%s AND failures<3 LIMIT 1',(due_by,now)).fetchone() is not None
+        from .source_tasks import admitted
+        return db.execute(f'SELECT 1 FROM collection_source_tasks WHERE {admitted()} AND enabled=1 AND due<=%s AND lease_until<=%s AND failures<3 LIMIT 1',(due_by,now)).fetchone() is not None
     if lane == 'details':
         sql = '''SELECT 1 FROM watchlist w JOIN jobs j USING(store,app_id,country,language)
             WHERE w.enabled=1 AND j.due<=%s AND j.lease_until<=%s LIMIT 1'''
@@ -121,8 +122,10 @@ def run_batch(db, cfg, lane):
 
 
 def dispatch_once(db, cfg, worker_id):
+    from .ad_tracking import schedule_due
     name = 'collector:'+worker_id
     db.execute('INSERT INTO schedules VALUES(%s,%s) ON DUPLICATE KEY UPDATE next_at=VALUES(next_at)',(name,time.time()))
+    schedule_due(db)
     lane = choose(db,cfg)
     if lane is None:
         return {'processed':0,'lane':None}

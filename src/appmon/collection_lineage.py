@@ -221,9 +221,16 @@ def report(db,cfg,store='all',hours=24):
         node('top50','全球榜单 Top50 联动',0,value=sum(int(r['tasks']) for r in top50),unit='已提交任务',
              note='全国家总榜与分类榜；新榜单前50名自动关联资料、评论、权限、应用名关键词和图片，视频仅保留来源',link='#collection?kind=chart')
         for row in top50:edge('top50','q:'+row['target_key'],row['target_key'],int(row['tasks']),'次任务提交')
-    direct=db.execute("""SELECT kind,COUNT(*) n FROM collection_source_tasks WHERE source!='collection-plan'
-        AND created_at BETWEEN %s AND %s"""+('' if store=='all' else ' AND store=%s')+' GROUP BY kind',event_args).fetchall()
-    for row in direct:submitted['platform',row['kind']]=submitted.get(('platform',row['kind']),0)+row['n']
+    direct=db.execute("""SELECT kind,LEFT(source,12)='ad-schedule-' periodic,COUNT(*) n FROM collection_source_tasks
+        WHERE source NOT IN ('collection-plan','user-ad-plan') AND created_at BETWEEN %s AND %s"""
+        +('' if store=='all' else ' AND store=%s')+' GROUP BY kind,periodic',event_args).fetchall()
+    periodic = [r for r in direct if r['periodic']]
+    if periodic:
+        node('ad-periodic','用户提交的周期广告任务',0,value=sum(r['n'] for r in periodic),unit='本轮来源任务',
+             note='按用户设置的应用、市场、来源和间隔执行',link='#collection')
+        for r in periodic:edge('ad-periodic','q:'+r['kind'],r['kind'],r['n'],'次任务提交')
+    for row in direct:
+        if not row['periodic']:submitted['platform',row['kind']]=submitted.get(('platform',row['kind']),0)+row['n']
     for identifier,label in [('platform','平台提交'),('external','系统 / API 提交')]:
         count=sum(n for (origin,_),n in submitted.items() if origin==identifier)
         node(identifier,label,0,value=count,unit='已提交任务',

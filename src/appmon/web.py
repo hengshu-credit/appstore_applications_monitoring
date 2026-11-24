@@ -280,9 +280,8 @@ def create_app(cfg):
                 "job": db.execute("SELECT due,failures,last_error FROM jobs WHERE store=%s AND app_id=%s AND country=%s AND language=%s", key).fetchone()}
 
     @api.post('/apps/{store}/{app_id}/collect')
-    def collect_app(store:str,app_id:str,request:Request,value:dict=Body(...),db=DB):
-        return app_collection.collect(db,value|{'store':store,'app_id':app_id},
-                                      include_ads='ads:write' in request.state.user['permissions'])
+    def collect_app(store:str,app_id:str,value:dict=Body(...),db=DB):
+        return app_collection.collect(db,value|{'store':store,'app_id':app_id})
 
     @api.get('/apps/{store}/{app_id}/collection')
     def app_collection_status(store:str,app_id:str,country:str='us',language:str='en',db=DB):
@@ -646,8 +645,12 @@ def create_app(cfg):
         return ad_tracking.report(db,dict(store=store,app_id=app_id,country=country,language=language),channel,offset,limit)
 
     @api.post('/ads/apps/{store}/{app_id}/collect')
-    def collect_app_ads(store:str,app_id:str,value:dict=Body(...),db=DB):
-        return ad_tracking.enqueue(db,value|{'store':store,'app_id':app_id})
+    def collect_app_ads(store:str,app_id:str,request:Request,value:dict=Body(...),db=DB):
+        return ad_tracking.enqueue(db,value|{'store':store,'app_id':app_id},submitted_by=request.state.user['id'])
+
+    @api.delete('/ads/apps/{store}/{app_id}/schedule')
+    def stop_app_ads(store:str,app_id:str,country:str='us',language:str='en',db=DB):
+        return ad_tracking.stop_schedule(db,dict(store=store,app_id=app_id,country=country,language=language))
 
     @api.get('/ads/apps/{store}/{app_id}/observations/{identifier}/versions')
     def app_ad_versions(store:str,app_id:str,identifier:int,country:str='us',language:str='en',offset:int=0,db=DB):
@@ -764,8 +767,14 @@ def create_app(cfg):
         return app_collection.report(db,identifier,allow_plan=True)
 
     @api.post('/research/collection/enqueue')
-    def enqueue_collection(value:dict=Body(...),db=DB):
-        return collection.enqueue(db,value)
+    def enqueue_collection(request:Request,value:dict=Body(...),db=DB):
+        from . import ad_sources
+        user = request.state.user
+        tasks = value.get('tasks')
+        if isinstance(tasks,list) and any(isinstance(t,dict) and isinstance(t.get('kind'),str) and t['kind'] in ad_sources.KINDS for t in tasks):
+            if 'ads:write' not in user['permissions']:
+                raise HTTPException(403,'提交广告任务需要广告写入权限')
+        return collection.enqueue(db,value,ad_requested_by=user['id'])
 
     @api.get('/research/collection/revision')
     def collection_revision(db=DB):

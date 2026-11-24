@@ -3,14 +3,14 @@ import time
 from .intelligence import hours, text
 from .app_search import LISTING_NAME
 from .task_logs import emit
-from .source_tasks import KINDS as SOURCE_KINDS
+from .source_tasks import KINDS as SOURCE_KINDS, admitted
 
 TABLES = {'watchlist': 'watchlist', 'keywords': 'keyword_targets', 'targets': 'observation_targets', 'icons':'app_icons','media':'app_media_assets','permissions':'app_permission_targets','sources':'collection_source_tasks'}
 KINDS = ('details','keywords','chart','reviews','featured','icons','screenshots','permissions',*SOURCE_KINDS)
 STATES = ('paused','running','error','pending','scheduled','done')
 RESOURCES = [('watchlist','w',('details',)),('keywords','t',('keywords',)),('targets','t',('chart','reviews','featured')),
              ('icons','i',('icons',)),('permissions','p',('permissions',)),('sources','s',tuple(SOURCE_KINDS)),('media','m',('screenshots',))]
-UNION = '''SELECT 'watchlist' resource,w.id,'details' kind,w.store,w.country,w.language,w.app_id,
+UNION = f'''SELECT 'watchlist' resource,w.id,'details' kind,w.store,w.country,w.language,w.app_id,
     COALESCE(a.name,w.app_id) label,'' category,'' collection,w.group_name,NULL depth,
     w.refresh_hours,w.enabled,COALESCE(j.failures,0) failures,j.last_error,j.due,j.lease_until,l.last_success success_at
     FROM watchlist w LEFT JOIN apps a USING(store,app_id)
@@ -34,7 +34,8 @@ UNION = '''SELECT 'watchlist' resource,w.id,'details' kind,w.store,w.country,w.l
     FROM app_permission_targets p LEFT JOIN apps a USING(store,app_id)
     UNION ALL
     SELECT 'sources',s.id,s.kind,s.store,s.country,s.language,s.app_id,s.label,'','','',NULL,
-    NULL,s.enabled,s.failures,s.last_error,s.due,s.lease_until,s.success_at FROM collection_source_tasks s
+    ads.refresh_hours,IF({admitted('s','ads')},s.enabled,0),s.failures,s.last_error,s.due,s.lease_until,s.success_at FROM collection_source_tasks s
+    LEFT JOIN ad_tracking_schedules ads ON ads.receipt_source=s.source
     UNION ALL
     SELECT 'media',m.id,'screenshots',m.store,'','','',m.label,'','','',NULL,m.refresh_hours,m.enabled,
     m.failures,m.last_error,m.due,m.lease_until,m.checked_at FROM app_media_assets m'''
@@ -58,7 +59,7 @@ def _task_union(kind='', light=False, search=False, refs=None):
             f"SELECT 'targets',t.id,t.kind,t.store,t.country,t.language,{ident('t')},{label},{category},t.enabled,t.failures,t.due,t.lease_until,(t.latest_success_id IS NOT NULL) FROM observation_targets t",
             f"SELECT 'icons',i.id,'icons',i.store,i.country,i.language,{ident('i')},{icon_label},'',i.enabled,i.failures,i.due,i.lease_until,(i.checked_at IS NOT NULL) FROM app_icons i WHERE i.requested=1",
             f"SELECT 'permissions',p.id,'permissions',p.store,p.country,'en',{ident('p')},{permission_name},'',p.enabled,p.failures,p.due,p.lease_until,(p.success_at IS NOT NULL) FROM app_permission_targets p{app_join}",
-            "SELECT 'sources',s.id,s.kind,s.store,s.country,s.language,s.app_id,s.label,'',s.enabled,s.failures,s.due,s.lease_until,(s.success_at IS NOT NULL) FROM collection_source_tasks s",
+            f"SELECT 'sources',s.id,s.kind,s.store,s.country,s.language,s.app_id,s.label,'',IF({admitted('s')},s.enabled,0),s.failures,s.due,s.lease_until,(s.success_at IS NOT NULL) FROM collection_source_tasks s",
             "SELECT 'media',m.id,'screenshots',m.store,'','','',m.label,'',m.enabled,m.failures,m.due,m.lease_until,(m.checked_at IS NOT NULL) FROM app_media_assets m"]
     selected=[];args=[]
     for part,(resource,alias,kinds) in zip(parts,RESOURCES):
@@ -254,6 +255,10 @@ def control_tasks(db, value, cfg=None):
             resource, identifier = ref.get('resource'), ref.get('id')
             if resource=='sources' and action=='interval':raise ValueError('一次性任务不设置周期，请仅选择周期任务')
             table, row = _target(db, resource, identifier)
+            if resource=='sources' and action!='pause' and not db.execute(
+                    f'SELECT 1 FROM collection_source_tasks WHERE id=%s AND {admitted()}',(identifier,)).fetchone():
+                counts['skipped'] += 1
+                continue
             if action in ('refresh','retry'):
                 outcome = _enqueue_selected(db,cfg or {},resource,table,row,action,-submitted,time.time())
                 counts[outcome] += 1
@@ -303,6 +308,9 @@ def _control_scope(db, query, args, action, interval):
     try:
         with db:
             db.execute(f'INSERT INTO collection_selection SELECT resource,id FROM ({query}) matched',args)
+            if action in ('resume','retry'):
+                db.execute(f"""DELETE FROM collection_selection WHERE resource='sources' AND id IN
+                    (SELECT id FROM collection_source_tasks WHERE NOT {admitted()})""")
             if action=='interval' and db.execute("SELECT 1 FROM collection_selection WHERE resource='sources' LIMIT 1").fetchone():
                 raise ValueError('选择包含一次性任务，请先筛选周期任务')
             count = db.execute('SELECT count(*) n FROM collection_selection').fetchone()['n']

@@ -2,11 +2,16 @@
 import hashlib
 import json
 import time
+import uuid
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from . import ad_sources, ad_channels, source_tasks
 from .db import dump
-from .intelligence import market
+from .collection_batch import BatchWriter, touch
+from .intelligence import market, hours
+
+MARKET_FIELDS = ('store','app_id','country','language')
+MARKET_WHERE = 'store=%s AND app_id=%s AND country=%s AND language=%s'
 
 
 def app_market(db, value):
@@ -16,17 +21,95 @@ def app_market(db, value):
     return m
 
 
-def enqueue(db, value):
-    m = app_market(db, value)
+def schedule_for(db, m):
+    row = db.execute(f'''SELECT id,kinds,refresh_hours,enabled,next_due,last_queued_at,run_number
+        FROM ad_tracking_schedules WHERE {MARKET_WHERE}''',tuple(m[k] for k in MARKET_FIELDS)).fetchone()
+    if row:
+        row['kinds'] = json.loads(row['kinds'])
+    return row
+
+
+def queue_round(db, m, kinds, actor, *, schedule=None):
+    """The caller holds the app submit lock or the schedule's row lock and transaction."""
+    writer = BatchWriter(db)
     tasks = []
-    for kind in ad_sources.runnable(db,m):
-        key = source_tasks.batch_key(kind, m)
-        with db.named_lock('ad-refresh:' + key, timeout=10):
-            active = db.execute('''SELECT id FROM collection_source_tasks WHERE batch_key=%s
-                AND enabled=1 AND due IS NOT NULL AND failures<3 ORDER BY id DESC LIMIT 1''', (key,)).fetchone()
-            task = source_tasks.receipt(db, active['id']) if active else source_tasks.enqueue(db, kind, m, source='app-ads')
-            tasks.append({k: task[k] for k in ('id','kind','status')})
-    return {'tasks': tasks}
+    for kind in kinds:
+        if schedule:
+            task = source_tasks.enqueue(writer,kind,m,source=schedule['receipt_source'],
+                request_id=f"{schedule['run_number']+1}:{kind}",submitted_by=actor)
+        else:
+            active = db.execute("""SELECT id FROM collection_source_tasks WHERE batch_key=%s AND source='app-ads'
+                AND enabled=1 AND due IS NOT NULL AND failures<3 ORDER BY id DESC LIMIT 1""",(source_tasks.batch_key(kind,m),)).fetchone()
+            task = source_tasks.receipt(db,active['id']) if active else source_tasks.enqueue(writer,kind,m,source='app-ads',submitted_by=actor)
+        tasks.append({k: task[k] for k in ('id','kind','status')})
+    if schedule:
+        now = time.time()
+        db.execute('''UPDATE ad_tracking_schedules SET next_due=%s,last_queued_at=%s,run_number=run_number+1
+            WHERE id=%s''',(now+schedule['refresh_hours']*3600,now,schedule['id']))
+    return tasks
+
+
+def enqueue(db, value, *, submitted_by):
+    m = app_market(db, value)
+    mode = value.get('mode','once')
+    if mode not in ('once','periodic') or mode=='once' and value.get('refresh_hours') is not None:
+        raise ValueError('请选择一次性或周期性广告任务，只有周期任务需要间隔')
+    interval = hours(value.get('refresh_hours')) if mode=='periodic' else None
+    if type(submitted_by) is not int or submitted_by <= 0:
+        raise ValueError('广告任务需要用户明确提交')
+    key = tuple(m[k] for k in MARKET_FIELDS)
+    # Global-source receipts can be shared across markets on a single app.
+    with db.named_lock('submit-app-ads:'+dump(key[:2]),timeout=10), db:
+        kinds = ad_sources.runnable(db,m)
+        if mode=='once':
+            return {'mode':mode,'tasks':queue_round(db,m,kinds,submitted_by)}
+        row = db.execute(f'SELECT * FROM ad_tracking_schedules WHERE {MARKET_WHERE} FOR UPDATE',key).fetchone()
+        if row and row['enabled']:
+            if row['refresh_hours'] != interval or json.loads(row['kinds']) != kinds:
+                db.execute('''UPDATE ad_tracking_schedules SET refresh_hours=%s,kinds=%s,submitted_by=%s,next_due=%s WHERE id=%s''',
+                           (interval,dump(kinds),submitted_by,time.time()+interval*3600,row['id']))
+                touch(db)
+            return {'mode':mode,'schedule':schedule_for(db,m),'tasks':[]}
+        # Every activation has a distinct source identity. Revoked executions
+        # cannot be re-admitted by resuming an old receipt or creating a new schedule.
+        source = 'ad-schedule-'+uuid.uuid4().hex
+        db.execute('''INSERT INTO ad_tracking_schedules(store,app_id,country,language,receipt_source,kinds,refresh_hours,submitted_by,enabled)
+            VALUES(%s,%s,%s,%s,%s,%s,%s,%s,1) ON DUPLICATE KEY UPDATE receipt_source=VALUES(receipt_source),
+            kinds=VALUES(kinds),refresh_hours=VALUES(refresh_hours),submitted_by=VALUES(submitted_by),enabled=1,run_number=0''',
+            (*key,source,dump(kinds),interval,submitted_by))
+        row = db.execute(f'SELECT * FROM ad_tracking_schedules WHERE {MARKET_WHERE}',key).fetchone()
+        tasks = queue_round(db,m,kinds,submitted_by,schedule=row)
+        return {'mode':mode,'schedule':schedule_for(db,m),'tasks':tasks}
+
+
+def stop_schedule(db, value):
+    m = app_market(db,value)
+    key = tuple(m[k] for k in MARKET_FIELDS)
+    with db.named_lock('submit-app-ads:'+dump(key[:2]),timeout=10), db:
+        row = db.execute(f'SELECT * FROM ad_tracking_schedules WHERE {MARKET_WHERE} FOR UPDATE',key).fetchone()
+        if row and row['enabled']:
+            db.execute('UPDATE ad_tracking_schedules SET enabled=0,next_due=NULL WHERE id=%s',(row['id'],))
+            db.execute('''UPDATE collection_source_tasks SET enabled=0,token=NULL,lease_until=0
+                WHERE source=%s AND due IS NOT NULL''',(row['receipt_source'],))
+            touch(db)
+        return {'schedule':schedule_for(db,m)}
+
+
+def schedule_due(db):
+    now = time.time()
+    if not db.execute('SELECT 1 FROM ad_tracking_schedules WHERE enabled=1 AND next_due<=%s LIMIT 1',(now,)).fetchone():
+        return
+    with db:
+        row = db.claim('''SELECT * FROM ad_tracking_schedules s WHERE s.enabled=1 AND s.next_due<=%s
+            AND NOT EXISTS(SELECT 1 FROM collection_source_tasks t WHERE t.source=s.receipt_source
+                           AND t.due IS NOT NULL AND t.failures<3)
+            ORDER BY s.next_due,s.id LIMIT 1 FOR UPDATE SKIP LOCKED''',(now,)).fetchone()
+        if not row:
+            return
+        m = {k:row[k] for k in MARKET_FIELDS}
+        configured = ad_sources.runnable(db,m)
+        kinds = [k for k in json.loads(row['kinds']) if k in configured]
+        queue_round(db,m,kinds,row['submitted_by'],schedule=row)
 
 
 def save_page(db, kind, m, data, previous, progress):
@@ -148,4 +231,4 @@ def report(db, value, channel='', offset=0, limit=12):
             (m['app_id'], m['country'])).fetchall()
     channels = [{'channel':name,'count':count,'providers':ad_channels.PRIMARY.get(name,())} for name,count in counts.items()]
     return {'items': items, 'channels': channels, 'total': counts.get(channel,0) if channel else sum(counts.values()),
-            'sources': list(sources.values()), 'reports': reports}
+            'sources': list(sources.values()), 'reports': reports, 'schedule':schedule_for(db,m)}

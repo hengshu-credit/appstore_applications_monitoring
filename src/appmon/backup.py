@@ -106,6 +106,8 @@ def verify(archive):
         raise ValueError('备份存在重复路径')
     manifest = json.loads(archive.read('manifest.json'))
     expected_tables = set(TABLES)
+    if 'ad_tracking_schedules' not in manifest['tables']:
+        expected_tables.remove('ad_tracking_schedules')  # Earlier backups had no recurring ad opt-ins.
     bulk_tables = {'collection_bulk_operations','collection_bulk_chunks'}
     if set(manifest['tables']) == expected_tables - bulk_tables:
         expected_tables -= bulk_tables  # Older format-4 backups predate background controls.

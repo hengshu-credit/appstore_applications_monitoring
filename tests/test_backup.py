@@ -11,6 +11,18 @@ from test_monitor import OceanBaseTestCase
 
 
 class BackupTest(OceanBaseTestCase):
+    def test_previous_format_four_without_ad_schedules_remains_readable(self):
+        current=self.folder/'current.zip';legacy=self.folder/'pre-schedules.zip'
+        backup(self.cfg,current,Path(__file__).parents[1]/'config.toml')
+        with zipfile.ZipFile(current) as original, zipfile.ZipFile(legacy,'w') as out:
+            manifest=verify(original)
+            del manifest['tables']['ad_tracking_schedules']
+            del manifest['files']['tables/ad_tracking_schedules.jsonl']
+            out.writestr('manifest.json',json.dumps(manifest))
+            for name in manifest['files']:out.writestr(name,original.read(name))
+        with zipfile.ZipFile(legacy) as archive:
+            self.assertEqual(set(verify(archive)['tables']),set(TABLES)-{'ad_tracking_schedules'})
+
     def test_reject_previous_format_without_touching_destination(self):
         add_apps(self.db,[('google','com.legacy.app','Legacy',None)],'fixture')
         current=self.folder/'current.zip';legacy=self.folder/'legacy.zip'

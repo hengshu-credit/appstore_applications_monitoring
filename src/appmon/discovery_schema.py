@@ -1,6 +1,11 @@
 """Additive discovery storage; public metrics are never private sales estimates."""
 def tables(app_key, region):
     return {
+        'ad_tracking_schedules': f'''id BIGINT AUTO_INCREMENT PRIMARY KEY, {app_key}, {region},
+            receipt_source VARCHAR(64) NOT NULL UNIQUE, kinds LONGTEXT NOT NULL,
+            refresh_hours DOUBLE NOT NULL, submitted_by BIGINT NOT NULL, enabled BOOLEAN NOT NULL,
+            next_due DOUBLE, last_queued_at DOUBLE, run_number BIGINT NOT NULL DEFAULT 0,
+            UNIQUE KEY ad_schedule_market(store,app_id,country,language), INDEX ad_schedule_due(enabled,next_due,id)''',
         'collection_source_tasks': f'''id BIGINT AUTO_INCREMENT PRIMARY KEY, {app_key}, {region},
             kind VARCHAR(32) NOT NULL, label VARCHAR(255) NOT NULL, payload LONGTEXT NOT NULL,
             batch_key CHAR(64) CHARACTER SET ascii NOT NULL, source VARCHAR(64) NOT NULL,

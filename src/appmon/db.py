@@ -178,6 +178,9 @@ def connect(cfg, *, initialize=False, allow_migration=False):
         if initialize:
             for table, columns in TABLES.items():
                 db.execute(create_table_sql(table, if_not_exists=True))
+            from .source_tasks import admitted
+            db.execute(f'''UPDATE collection_source_tasks SET enabled=0,token=NULL,lease_until=0
+                WHERE enabled=1 AND due IS NOT NULL AND NOT {admitted()}''')
             # Match the deterministic candidate order without sorting millions
             # of due jobs. Build the replacement before removing the old index.
             indexes={r['Key_name'] for r in db.execute('SHOW KEYS FROM jobs').fetchall()}
