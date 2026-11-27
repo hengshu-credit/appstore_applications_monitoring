@@ -7,7 +7,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from . import ad_sources, ad_channels, source_tasks
 from .db import dump
-from .collection_batch import BatchWriter, touch
+from .collection_batch import BatchWriter, touch, PAGE_DUE
 from .intelligence import market, hours
 
 MARKET_FIELDS = ('store','app_id','country','language')
@@ -29,18 +29,18 @@ def schedule_for(db, m):
     return row
 
 
-def queue_round(db, m, kinds, actor, *, schedule=None):
+def queue_round(db, m, kinds, actor, *, schedule=None, due=PAGE_DUE):
     """The caller holds the app submit lock or the schedule's row lock and transaction."""
     writer = BatchWriter(db)
     tasks = []
     for kind in kinds:
         if schedule:
             task = source_tasks.enqueue(writer,kind,m,source=schedule['receipt_source'],
-                request_id=f"{schedule['run_number']+1}:{kind}",submitted_by=actor)
+                request_id=f"{schedule['run_number']+1}:{kind}",submitted_by=actor,due=due)
         else:
             active = db.execute("""SELECT id FROM collection_source_tasks WHERE batch_key=%s AND source='app-ads'
                 AND enabled=1 AND due IS NOT NULL AND failures<3 ORDER BY id DESC LIMIT 1""",(source_tasks.batch_key(kind,m),)).fetchone()
-            task = source_tasks.receipt(db,active['id']) if active else source_tasks.enqueue(writer,kind,m,source='app-ads',submitted_by=actor)
+            task = source_tasks.receipt(db,active['id']) if active else source_tasks.enqueue(writer,kind,m,source='app-ads',submitted_by=actor,due=due)
         tasks.append({k: task[k] for k in ('id','kind','status')})
     if schedule:
         now = time.time()
@@ -109,7 +109,7 @@ def schedule_due(db):
         m = {k:row[k] for k in MARKET_FIELDS}
         configured = ad_sources.runnable(db,m)
         kinds = [k for k in json.loads(row['kinds']) if k in configured]
-        queue_round(db,m,kinds,row['submitted_by'],schedule=row)
+        queue_round(db,m,kinds,row['submitted_by'],schedule=row,due=0)
 
 
 def save_page(db, kind, m, data, previous, progress):

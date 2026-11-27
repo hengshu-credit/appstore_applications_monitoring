@@ -356,7 +356,7 @@ export function createDiscoveryPages(ctx) {
       }),
     );
     act("#discovery-refresh", async () => {
-      await api(`/control/targets/${d.target.id}`, { action: "refresh" });
+      await api(`/control/targets/${d.target.id}`, { action: "page_refresh" });
       toast("已安排采集基榜");
     });
     act("#discovery-select", () => {
@@ -900,7 +900,7 @@ export function createDiscoveryPages(ctx) {
       if (!tasks.length) return;
       const result = await api("/research/collection/tasks/batch", {
         tasks,
-        action: "refresh",
+        action: "page_refresh",
       });
       toast(`已优先安排 ${result.updated} 个关键词，完成后刷新结果`);
     });

@@ -28,6 +28,7 @@ from . import global_charts
 from . import data_sources
 from . import apple_popularity
 from . import app_discovery, app_metrics, availability
+from .collection_batch import PAGE_DUE
 from . import app_groups
 from .stores import FetchError
 from datetime import date, datetime, timezone
@@ -463,12 +464,12 @@ def create_app(cfg):
     @api.post('/discovery/keywords/apple-popularity')
     def popularity_fetch(value:dict=Body(...),db=DB):
         from .source_tasks import enqueue
-        return enqueue(db,'aso_popularity',value,request_id=value.get('request_id'))
+        return enqueue(db,'aso_popularity',value,request_id=value.get('request_id'),due=PAGE_DUE)
 
     @api.post('/discovery/keywords/apple-popularity/import')
     def popularity_import(value:dict=Body(...),db=DB):
         from .source_tasks import enqueue
-        return enqueue(db,'aso_import',value,request_id=value.get('request_id'))
+        return enqueue(db,'aso_import',value,request_id=value.get('request_id'),due=PAGE_DUE)
 
     @api.post('/discovery/reports/preview')
     def report_preview(value:dict=Body(...)):return keyword_reports.preview(value)
@@ -476,7 +477,7 @@ def create_app(cfg):
     @api.post('/discovery/reports/import')
     def report_import(value:dict=Body(...),db=DB):
         from .source_tasks import enqueue
-        return enqueue(db,'aso_report',value,request_id=value.get('request_id'))
+        return enqueue(db,'aso_report',value,request_id=value.get('request_id'),due=PAGE_DUE)
 
     @api.get('/discovery/keywords/tasks/{identifier}')
     def source_task_result(identifier:int,db=DB):
@@ -518,7 +519,7 @@ def create_app(cfg):
 
     @api.post("/watchlist")
     def add_watch(value: dict = Body(...), db=DB):
-        return intel.watch(db, value)
+        return intel.watch(db, value, initial_due=PAGE_DUE)
 
     @api.get("/targets")
     def targets(kind:str="",store:str="all",country:str="",language:str="",db=DB):
@@ -529,7 +530,7 @@ def create_app(cfg):
 
     @api.post("/targets")
     def add_target(value: dict = Body(...), db=DB):
-        return intel.add_observation_target(db, value)
+        return intel.add_observation_target(db, value, initial_due=PAGE_DUE)
 
     @api.get("/targets/{target_id}")
     def target(target_id: int, run_id: int | None = None, db=DB):
@@ -545,7 +546,7 @@ def create_app(cfg):
     def add_keywords(values: list[dict] = Body(...), db=DB):
         if len(values) > 2000:
             raise ValueError("At most 2000 keywords per import")
-        return keywords.add_targets(db, values)
+        return keywords.add_targets(db, values, initial_due=PAGE_DUE)
 
     @api.get("/keywords/{target_id}")
     def keyword(target_id: int, db=DB):

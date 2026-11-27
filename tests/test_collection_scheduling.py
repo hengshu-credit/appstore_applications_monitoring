@@ -11,6 +11,48 @@ from test_monitor import OceanBaseTestCase
 
 
 class CollectionSchedulingTest(OceanBaseTestCase):
+    def test_immediate_then_page_then_ordinary_across_lanes_and_within_batches(self):
+        from appmon.collection_tasks import control_tasks
+        from appmon.intelligence import add_observation_target
+        from appmon.target_batches import claim_targets
+
+        market = dict(store='google', country='us', language='en')
+        words = add_targets(self.db,[market | {'keyword':word} for word in ('ordinary','page','immediate')])['ids']
+        review = add_observation_target(self.db,market | {'kind':'reviews','app_id':'com.example.app'})['id']
+        def submit(resource, identifier, action):
+            control_tasks(self.db, {'tasks':[{'resource':resource,'id':identifier}], 'action':action})
+
+        submit('keywords',words[1],'page_refresh')
+        submit('targets',review,'refresh')
+        submit('targets',review,'page_refresh')  # Re-submission cannot demote an immediate task.
+        self.assertEqual(dispatcher.choose(self.db,self.cfg),'reviews')
+        claim_targets(self.db,'observation_targets',600,20,kind='reviews')
+        submit('keywords',words[2],'refresh')
+
+        lane, cutoff = dispatcher.choose_batch(self.db,self.cfg)
+        self.assertEqual(lane,'keywords')
+        def claim(due_by):
+            return [r['id'] for r in claim_targets(self.db,'keyword_targets',600,20,due_by=due_by)]
+        self.assertEqual(claim(cutoff),[words[2]])
+        # A second worker with the same scheduling decision must re-dispatch.
+        self.assertEqual(claim(cutoff),[])
+        self.assertEqual(claim(dispatcher.choose_batch(self.db,self.cfg)[1]),[words[1]])
+        self.assertEqual(claim(dispatcher.choose_batch(self.db,self.cfg)[1]),[words[0]])
+
+    def test_page_plan_promotes_existing_pending_targets_before_external_plan(self):
+        from appmon import collection
+        from appmon.target_batches import claim_targets
+
+        market = dict(store='google',country='us',language='en')
+        add_targets(self.db,[market | {'keyword':word} for word in ('ordinary','shared')])
+        external = collection.enqueue(self.db,{'source':'timer','tasks':[market | {'kind':'keywords','keyword':'timer'}]})
+        collection.create_plan(self.db,market | {'keywords':['shared','new']})
+        self.assertEqual(collection.work_plans(self.db)['processed'],2)
+        status = self.db.execute('SELECT status FROM collection_plans WHERE id=%s',(external['id'],)).fetchone()
+        self.assertEqual(status['status'],'queued')
+        rows = claim_targets(self.db,'keyword_targets',600,20)
+        self.assertEqual([row['keyword'] for row in rows],['shared','new'])
+
     def test_selected_mixed_market_controls_and_dispatch_to_completion(self):
         from fastapi.testclient import TestClient
         from appmon.web import create_app

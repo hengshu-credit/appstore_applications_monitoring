@@ -83,6 +83,7 @@ def cached_path(cfg,row):
 
 
 def request_icon(db,cfg,value,force=False):
+    from .collection_batch import PAGE_DUE
     m=market(value);key=tuple(m[k] for k in ('store','app_id','country','language'))
     from .storage_policy import media_allowed
     if not media_allowed(db,cfg,m['store'],m['app_id']):
@@ -102,7 +103,7 @@ def request_icon(db,cfg,value,force=False):
                 VALUES(%s,%s,%s,%s,%s,%s,1,'queued') ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(app_icons.id)''',(*key,str(value.get('name') or m['app_id'])[:255],url))
             row=db.execute('SELECT * FROM app_icons WHERE id=%s',(db.cursor.lastrowid,)).fetchone()
         if force:
-            db.execute("UPDATE app_icons SET requested=1,enabled=1,status='queued',due=0 WHERE id=%s AND lease_until<=%s",(row['id'],time.time()))
+            db.execute("UPDATE app_icons SET requested=1,enabled=1,status='queued',due=LEAST(due,%s) WHERE id=%s AND lease_until<=%s",(PAGE_DUE,row['id'],time.time()))
         elif not cached_path(cfg,row) and (not row['requested'] or row['status']=='ready'):
             db.execute("UPDATE app_icons SET requested=1,status='queued',due=LEAST(due,0) WHERE id=%s",(row['id'],))
         row=db.execute('SELECT * FROM app_icons WHERE id=%s',(row['id'],)).fetchone()
@@ -117,6 +118,6 @@ def public(cfg,row):
         'pending':bool(row['enabled'] and row['status'] in ('queued','running'))}
 
 
-def work_icons(cfg,db,limit=5,client=None,max_requests=None):
+def work_icons(cfg,db,limit=5,client=None,max_requests=None,*,due_by=None):
     from .icon_batches import work
-    return work(cfg,db,limit,client,max_requests)
+    return work(cfg,db,limit,client,max_requests,due_by=due_by)

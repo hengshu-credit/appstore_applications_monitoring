@@ -6,6 +6,7 @@ from .db import dump
 from .intelligence import market, hours, text, watch, add_observation_target
 from .keywords import validate_target, add_targets
 from .catalog import BY_ID
+from .collection_batch import PAGE_DUE
 from .task_logs import emit
 from .log_details import diagnostics
 from .source_tasks import KINDS as SOURCE_KINDS
@@ -182,17 +183,17 @@ def schedule_submission(db, action, submitted_at):
     ref=action_target(db,action)
     if ref['resource']=='watchlist':
         db.execute('''UPDATE jobs j JOIN watchlist w USING(store,app_id,country,language)
-            LEFT JOIN listings l USING(store,app_id,country,language) SET j.due=0
+            LEFT JOIN listings l USING(store,app_id,country,language) SET j.due=LEAST(j.due,0)
             WHERE w.id=%s AND w.enabled=1 AND j.failures=0 AND (l.checked_at IS NULL OR l.checked_at<%s)''',
             (ref['id'],submitted_at))
     elif ref['resource'] in ('keywords','targets'):
         table,runs = ('keyword_targets','keyword_runs') if ref['resource']=='keywords' else ('observation_targets','observation_runs')
-        db.execute(f'''UPDATE {table} t LEFT JOIN {runs} r ON r.id=t.latest_success_id SET t.due=0
+        db.execute(f'''UPDATE {table} t LEFT JOIN {runs} r ON r.id=t.latest_success_id SET t.due=LEAST(t.due,0)
             WHERE t.id=%s AND t.enabled=1 AND t.failures=0 AND (r.observed_at IS NULL OR r.observed_at<%s)''',
             (ref['id'],submitted_at))
     else:
         table='app_icons' if ref['resource']=='icons' else 'app_permission_targets'
-        db.execute(f'''UPDATE {table} SET due=0 WHERE id=%s AND enabled=1 AND failures=0
+        db.execute(f'''UPDATE {table} SET due=LEAST(due,0) WHERE id=%s AND enabled=1 AND failures=0
             AND (checked_at IS NULL OR checked_at<%s)''',(ref['id'],submitted_at))
 
 
@@ -201,10 +202,11 @@ def work_plans(db, limit=20):
     # process disconnects. A crash between action and checkpoint safely replays it.
     try:
         with db.named_lock('collection-plans'):
-            row=db.execute("SELECT * FROM collection_plans WHERE status IN ('queued','running') ORDER BY id LIMIT 1").fetchone()
+            row=db.execute("SELECT * FROM collection_plans WHERE status IN ('queued','running') ORDER BY request_source IS NOT NULL,id LIMIT 1").fetchone()
             if not row:return {'processed':0,'error':0}
             actions=json.loads(row['actions']);completed=row['completed']
             specification=json.loads(row['specification'])
+            initial_due = PAGE_DUE if row['request_source'] is None else 0
             db.execute("UPDATE collection_plans SET status='running',updated_at=%s WHERE id=%s",(time.time(),row['id']))
             processed=0
             emit(db,'plans',row['id'],'started',f'开始配置目标，从 {completed}/{len(actions)} 继续')
@@ -223,10 +225,10 @@ def work_plans(db, limit=20):
                     elif action.get('immediate'):
                         from .app_collection import schedule_action
                         schedule_action(db,action)
-                    elif action['kind']=='details':watch(db,action['value'],merge_existing=True)
-                    elif action['kind']=='keywords':add_targets(db,[action['value']],merge_existing=True)
+                    elif action['kind']=='details':watch(db,action['value'],merge_existing=True,initial_due=initial_due)
+                    elif action['kind']=='keywords':add_targets(db,[action['value']],merge_existing=True,initial_due=initial_due)
                     elif action['kind'] in ('icons','permissions'):configure_asset(db,action)
-                    else:add_observation_target(db,action['value'],preserve_existing=action.get('preserve_existing',False),merge_existing=not action.get('preserve_existing',False))
+                    else:add_observation_target(db,action['value'],preserve_existing=action.get('preserve_existing',False),merge_existing=not action.get('preserve_existing',False),initial_due=initial_due)
                     if 'input_source' in specification and action['kind'] not in SOURCE_KINDS:
                         schedule_submission(db,action,row['created_at'])
                     completed+=1;processed+=1

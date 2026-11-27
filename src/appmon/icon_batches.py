@@ -4,15 +4,16 @@ import os
 import time
 import uuid
 from .stores import Client, FetchError, CollectionDeferred
-from .collection_batch import can_batch, retry_condition, NETWORK_ERRORS, persist_batch
+from .collection_batch import can_batch, retry_condition, NETWORK_ERRORS, persist_batch, batch_due_limit
 from .collection_limits import blocked
 from .task_logs import Execution, BatchProgress,start_batch
 from .ingest import disk_check
 
 
-def claim(db,cfg,limit,client):
+def claim(db,cfg,limit,client,*,due_by=None):
     from .app_icons import source_url
     now=time.time();token=uuid.uuid4().hex
+    due_by = now if due_by is None else due_by
     from .storage_policy import media_scope_apps
     source='app_icons i'
     select='SELECT '
@@ -24,8 +25,9 @@ def claim(db,cfg,limit,client):
     ready='i.requested=1 AND i.enabled=1 AND i.due<=%s AND i.lease_until<=%s'
     # Resolve scope outside the locking transaction. A slow membership scan
     # must never hold icon locks needed by detail writes or Top50 expansion.
-    first=db.execute(select+'i.* FROM '+source+' WHERE '+ready+' ORDER BY i.due,i.id LIMIT 1',(now,now)).fetchone()
+    first=db.execute(select+'i.* FROM '+source+' WHERE '+ready+' ORDER BY i.due,i.id LIMIT 1',(due_by,now)).fetchone()
     if not first:return []
+    due_by=batch_due_limit(first['due'],now)
     url=source_url(first['source_url'])
     if url:
         condition='i.source_url=%s AND i.store=%s';args=[first['source_url'],first['store']];capacity=limit
@@ -37,10 +39,10 @@ def claim(db,cfg,limit,client):
     ids=[first['id']]
     if capacity>1:
         ids += [r['id'] for r in db.execute(select+'i.id FROM '+source+' WHERE '+ready+' AND i.id<>%s AND '+condition+
-            ' ORDER BY i.due,i.id LIMIT %s',(now,now,first['id'],*args,capacity-1)).fetchall()]
+            ' ORDER BY i.due,i.id LIMIT %s',(due_by,now,first['id'],*args,capacity-1)).fetchall()]
     with db:
         rows=list(db.execute('SELECT i.* FROM app_icons i WHERE i.id IN ('+','.join('%s' for _ in ids)+') AND '+ready+
-            ' AND '+condition+' ORDER BY i.id FOR UPDATE SKIP LOCKED',(*ids,time.time(),time.time(),*args)).fetchall())
+            ' AND '+condition+' ORDER BY i.id FOR UPDATE SKIP LOCKED',(*ids,due_by,time.time(),*args)).fetchall())
         if not rows:return []
         selected=[r['id'] for r in rows]
         db.execute("UPDATE app_icons SET token=%s,lease_until=%s,status='running' WHERE id IN ("+','.join('%s' for _ in selected)+')',
@@ -83,7 +85,7 @@ def download(cfg,db,client,row,started,max_bytes=None,max_age_seconds=None,force
         return result
 
 
-def work(cfg,db,limit=5,client=None,max_requests=None):
+def work(cfg,db,limit=5,client=None,max_requests=None,*,due_by=None):
     from .app_icons import source_url
     own=client is None;client=client or Client(cfg,db)
     counts=dict(processed=0,ok=0,error=0,stale=0,prepared=0)
@@ -93,7 +95,7 @@ def work(cfg,db,limit=5,client=None,max_requests=None):
             if blocked(db,cfg):break
             disk_check(cfg['data_dir'],cfg['min_free_gb'])
             started=time.time()
-            rows=claim(db,cfg,limit-len(completed),client)
+            rows=claim(db,cfg,limit-len(completed),client,due_by=due_by)
             if not rows:break
             logs=[Execution(db,'icons',row['id']) for row in rows]
             old_guard,old_progress=getattr(client,'request_guard',None),getattr(client,'progress',None)

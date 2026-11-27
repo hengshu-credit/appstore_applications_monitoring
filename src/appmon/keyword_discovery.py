@@ -10,6 +10,7 @@ from .locales import PREFERENCES
 from .catalog import CATALOG
 from .db import dump
 from .growth import cutoff
+from .collection_batch import PAGE_DUE, pending_due_on_insert
 
 FREQUENCY_SHA='525f9b560de45753a5ea01069454e72e9aa541c6'
 FREQUENCY_LANGUAGES={'en':'en','zh-cn':'zh_cn','zh-tw':'zh_tw','ja':'ja','ko':'ko','th':'th','vi':'vi',
@@ -148,8 +149,8 @@ def track(db,value):
     created=[];existing=0
     with db:
         for identity,t in sorted(prepared.items()):
-            result=db.execute('''INSERT INTO keyword_targets(store,country,language,keyword,depth,refresh_hours)
-                VALUES(%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)''',(*identity,t['depth'],t['refresh_hours']))
+            result=db.execute('''INSERT INTO keyword_targets(store,country,language,keyword,depth,refresh_hours,due)
+                VALUES(%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id),due='''+pending_due_on_insert('keyword_targets'),(*identity,t['depth'],t['refresh_hours'],PAGE_DUE))
             if result.rowcount==1:created.append(result.lastrowid)
             else:existing+=1
     return {'targets':len(created),'ids':created,'existing':existing,'unique_targets':len(prepared),'selected_sources':len(rows)}

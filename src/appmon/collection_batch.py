@@ -9,6 +9,37 @@ import pymysql
 NETWORK_ERRORS = r'^(HTTP [0-9]{3}|ConnectTimeout|ReadTimeout|ConnectionError|ProxyError|SSLError|ChunkedEncodingError|ContentDecodingError|整体采集已暂停|等待共享限速窗口)'
 
 
+# Explicit refresh uses a negated Unix timestamp. Page submissions sort between
+# those requests and ordinary due times (zero for new work).
+PAGE_DUE = -1
+IMMEDIATE_DUE_MAX = -2
+
+
+def pending_due_on_insert(table):
+    """A page that shares an already pending target may promote its next claim."""
+    enabled = '' if table == 'jobs' else f'{table}.enabled=1 AND '
+    return (f'IF(VALUES(due)<0 AND {enabled}{table}.failures=0 AND {table}.lease_until<=UNIX_TIMESTAMP() '
+            f'AND {table}.due<=UNIX_TIMESTAMP(),LEAST({table}.due,VALUES(due)),{table}.due)')
+
+
+def target_settings_update(table, initial_due, merge_existing, preserve_existing=False):
+    due = pending_due_on_insert(table) if initial_due < 0 else f'{table}.due'
+    if preserve_existing:
+        return 'due=' + due
+    if merge_existing:
+        deadline = 'VALUES(due)' if initial_due < 0 else 'UNIX_TIMESTAMP()'
+        return (f'due=IF(VALUES(depth)>{table}.depth OR VALUES(refresh_hours)<{table}.refresh_hours,'
+                f'LEAST({table}.due,{deadline}),{due}),'
+                f'depth=GREATEST({table}.depth,VALUES(depth)),refresh_hours=LEAST({table}.refresh_hours,VALUES(refresh_hours))')
+    return 'due=' + due + ',depth=VALUES(depth),refresh_hours=VALUES(refresh_hours)'
+
+
+def batch_due_limit(first_due, now):
+    if first_due < PAGE_DUE:
+        return IMMEDIATE_DUE_MAX
+    return PAGE_DUE if first_due == PAGE_DUE else now
+
+
 def can_batch(row):
     return not row['failures'] or bool(re.match(NETWORK_ERRORS,row.get('last_error') or ''))
 

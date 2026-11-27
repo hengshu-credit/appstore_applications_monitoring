@@ -3427,7 +3427,7 @@ test("keyword coverage explains stale samples and refreshes only enabled idle pa
     );
     assert.deepEqual(JSON.parse(request.options.body), {
       tasks: [{ resource: "keywords", id: 1 }],
-      action: "refresh",
+      action: "page_refresh",
     });
     const before = calls.filter((c) =>
       c.path.startsWith("/api/discovery/keywords/coverage?"),

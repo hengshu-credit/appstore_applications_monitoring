@@ -7,7 +7,7 @@ from .task_logs import Execution, BatchProgress,start_batch
 from .collection_batch import persist_batch
 
 
-def work_details(cfg, db, limit, client, *, watchlist=False, managed=False, max_requests=None):
+def work_details(cfg, db, limit, client, *, watchlist=False, managed=False, max_requests=None, due_by=None):
     from .monitor import save_result
     counts = dict(processed=0,ok=0,error=0,stale=0)
     if not watchlist:
@@ -25,7 +25,7 @@ def work_details(cfg, db, limit, client, *, watchlist=False, managed=False, max_
         disk_check(cfg['data_dir'],cfg['min_free_gb'])
         size = min(max(cfg.get('apple_lookup_batch_size',50),cfg.get('google_rpc_batch_size',20)),limit-counts['processed']) if callable(getattr(client,'fetch_many',None)) else 1
         jobs = claim_details(db,cfg['countries'],cfg['language'],cfg['lease_seconds'],size,watchlist,
-                             google_limit=cfg.get('google_rpc_batch_size',20),apple_limit=cfg.get('apple_lookup_batch_size',50))
+                             google_limit=cfg.get('google_rpc_batch_size',20),apple_limit=cfg.get('apple_lookup_batch_size',50),due_by=due_by)
         if not jobs:
             break
         batches += 1

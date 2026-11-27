@@ -6,15 +6,15 @@ import time
 
 from .collection_limits import blocked
 from .db import connect
+from .collection_batch import PAGE_DUE, IMMEDIATE_DUE_MAX
 from .batch_limits import APPLE_DETAIL_MAX,GOOGLE_RPC_MAX
 
 log = logging.getLogger(__name__)
 LANES = ('details', 'keywords', 'chart', 'reviews', 'featured', 'permissions', 'icons', 'screenshots', 'pool', 'sources')
 
 
-def ready(db, cfg, lane, now, *, priority=False):
-    # Explicit refresh uses a negative Unix timestamp; leases still use wall clock time.
-    due_by = -1 if priority else now
+def ready(db, cfg, lane, now, *, due_by=None):
+    due_by = now if due_by is None else due_by
     if lane=='screenshots':
         from .app_media import active_predicate
         return db.execute('SELECT 1 FROM app_media_assets a WHERE enabled=1 AND due<=%s AND lease_until<=%s AND '+active_predicate()+' LIMIT 1',(due_by,now)).fetchone() is not None
@@ -51,13 +51,13 @@ def ready(db, cfg, lane, now, *, priority=False):
     return db.execute(sql,args).fetchone() is not None
 
 
-def choose(db, cfg):
+def choose_batch(db, cfg):
     if blocked(db,cfg):
         from .storage_policy import storage_guard
         if not storage_guard(db,cfg) and db.execute("""SELECT 1 FROM collection_source_tasks WHERE enabled=1 AND due<=%s
             AND lease_until<=%s AND failures<3 AND kind IN ('aso_import','aso_report') LIMIT 1""",(time.time(),time.time())).fetchone():
-            return 'sources'
-        return None
+            return 'sources', None
+        return None, None
     with db:
         # Serialize only the scheduling decision. HTTP happens outside this lock.
         db.execute("INSERT INTO schedules VALUES('dispatch:turn',0) ON DUPLICATE KEY UPDATE name=schedules.name")
@@ -68,23 +68,35 @@ def choose(db, cfg):
             preferred=[lane for lane in lanes if lane!='pool']
             lanes=(['pool']+preferred) if (int(turn)+1)%10==0 else (preferred+['pool'])
         now = time.time()
-        lane = next((lane for lane in lanes if lane!='pool' and ready(db,cfg,lane,now,priority=True)), None)
-        if lane is None:
+        priority_lanes = [lane for lane in lanes if lane != 'pool']
+        # Most turns have only ordinary work. Probe each lane for either kind
+        # of priority work before making a narrower pass for explicit refreshes.
+        lane = next((lane for lane in priority_lanes if ready(db,cfg,lane,now,due_by=PAGE_DUE)), None)
+        cutoff = None
+        if lane is not None:
+            candidates = priority_lanes[priority_lanes.index(lane):]
+            urgent = next((name for name in candidates if ready(db,cfg,name,now,due_by=IMMEDIATE_DUE_MAX)), None)
+            lane, cutoff = (urgent, IMMEDIATE_DUE_MAX) if urgent else (lane, PAGE_DUE)
+        else:
             lane = next((lane for lane in lanes if ready(db,cfg,lane,now)), None)
         if lane:
             db.execute("UPDATE schedules SET next_at=%s WHERE name='dispatch:turn'",(turn+1,))
             db.execute('INSERT INTO schedules VALUES(%s,%s) ON DUPLICATE KEY UPDATE next_at=VALUES(next_at)',
                        ('dispatch:'+lane,turn+1))
-            return lane
-    return None
+            return lane, cutoff
+    return None, None
 
 
-def run_batch(db, cfg, lane):
+def choose(db, cfg):
+    return choose_batch(db,cfg)[0]
+
+
+def run_batch(db, cfg, lane, due_by=None):
     from .source_registry import collector_config
     cfg=collector_config(db,cfg,lane)
     if lane == 'sources':
         from .source_tasks import work
-        return work(db,cfg)
+        return work(db,cfg,due_by=due_by)
     from .stores import Client
     from .keyword_stores import KeywordClient
     from .observation_stores import ObservationClient
@@ -95,28 +107,28 @@ def run_batch(db, cfg, lane):
     try:
         if lane=='screenshots':
             from .app_media import work
-            return work(cfg,db,client)
+            return work(cfg,db,client,due_by=due_by)
         if lane in ('details','pool'):
             from .detail_batches import work_details
             return work_details(cfg,db,max(size,cfg.get('apple_lookup_batch_size',50)),client,
-                                watchlist=lane=='details',managed=lane=='pool',max_requests=1)
+                                watchlist=lane=='details',managed=lane=='pool',max_requests=1,due_by=due_by)
         if lane == 'keywords':
             from .keywords import save_search
             from .target_batches import work_targets
             return work_targets(cfg,db,size,client,table='keyword_targets',resource='keywords',single='search',
-                                multiple='search_many',save=save_search,max_batches=1)
+                                multiple='search_many',save=save_search,max_batches=1,due_by=due_by)
         if lane in ('chart','reviews','featured'):
             from .intelligence import save_observation
             from .target_batches import work_targets
             return work_targets(cfg,db,size,client,table='observation_targets',resource='targets',single='fetch_observation',
-                                multiple='fetch_observations',save=save_observation,max_batches=1,kind=lane)
+                                multiple='fetch_observations',save=save_observation,max_batches=1,kind=lane,due_by=due_by)
         if lane == 'permissions':
             from .app_permissions import save_batch_result
             from .target_batches import work_targets
             return work_targets(cfg,db,size,client,table='app_permission_targets',resource='permissions',single='collect',
-                                multiple='collect_many',save=save_batch_result,max_batches=1)
+                                multiple='collect_many',save=save_batch_result,max_batches=1,due_by=due_by)
         from .app_icons import work_icons
-        return work_icons(cfg,db,cfg.get('collection_batch_size',2000),client,max_requests=1)
+        return work_icons(cfg,db,cfg.get('collection_batch_size',2000),client,max_requests=1,due_by=due_by)
     finally:
         client.session.close()
 
@@ -126,10 +138,10 @@ def dispatch_once(db, cfg, worker_id):
     name = 'collector:'+worker_id
     db.execute('INSERT INTO schedules VALUES(%s,%s) ON DUPLICATE KEY UPDATE next_at=VALUES(next_at)',(name,time.time()))
     schedule_due(db)
-    lane = choose(db,cfg)
+    lane, due_by = choose_batch(db,cfg)
     if lane is None:
         return {'processed':0,'lane':None}
-    result = run_batch(db,cfg,lane)
+    result = run_batch(db,cfg,lane,due_by)
     db.execute('INSERT INTO schedules VALUES(%s,%s) ON DUPLICATE KEY UPDATE next_at=VALUES(next_at)',(name,time.time()))
     return result | {'lane':lane}
 

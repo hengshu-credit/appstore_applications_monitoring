@@ -7,6 +7,7 @@ import time
 import unicodedata
 import uuid
 
+from .collection_batch import target_settings_update
 from .db import add_apps
 from .ingest import disk_check
 from .keyword_stores import APPLE_MARKETS, PARSER_VERSION, SOURCES, KeywordClient, ordered_apps
@@ -42,19 +43,16 @@ def validate_target(value):
                 depth=depth, refresh_hours=hours)
 
 
-def add_targets(db, values, merge_existing=False):
+def add_targets(db, values, merge_existing=False, *, initial_due=0):
     targets = [validate_target(value) for value in values]
     ids = []
     with db:
         for target in targets:
-            # Reimports update settings, preserving pause state, history and due time.
-            update = ('due=IF(VALUES(depth)>keyword_targets.depth OR VALUES(refresh_hours)<keyword_targets.refresh_hours,LEAST(keyword_targets.due,UNIX_TIMESTAMP()),keyword_targets.due),'
-                      'depth=GREATEST(keyword_targets.depth,VALUES(depth)),refresh_hours=LEAST(keyword_targets.refresh_hours,VALUES(refresh_hours))'
-                      if merge_existing else 'depth=VALUES(depth),refresh_hours=VALUES(refresh_hours)')
-            db.execute('''INSERT INTO keyword_targets(store,country,language,keyword,depth,refresh_hours)
-                VALUES(%s,%s,%s,%s,%s,%s)
+            update = target_settings_update('keyword_targets',initial_due,merge_existing)
+            db.execute('''INSERT INTO keyword_targets(store,country,language,keyword,depth,refresh_hours,due)
+                VALUES(%s,%s,%s,%s,%s,%s,%s)
                 ON DUPLICATE KEY UPDATE '''+update,
-                       tuple(target.values()))
+                       (*target.values(),initial_due))
             row = db.execute('''SELECT id FROM keyword_targets
                 WHERE store=%s AND country=%s AND language=%s AND keyword=%s''',
                              tuple(target[k] for k in ("store", "country", "language", "keyword"))).fetchone()

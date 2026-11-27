@@ -2,6 +2,7 @@
 import json
 import time
 from .db import dump
+from .collection_batch import PAGE_DUE
 from .intelligence import market, watch, add_observation_target
 from .keywords import add_targets, validate_target
 from .catalog import category_id, BY_ID
@@ -32,17 +33,17 @@ def schedule_action(db,action):
     # Explicit app refresh activates these targets. Existing periods/depth are kept.
     existing=action_target(db,action)
     if not existing:
-        if action['kind']=='details':watch(db,action['value'])
-        elif action['kind']=='keywords':add_targets(db,[action['value']])
-        else:add_observation_target(db,action['value'])
+        if action['kind']=='details':watch(db,action['value'],initial_due=PAGE_DUE)
+        elif action['kind']=='keywords':add_targets(db,[action['value']],initial_due=PAGE_DUE)
+        else:add_observation_target(db,action['value'],initial_due=PAGE_DUE)
     ref=action_target(db,action)
     table={'watchlist':'watchlist','keywords':'keyword_targets','targets':'observation_targets'}[ref['resource']]
     with db:
         db.execute(f'UPDATE {table} SET enabled=1 WHERE id=%s',(ref['id'],))
         if ref['resource']=='watchlist':
-            v=action['value'];db.execute('''UPDATE jobs SET due=0 WHERE store=%s AND app_id=%s AND country=%s AND language=%s AND lease_until<=%s''',
-                (*[v[k] for k in ('store','app_id','country','language')],time.time()))
-        else:db.execute(f'UPDATE {table} SET due=0 WHERE id=%s AND lease_until<=%s',(ref['id'],time.time()))
+            v=action['value'];db.execute('''UPDATE jobs SET due=LEAST(due,%s) WHERE store=%s AND app_id=%s AND country=%s AND language=%s AND lease_until<=%s''',
+                (PAGE_DUE,*[v[k] for k in ('store','app_id','country','language')],time.time()))
+        else:db.execute(f'UPDATE {table} SET due=LEAST(due,%s) WHERE id=%s AND lease_until<=%s',(PAGE_DUE,ref['id'],time.time()))
         emit(db,ref['resource'],ref['id'],'refresh','应用详情请求采集：已创建或启用目标，并安排立即执行')
     return ref
 

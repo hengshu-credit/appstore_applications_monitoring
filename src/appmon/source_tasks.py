@@ -62,7 +62,7 @@ def batch_key(kind, payload):
     return hashlib.sha256(dump([kind,grouping]).encode()).hexdigest()
 
 
-def enqueue(db, kind, value, source='aso', request_id=None, *, submitted_by=None):
+def enqueue(db, kind, value, source='aso', request_id=None, *, submitted_by=None, due=0):
     payload = normalize(kind,value)
     source = text(source,64); request_id = text(uuid.uuid4().hex if request_id is None else request_id,120)
     if kind in ad_sources.KINDS:
@@ -83,9 +83,9 @@ def enqueue(db, kind, value, source='aso', request_id=None, *, submitted_by=None
             return receipt(db,old['id']) | {'reused':True}
         label = str(payload.get('filename') or payload.get('genre') or KINDS[kind])[:255]
         with db:
-            db.execute('''INSERT INTO collection_source_tasks(store,app_id,country,language,kind,label,payload,batch_key,source,request_id,created_at)
-                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
-                (payload['store'],payload.get('app_id',''),payload['country'],payload['language'],kind,label,dump(payload),fingerprint,source,request_id,time.time()))
+            db.execute('''INSERT INTO collection_source_tasks(store,app_id,country,language,kind,label,payload,batch_key,source,request_id,created_at,due)
+                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+                (payload['store'],payload.get('app_id',''),payload['country'],payload['language'],kind,label,dump(payload),fingerprint,source,request_id,time.time(),due))
             identifier=db.cursor.lastrowid
             emit(db,'sources',identifier,'queued','采集任务已入队：'+KINDS[kind],
                  details={'submitted_by':submitted_by} if submitted_by is not None else None)
@@ -103,7 +103,7 @@ def receipt(db, identifier):
     return row | {'resource':'sources','status':status,'result':json.loads(row['result']) if row['result'] else None}
 
 
-def work(db,cfg):
+def work(db,cfg,*,due_by=None):
     from . import apple_popularity, keyword_reports, collection_limits
     from .collection_lineage import record_dispatch
     from .storage_policy import storage_guard
@@ -111,18 +111,21 @@ def work(db,cfg):
     local_only=collection_limits.blocked(db,cfg)
     local_scope=" AND kind IN ('aso_import','aso_report')" if local_only else ''
     now=time.time(); token=uuid.uuid4().hex
+    due_by = now if due_by is None else due_by
     try:
         # Serialize only claiming, so simultaneous consumers do not split one compatible batch.
         # File batches share a payload; read the uploaded bytes once, not once per receipt.
         with db.named_lock('source-claim'):
             with db:
                 first=db.claim(f'''SELECT * FROM collection_source_tasks WHERE {admitted()} AND enabled=1 AND due<=%s AND lease_until<=%s
-                    AND failures<3'''+local_scope+' ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED',(now,now)).fetchone()
+                    AND failures<3'''+local_scope+' ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED',(due_by,now)).fetchone()
                 if not first:return {'processed':0}
                 if first['kind'] == 'ad_apple' or first['kind'] in ad_channels.SOCIAL:
                     # Each receipt advances its own durable page cursor.
                     rows = [first]
                 else:
+                    # The selected receipt determines which request runs. Other
+                    # receipts for that same source response can share the result.
                     rows=db.claim(f'''SELECT id,language,failures,JSON_EXTRACT(payload,'$.limit') requested_limit
                         FROM collection_source_tasks WHERE {admitted()} AND batch_key=%s AND enabled=1 AND due<=%s
                         AND lease_until<=%s AND failures<3 ORDER BY due,id LIMIT %s FOR UPDATE SKIP LOCKED''',(first['batch_key'],now,now,cfg.get('collection_batch_size',2000))).fetchall()
@@ -185,7 +188,7 @@ def work(db,cfg):
                         origin='Apple Ads官方接口' if kind=='aso_popularity' else '用户导入Apple格式响应')
                 result=cached[cache_key]
                 if 'progress' in result:
-                    writer.execute('''UPDATE collection_source_tasks SET due=%s,token=NULL,lease_until=0,
+                    writer.execute('''UPDATE collection_source_tasks SET due=IF(due<0,due,%s),token=NULL,lease_until=0,
                         failures=0,last_error=NULL,result=%s WHERE id=%s AND token=%s''',
                         (time.time(),dump(result),row['id'],token))
                     emit(writer,'sources',row['id'],'progress',f"广告来源已保存 {result['progress']['returned']} 条，等待下一页")

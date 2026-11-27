@@ -1,5 +1,6 @@
 """One paginated task registry and atomic controls for all observation workers."""
 import time
+from .collection_batch import PAGE_DUE
 from .intelligence import hours, text
 from .app_search import LISTING_NAME
 from .task_logs import emit
@@ -213,12 +214,15 @@ def _enqueue_selected(db, cfg, resource, table, row, action, due, now):
         if not db.execute('SELECT 1 FROM app_media_assets a WHERE id=%s AND '+active_predicate(),key).fetchone():
             return 'out_of_scope'
     reset = ',failures=0,last_error=NULL' if resource=='sources' else ''
-    db.execute(f'UPDATE {table} SET due=%s{reset} WHERE {where}',(due,*key))
+    db.execute(f'UPDATE {table} SET due=LEAST(COALESCE(due,%s),%s){reset} WHERE {where}',(due,due,*key))
     return 'updated'
 
 
 def control_tasks(db, value, cfg=None):
     refs, action = value.get('tasks'), value.get('action')
+    page_refresh = action == 'page_refresh'
+    if page_refresh:
+        action = 'refresh'
     scope = value.get('scope', 'selected')
     if scope not in ('selected','filtered','all'):
         raise ValueError('未知选择范围')
@@ -246,7 +250,7 @@ def control_tasks(db, value, cfg=None):
     interval = hours(value.get('refresh_hours')) if action=='interval' else None
     counts = dict(updated=0,running=0,out_of_scope=0,skipped=0)
     network_queued = 0
-    submitted = time.time()
+    due = PAGE_DUE if page_refresh else -time.time()
     with db:
         if any(not isinstance(ref,dict) or ref.get('resource') not in TABLES or type(ref.get('id')) is not int for ref in refs):
             raise ValueError('任务标识无效')
@@ -260,7 +264,7 @@ def control_tasks(db, value, cfg=None):
                 counts['skipped'] += 1
                 continue
             if action in ('refresh','retry'):
-                outcome = _enqueue_selected(db,cfg or {},resource,table,row,action,-submitted,time.time())
+                outcome = _enqueue_selected(db,cfg or {},resource,table,row,action,due,time.time())
                 counts[outcome] += 1
                 if outcome=='updated':
                     if row.get('kind') not in ('aso_report','aso_import'):

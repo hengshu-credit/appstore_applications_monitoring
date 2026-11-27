@@ -562,6 +562,7 @@ def import_metrics(db, identifier, value):
 
 
 def collect(db, identifier, value):
+    from .collection_batch import PAGE_DUE
     from .keywords import validate_target
     group(db,identifier)
     kinds=value.get('kinds',['details','permissions'])
@@ -582,22 +583,22 @@ def collect(db, identifier, value):
     with db:
         if 'details' in kinds:
             db.execute('''UPDATE watchlist w JOIN app_group_members m USING(store,app_id,country,language) SET w.enabled=1 WHERE '''+where,args)
-            db.execute('''UPDATE jobs j JOIN app_group_members m USING(store,app_id,country,language) SET j.due=0 WHERE '''+where+' AND j.lease_until<=%s',(*args,now))
+            db.execute('''UPDATE jobs j JOIN app_group_members m USING(store,app_id,country,language) SET j.due=LEAST(j.due,%s) WHERE '''+where+' AND j.lease_until<=%s',(PAGE_DUE,*args,now))
             counts['details']=len(members)
         if 'permissions' in kinds:
             counts['permissions']=app_permissions.enqueue(db,members)
             db.execute('''UPDATE app_permission_targets p JOIN app_group_members m ON m.store=p.store AND m.app_id=p.app_id AND m.country=p.country
-                SET p.enabled=1,p.due=IF(p.lease_until<=%s,0,p.due) WHERE '''+where,(now,*args))
+                SET p.enabled=1,p.due=IF(p.lease_until<=%s,LEAST(p.due,%s),p.due) WHERE '''+where,(now,PAGE_DUE,*args))
         targets=[]
         if 'reviews' in kinds:targets.extend(('reviews',r['store'],r['app_id'],r['country'],r['language'],'','',100,24) for r in members);counts['reviews']=len(members)
         if 'charts' in kinds:
             targets.extend(('chart',s,'',c,l,chart,'',200,24) for s,c,l in markets for chart in ('top-free','top-paid','top-grossing'));counts['charts']=len(markets)*3
-        if targets:db.executemany('''INSERT INTO observation_targets(kind,store,app_id,country,language,collection,category,depth,refresh_hours)
-            VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE enabled=1,
-            due=IF(observation_targets.lease_until<=UNIX_TIMESTAMP(),0,observation_targets.due)''',targets)
+        if targets:db.executemany('''INSERT INTO observation_targets(kind,store,app_id,country,language,collection,category,depth,refresh_hours,due)
+            VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE enabled=1,
+            due=IF(observation_targets.lease_until<=UNIX_TIMESTAMP(),LEAST(observation_targets.due,VALUES(due)),observation_targets.due)''',[(*t,PAGE_DUE) for t in targets])
         if prepared:
-            db.executemany('''INSERT INTO keyword_targets(store,country,language,keyword,depth,refresh_hours) VALUES(%s,%s,%s,%s,%s,%s)
-                ON DUPLICATE KEY UPDATE enabled=1,due=IF(keyword_targets.lease_until<=UNIX_TIMESTAMP(),0,keyword_targets.due)''',[tuple(r.values()) for r in prepared])
+            db.executemany('''INSERT INTO keyword_targets(store,country,language,keyword,depth,refresh_hours,due) VALUES(%s,%s,%s,%s,%s,%s,%s)
+                ON DUPLICATE KEY UPDATE enabled=1,due=IF(keyword_targets.lease_until<=UNIX_TIMESTAMP(),LEAST(keyword_targets.due,VALUES(due)),keyword_targets.due)''',[(*r.values(),PAGE_DUE) for r in prepared])
             counts['keywords']=len(prepared)
     return dict(queued=counts,note='已安排采集，遵守共享限速和暂停设置；已有目标的周期及深度保持不变。')
 

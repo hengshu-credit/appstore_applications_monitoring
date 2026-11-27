@@ -344,7 +344,7 @@ function bindForm(id, callback) {
   });
 }
 function controlButtons(resource, row) {
-  return `<div class="actions"><button class="secondary small" data-control="${resource}" data-id="${row.id}" data-action="${row.enabled ? "pause" : "resume"}">${row.enabled ? "暂停" : "恢复"}</button>${resource === "rules" ? "" : `<button class="secondary small" data-control="${resource}" data-id="${row.id}" data-action="refresh">安排刷新</button>`}</div>`;
+  return `<div class="actions"><button class="secondary small" data-control="${resource}" data-id="${row.id}" data-action="${row.enabled ? "pause" : "resume"}">${row.enabled ? "暂停" : "恢复"}</button>${resource === "rules" ? "" : `<button class="secondary small" data-control="${resource}" data-id="${row.id}" data-action="page_refresh">安排刷新</button>`}</div>`;
 }
 function chart(points, invert = false, formatAt = stamp, options = {}) {
   return monitoringChart(points, invert, formatAt, options);
@@ -1056,7 +1056,7 @@ async function chartPage(rev) {
     try {
       await api("/research/collection/tasks/batch", {
         tasks: [{ resource: "targets", id: data.target.id }],
-        action: "refresh",
+        action: "page_refresh",
       });
       toast("已安排基榜采集，可在采集中心查看日志");
     } catch (error) {
@@ -2050,7 +2050,7 @@ document.addEventListener("click", async (event) => {
         action: el.dataset.action,
       });
       toast(
-        el.dataset.action === "refresh"
+        el.dataset.action === "page_refresh"
           ? "已安排刷新，后台将按限速执行"
           : "任务状态已更新",
       );

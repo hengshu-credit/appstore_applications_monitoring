@@ -289,12 +289,12 @@ def key(job):
     return tuple(job[k] for k in ('store', 'app_id', 'country', 'language'))
 
 
-def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=False, now=None, google_limit=20, apple_limit=50):
+def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=False, now=None, google_limit=20, apple_limit=50, *, due_by=None):
     """Claim only the jobs served by the next HTTP request, in a short transaction."""
-    from .collection_batch import can_batch, retry_condition, NETWORK_ERRORS
+    from .collection_batch import can_batch, retry_condition, NETWORK_ERRORS, batch_due_limit
     now = time.time() if now is None else now
     where = 'j.due<=%s AND j.lease_until<=%s'
-    args = [now,now]
+    args = [now if due_by is None else due_by,now]
     if watchlist:
         source = 'jobs j JOIN watchlist w USING(store,app_id,country,language)'
         columns = 'j.*,w.id watch_id,w.refresh_hours'
@@ -332,6 +332,8 @@ def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=Fa
         batch_limit=min(limit,apple_limit if first['store']=='apple' else google_limit)
         if can_batch(first) and batch_limit>1:
             extras=[' AND j.failures>0',' AND j.failures=0'] if retry else [' AND j.failures=0 AND j.due>0',' AND j.due<=0'] if mode=='scheduled' else ['']
+            if watchlist:
+                args[0] = batch_due_limit(first['due'], now)
             for extra in extras:
                 remaining=batch_limit-len(jobs)
                 if not remaining:break

@@ -121,7 +121,7 @@ export function createChartDetail(ctx) {
       refresh.onclick = async () => {
         refresh.disabled = true;
         try {
-          await api(`/control/targets/${d.target.id}`, { action: "refresh" });
+          await api(`/control/targets/${d.target.id}`, { action: "page_refresh" });
           toast("已安排采集；本页仍保留当前快照，可通过顶部刷新查看结果");
         } catch (e) {
           toast(e.message);

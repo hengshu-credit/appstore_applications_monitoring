@@ -6,6 +6,7 @@ import re
 import time
 import uuid
 
+from .collection_batch import pending_due_on_insert, target_settings_update
 from .db import add_apps, dump
 from .ingest import valid_id, disk_check
 from .keywords import validate_target, observation, comparable, app_coverage
@@ -34,7 +35,7 @@ def text(value, limit=120):
     return value.strip()
 
 
-def watch(db, value, merge_existing=False):
+def watch(db, value, merge_existing=False, *, initial_due=0):
     m = market(value)
     group = text(value.get("group_name", "重点应用"))
     interval = hours(value.get("refresh_hours", 24))
@@ -44,13 +45,13 @@ def watch(db, value, merge_existing=False):
         db.execute('''INSERT INTO watchlist(store,app_id,country,language,group_name,refresh_hours,created_at)
             VALUES(%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE '''+update,
                    (m["store"], m["app_id"], m["country"], m["language"], group, interval, time.time()))
-        db.execute('''INSERT INTO jobs(store,app_id,country,language) VALUES(%s,%s,%s,%s)
-            ON DUPLICATE KEY UPDATE app_id=jobs.app_id''',
-                   (m["store"], m["app_id"], m["country"], m["language"]))
+        db.execute('''INSERT INTO jobs(store,app_id,country,language,due) VALUES(%s,%s,%s,%s,%s)
+            ON DUPLICATE KEY UPDATE due='''+pending_due_on_insert('jobs'),
+                   (m["store"], m["app_id"], m["country"], m["language"], initial_due))
     return m | {"group_name": group, "refresh_hours": interval}
 
 
-def add_observation_target(db, value, preserve_existing=False, merge_existing=False):
+def add_observation_target(db, value, preserve_existing=False, merge_existing=False, *, initial_due=0):
     kind = value.get("kind")
     if kind not in ("chart", "reviews", "featured"):
         raise ValueError("kind must be chart, reviews or featured")
@@ -80,14 +81,11 @@ def add_observation_target(db, value, preserve_existing=False, merge_existing=Fa
     interval = hours(value.get("refresh_hours", 24))
     identity = (kind, m["store"], m["app_id"], m["country"], m["language"], collection, category)
     with db:
-        update='id=observation_targets.id' if preserve_existing else 'depth=VALUES(depth),refresh_hours=VALUES(refresh_hours)'
-        if merge_existing:
-            update=('due=IF(VALUES(depth)>observation_targets.depth OR VALUES(refresh_hours)<observation_targets.refresh_hours,LEAST(observation_targets.due,UNIX_TIMESTAMP()),observation_targets.due),'
-                    'depth=GREATEST(observation_targets.depth,VALUES(depth)),refresh_hours=LEAST(observation_targets.refresh_hours,VALUES(refresh_hours))')
-        db.execute('''INSERT INTO observation_targets(kind,store,app_id,country,language,collection,category,depth,refresh_hours)
-            VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        update = target_settings_update('observation_targets',initial_due,merge_existing,preserve_existing)
+        db.execute('''INSERT INTO observation_targets(kind,store,app_id,country,language,collection,category,depth,refresh_hours,due)
+            VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON DUPLICATE KEY UPDATE '''+update,
-                   (*identity, depth, interval))
+                   (*identity, depth, interval, initial_due))
         row = db.execute('''SELECT id FROM observation_targets WHERE kind=%s AND store=%s AND app_id=%s
             AND country=%s AND language=%s AND collection=%s AND category=%s''', identity).fetchone()
     return row
