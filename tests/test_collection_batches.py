@@ -9,7 +9,7 @@ from appmon.intelligence import watch, work_watchlist
 from appmon.collection_tasks import list_tasks, control_tasks
 from appmon.keywords import add_targets, work_keywords
 from appmon.stores import Client, Result, FetchError
-from appmon import collection_limits as limits, pipelines
+from appmon import ad_sources, collection_limits as limits, pipelines, source_tasks
 from test_monitor import OceanBaseTestCase
 
 
@@ -98,7 +98,13 @@ class CollectionBatchTest(OceanBaseTestCase):
         self.db.executemany('''INSERT INTO collection_source_tasks
             (store,app_id,country,language,kind,label,payload,batch_key,source,request_id,created_at,enabled,due)
             VALUES('apple','','us','en',%s,%s,'{}',%s,'test',%s,0,%s,%s)''',
-            [(kind,kind,'0'*64,kind,enabled,due) for kind,_,enabled,due in source_states])
+            [(kind,kind,'0'*64,kind,enabled,due) for kind,_,enabled,due in source_states if kind not in ad_sources.KINDS])
+        market = dict(store='apple',app_id='123',country='de',language='de')
+        for kind,_,enabled,due in source_states:
+            if kind in ad_sources.KINDS:
+                receipt = source_tasks.enqueue(self.db,kind,market,source='app-ads',submitted_by=1)
+                self.db.execute('UPDATE collection_source_tasks SET enabled=%s,due=%s WHERE id=%s',
+                                (enabled,due,receipt['id']))
         result=list_tasks(self.db,kind='keywords',state='error')
         self.assertEqual(result['total'],1)
         self.assertCountEqual([c['kind'] for c in result['categories']],
@@ -120,6 +126,16 @@ class CollectionBatchTest(OceanBaseTestCase):
         self.assertEqual(google['total'],3)
         self.assertTrue(all(c['total']==0 for c in google['categories'] if c['kind'].startswith('aso_')))
         self.assertEqual(sum(c['total'] for c in list_tasks(self.db,country='th')['categories']),0)
+        # A formerly implicit ad receipt can still be enabled on disk during an
+        # upgrade. Both the category counts and the drill-down must show it paused.
+        legacy = self.db.execute("""INSERT INTO collection_source_tasks
+            (store,app_id,country,language,kind,label,payload,batch_key,source,request_id,created_at,enabled,due)
+            SELECT store,app_id,country,language,kind,label,payload,batch_key,'collection-plan','old-plan:0',created_at,1,0
+            FROM collection_source_tasks WHERE kind='ad_creatives' AND source='app-ads'""").lastrowid
+        paused = list_tasks(self.db,kind='ad_creatives',state='paused')
+        self.assertEqual([(r['id'],r['task_state']) for r in paused['items']],[(legacy,'paused')])
+        summary = next(c['summary'] for c in paused['categories'] if c['kind']=='ad_creatives')
+        self.assertEqual((summary['pending'],summary['paused']),(1,1))
 
     def test_bulk_interval_and_retry_are_set_based_and_keep_history_and_pause(self):
         add_targets(self.db,[dict(store='google',country='us',language='en',keyword=f'word {i}') for i in range(150)])
