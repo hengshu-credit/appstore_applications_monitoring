@@ -851,6 +851,68 @@ test("app collect button submits current storefront and shows asynchronous progr
   }
 });
 
+test("app collection keeps the user's subtask disclosure through polling and completion", async () => {
+  const path = "/api/apps/apple/123";
+  const tasks = [
+    { kind: "details", label: "123", state: "pending", ref: { resource: "watchlist", id: 41 } },
+    { kind: "reviews", label: "123", state: "pending", ref: { resource: "targets", id: 42 } },
+  ];
+  let report = { id: 7, state: "running", finished: 0, total: 2, errors: 0, scope: "public data", tasks };
+  const { window } = await setup((url) => {
+    if (url.startsWith(path + "?")) return {
+      ...emptyApp,
+      app: report.state === "complete" ? { ...emptyApp.app, name: "Collected listing" } : emptyApp.app,
+      collection_request: report,
+    };
+    if (url.startsWith(path + "/collection?") || url === path + "/collect") return report;
+    if (url.startsWith("/api/research/collection/logs/watchlist/41?"))
+      return { task: { status: "running" }, items: [], next_cursor: 0, server_time: 100 };
+  });
+  try {
+    let poll;
+    const schedule = window.setTimeout.bind(window);
+    window.setTimeout = (callback, delay, ...args) => {
+      if (delay !== 3000) return schedule(callback, delay, ...args);
+      poll = callback;
+    };
+    const doc = window.document;
+    const details = () => doc.querySelector("#app-collection-progress details");
+    const toggle = () => details().querySelector("summary").click();
+    window.location.hash = "app/apple/123";
+    await tick();
+    assert.equal(details().open, false);
+    toggle();
+    assert.equal(details().open, true);
+
+    report = { ...report, finished: 1, tasks: [{ ...tasks[0], state: "complete" }, tasks[1]] };
+    await poll();
+    assert.match(doc.querySelector("#app-collection-progress .callout").textContent, /1\/2/);
+    assert.equal(details().querySelector("tbody tr").cells[2].textContent, "完成");
+    assert.equal(details().open, true, "a progress update collapsed the subtasks");
+    toggle();
+    await poll();
+    assert.equal(details().open, false, "a progress update reopened the subtasks");
+
+    toggle();
+    details().querySelector("[data-app-log-resource]").click();
+    report = { ...report, state: "complete", finished: 2, tasks: tasks.map(t => ({ ...t, state: "complete" })) };
+    await poll();
+    assert.equal(doc.querySelector(".app-detail-hero .appname").textContent, "Collected listing");
+    assert.match(doc.querySelector("#app-collection-progress .callout").textContent, /本轮采集完成.*2\/2/);
+    assert.equal(details().open, true, "reloading the completed app collapsed the subtasks");
+    assert.equal(doc.querySelector("#task-logs").open, true);
+    doc.querySelector("[data-log-close]").click();
+
+    report = { ...report, id: 8, state: "running", finished: 0, tasks };
+    doc.querySelector("#collect-app-now").click();
+    await tick();
+    assert.match(doc.querySelector("#app-collection-progress .callout").textContent, /0\/2/);
+    assert.equal(details().open, false, "another plan inherited the previous expansion");
+  } finally {
+    await window.happyDOM.close();
+  }
+});
+
 test("app advertising tab loads on demand, filters creatives and queues its current app", async () => {
   const endpoint = "/api/ads/apps/apple/123";
   const { window, calls } = await setup((path) => {

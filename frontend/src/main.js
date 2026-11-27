@@ -670,7 +670,7 @@ function appChartRankings(store, rows, title = "榜单表现") {
       ]),
     )}`);
 }
-async function appDetail(store, id, rev = ++revision) {
+async function appDetail(store, id, rev = ++revision, previousProgress = null) {
   $("#page-title").textContent = "应用详情";
   $("#global-store").value = store;
   saveMarket();
@@ -805,6 +805,22 @@ async function appDetail(store, id, rev = ++revision) {
   });
   const section = new URLSearchParams(location.hash.split("?")[1]).get("section");
   showSection(panels.has(section) ? section : "profile");
+  // The final poll reloads app data while the user may still be reading the subtasks.
+  const placeholder = $("#app-collection-progress");
+  const progress = previousProgress || placeholder;
+  if (previousProgress) placeholder.replaceWith(previousProgress);
+  progress.onclick = (event) => {
+    const log = event.target.closest("[data-app-log-resource]");
+    if (!log) return;
+    const { appLogResource, appLogId } = log.dataset;
+    detailLogs
+      .open(
+        appLogResource,
+        appLogId,
+        appLogResource === "plans" ? "应用采集计划" : "应用采集任务",
+      )
+      .catch((e) => toast(e.message));
+  };
   const progressState = {
     running: "采集中",
     complete: "本轮采集完成",
@@ -812,73 +828,61 @@ async function appDetail(store, id, rev = ++revision) {
     failed: "配置失败",
   };
   const refreshProgress = (report) => {
-    if (rev !== revision || !$("#app-collection-progress")) return;
+    if (rev !== revision || !progress.isConnected) return;
     const active = report?.state === "running";
     $("#collect-app-now").disabled = active;
     $("#collect-app-now").textContent = active
       ? "正在采集…"
       : "立即采集商店公开信息";
-    $("#app-collection-progress").innerHTML = report
-      ? panel(
-          "本轮采集进度",
-          `<div class="callout">${esc(progressState[report.state] || report.state)} · ${report.finished}/${report.total} 项已完成 · ${report.errors} 项失败</div><p class="sub">${esc(report.scope)}</p><button id="app-plan-logs" class="secondary">查看本轮计划日志</button><details class="spacer"><summary>展开子任务状态</summary>${table(
-            ["采集项", "目标", "状态", "日志"],
-            report.tasks.map((t) => [
-              esc(
-                {
-                  details: "详情与素材",
-                  reviews: "最近评论",
-                  keywords: "关键词",
-                  chart: "榜单",
-                  featured: "编辑推荐",
-                  ad_apple: "广告资料库",
-                  ad_google: "Google 广告透明度中心",
-                  ad_creatives: "广告素材",
-                  ad_rankings: "广告投放榜",
-                  ad_meta: "Meta / Instagram 广告",
-                  ad_tiktok: "TikTok 广告",
-                  ad_reddit: "Reddit 广告",
-                }[t.kind],
-              ),
-              esc(t.label),
-              esc(
-                {
-                  configuring: "配置中",
-                  scheduled: "等待执行",
-                  pending: "等待领取",
-                  running: "采集中",
-                  complete: "完成",
-                  failed: "失败",
-                  paused: "已暂停",
-                  error: "等待重试",
-                  skipped: "已跳过，需手动提交",
-                }[t.state] || t.state,
-              ),
-              t.ref
-                ? `<button class="link" data-app-log-resource="${t.ref.resource}" data-app-log-id="${t.ref.id}">日志</button>`
-                : "等待配置",
-            ]),
-          )}</details>`,
-        )
-      : '<p class="sub">一键采集会创建或启用当前市场的商店资料、素材、近期评论、榜单和关键词任务。</p>';
-    $("#app-plan-logs")?.addEventListener("click", () =>
-      detailLogs
-        .open("plans", report.id, "应用采集计划")
-        .catch((e) => toast(e.message)),
-    );
-    document
-      .querySelectorAll("[data-app-log-resource]")
-      .forEach(
-        (b) =>
-          (b.onclick = () =>
-            detailLogs
-              .open(
-                b.dataset.appLogResource,
-                b.dataset.appLogId,
-                "应用采集任务",
-              )
-              .catch((e) => toast(e.message))),
+    if (!report) {
+      progress.innerHTML = '<p class="sub">一键采集会创建或启用当前市场的商店资料、素材、近期评论、榜单和关键词任务。</p>';
+      return;
+    }
+    if ($("#app-plan-logs", progress)?.dataset.appLogId !== String(report.id)) {
+      progress.innerHTML = panel(
+        "本轮采集进度",
+        `<div class="callout"></div><p class="sub"></p>
+         <button id="app-plan-logs" class="secondary" data-app-log-resource="plans" data-app-log-id="${esc(report.id)}">查看本轮计划日志</button>
+         <details class="spacer"><summary>展开子任务状态</summary><div data-app-subtasks></div></details>`,
       );
+    }
+    const state = progressState[report.state] || report.state;
+    $(".callout", progress).textContent = `${state} · ${report.finished}/${report.total} 项已完成 · ${report.errors} 项失败`;
+    $("p.sub", progress).textContent = report.scope;
+    $("[data-app-subtasks]", progress).innerHTML = table(
+      ["采集项", "目标", "状态", "日志"],
+      report.tasks.map((t) => [
+        esc({
+          details: "详情与素材",
+          reviews: "最近评论",
+          keywords: "关键词",
+          chart: "榜单",
+          featured: "编辑推荐",
+          ad_apple: "广告资料库",
+          ad_google: "Google 广告透明度中心",
+          ad_creatives: "广告素材",
+          ad_rankings: "广告投放榜",
+          ad_meta: "Meta / Instagram 广告",
+          ad_tiktok: "TikTok 广告",
+          ad_reddit: "Reddit 广告",
+        }[t.kind]),
+        esc(t.label),
+        esc({
+          configuring: "配置中",
+          scheduled: "等待执行",
+          pending: "等待领取",
+          running: "采集中",
+          complete: "完成",
+          failed: "失败",
+          paused: "已暂停",
+          error: "等待重试",
+          skipped: "已跳过，需手动提交",
+        }[t.state] || t.state),
+        t.ref
+          ? `<button class="link" data-app-log-resource="${esc(t.ref.resource)}" data-app-log-id="${esc(t.ref.id)}">日志</button>`
+          : "等待配置",
+      ]),
+    );
     if (active)
       appProgressTimer = setTimeout(async () => {
         if (rev !== revision) return;
@@ -889,7 +893,7 @@ async function appDetail(store, id, rev = ++revision) {
           );
           if (rev !== revision) return;
           if (next?.state !== "running") {
-            await appDetail(store, id, ++revision);
+            await appDetail(store, id, ++revision, progress);
           } else refreshProgress(next);
         } catch (e) {
           if (rev === revision) {
