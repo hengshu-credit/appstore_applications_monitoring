@@ -37,6 +37,63 @@ class QueueLoopTest(OceanBaseTestCase):
         self.assertEqual(len({r['id'] for r in results}),1)
         self.assertEqual(sum(not r['reused'] for r in results),1)
 
+    def test_distinct_producer_keys_and_reordered_batch_share_one_unfinished_plan(self):
+        tasks=self.tasks()
+        def submit(index):
+            db=connect(self.cfg,initialize=False)
+            try:return collection.enqueue(db,dict(source=f'producer-{index}',request_id='one',tasks=tasks[::-1] if index else tasks))
+            finally:db.close()
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            rows=list(pool.map(submit,range(3)))
+        self.assertEqual(len({r['id'] for r in rows}),1)
+        self.assertEqual(sum(not r['reused'] for r in rows),1)
+        collection.work_plans(self.db)
+        self.assertEqual(collection.enqueue(self.db,dict(source='after-expansion',request_id='two',tasks=tasks))['id'],rows[0]['id'])
+        with patch.object(Client,'request',autospec=True,side_effect=self.response):
+            self.assertEqual(dispatcher.dispatch_once(self.db,self.cfg,'test')['processed'],3)
+        for i in range(3):
+            self.assertEqual(submit(i)['id'],rows[0]['id'])
+        with self.assertRaisesRegex(ValueError,'不同任务'):
+            collection.enqueue(self.db,dict(source='after-expansion',request_id='two',tasks=self.tasks(1)))
+        self.assertNotEqual(collection.enqueue(self.db,dict(tasks=tasks))['id'],rows[0]['id'])
+
+    def test_configuration_preview_and_submit_merge_normalized_keywords(self):
+        value=dict(store='google',country='us',language='en',keywords=['loan',' loan ','bank'])
+        self.assertEqual(collection.preview_plan(value)['total'],2)
+        a=collection.create_plan(self.db,value)
+        b=collection.create_plan(self.db,value|{'keywords':['bank','loan'],'name':'另一个名称'})
+        self.assertEqual((b['id'],b['reused']),(a['id'],True))
+        collection.work_plans(self.db)
+        self.assertEqual(collection.create_plan(self.db,value)['id'],a['id'])
+        tasks=[self.tasks(1)[0] | {'depth':n,'refresh_hours':h} for n,h in [(10,3),(20,24)]]
+        merged=collection.enqueue(self.db,{'tasks':tasks})
+        self.assertEqual(merged['total'],1)
+        collection.work_plans(self.db)
+        row=self.db.execute("SELECT depth,refresh_hours FROM keyword_targets WHERE keyword='word 0'").fetchone()
+        self.assertEqual(row,{'depth':20,'refresh_hours':3})
+
+    def test_legacy_queued_plans_share_one_receipt_after_upgrade(self):
+        from appmon import intake
+        from appmon.db import dump
+        value=dict(store='google',country='us',language='en',keywords=['loan'])
+        actions=collection.preview_plan(value)['actions']
+        ids=[self.db.execute("""INSERT INTO collection_plans(name,specification,actions,total,created_at,updated_at,
+            request_source,request_id) VALUES('old',%s,%s,1,1,1,'timer',%s)""",
+            (dump({'input_source':'timer'}),dump(actions),str(i))).lastrowid for i in range(2)]
+        for _ in range(2):intake.index_existing_plans(self.db)
+        self.assertEqual(self.db.execute('SELECT id FROM collection_plans').fetchall(),[{'id':ids[0]}])
+        self.assertEqual(report(self.db,ids[1],True)['id'],ids[0])
+        receipt=collection.enqueue(self.db,dict(source='timer',request_id='1',tasks=[actions[0]['value']|{'kind':'keywords'}]))
+        self.assertEqual(receipt['id'],ids[0])
+
+    def test_retry_of_old_failure_uses_the_replacement_plan(self):
+        a=collection.enqueue(self.db,{'tasks':self.tasks()})
+        self.db.execute("UPDATE collection_plans SET status='error' WHERE id=%s",(a['id'],))
+        b=collection.enqueue(self.db,{'tasks':self.tasks()})
+        self.assertNotEqual(a['id'],b['id'])
+        self.assertEqual(collection.retry_plan(self.db,a['id'])['id'],b['id'])
+        self.assertEqual(self.db.execute("SELECT id FROM collection_plans WHERE status='queued'").fetchall(),[{'id':b['id']}])
+
     def test_multiple_producers_share_targets_one_request_and_one_database_commit(self):
         a=collection.enqueue(self.db,dict(source='crm',request_id='daily-1',tasks=self.tasks()))
         duplicate=collection.enqueue(self.db,dict(source='crm',request_id='daily-1',tasks=self.tasks()))

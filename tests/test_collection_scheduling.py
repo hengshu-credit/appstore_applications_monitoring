@@ -39,6 +39,21 @@ class CollectionSchedulingTest(OceanBaseTestCase):
         self.assertEqual(claim(dispatcher.choose_batch(self.db,self.cfg)[1]),[words[1]])
         self.assertEqual(claim(dispatcher.choose_batch(self.db,self.cfg)[1]),[words[0]])
 
+    def test_repeated_refresh_preserves_queue_position_and_allows_one_promotion(self):
+        from appmon.collection_tasks import control_tasks
+        identifier=add_targets(self.db,[dict(store='google',country='us',language='en',keyword='loan')])['ids'][0]
+        ref={'resource':'keywords','id':identifier}
+        def submit(action):
+            result=control_tasks(self.db,{'tasks':[ref,ref],'action':action})
+            return (result['updated'],result['skipped'])
+        self.assertEqual(submit('page_refresh'),(1,0))
+        self.assertEqual(submit('page_refresh'),(0,1))
+        self.assertEqual(submit('refresh'),(1,0))
+        before=self.db.execute('SELECT due FROM keyword_targets').fetchall()
+        self.assertEqual(submit('refresh'),(0,1))
+        self.assertEqual(submit('page_refresh'),(0,1))
+        self.assertEqual(self.db.execute('SELECT due FROM keyword_targets').fetchall(),before)
+
     def test_page_plan_promotes_existing_pending_targets_before_external_plan(self):
         from appmon import collection
         from appmon.target_batches import claim_targets

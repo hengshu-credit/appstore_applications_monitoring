@@ -7,7 +7,7 @@ from .db import dump
 from .intelligence import market, text
 from .task_logs import emit, safe_message
 from .collection_batch import touch, write_batch
-from . import ad_sources, ad_channels
+from . import ad_sources, ad_channels, intake
 from .stores import CollectionDeferred
 
 KINDS = {'aso_popularity':'ASO 关键词热度', 'aso_import':'ASO 热度导入', 'aso_report':'ASO 报告入库', **ad_sources.KINDS}
@@ -18,7 +18,10 @@ def admitted(alias='collection_source_tasks', schedule_alias=None):
     # collection-plan receipts have no user submission for advertising.
     schedule = (f'{schedule_alias}.enabled=1' if schedule_alias else
                 f'EXISTS (SELECT 1 FROM ad_tracking_schedules ads WHERE ads.receipt_source={alias}.source AND ads.enabled=1)')
-    return f"(LEFT({alias}.kind,3)<>'ad_' OR {alias}.source IN ('app-ads','user-ad-plan') OR {schedule})"
+    shared = f"""EXISTS (SELECT 1 FROM collection_request_aliases r WHERE r.resource='sources' AND r.task_id={alias}.id
+        AND (r.source IN ('app-ads','user-ad-plan') OR EXISTS
+             (SELECT 1 FROM ad_tracking_schedules a WHERE a.receipt_source=r.source AND a.enabled=1)))"""
+    return f"(LEFT({alias}.kind,3)<>'ad_' OR {alias}.source IN ('app-ads','user-ad-plan') OR {schedule} OR {shared})"
 
 
 def normalize(kind, value):
@@ -62,8 +65,9 @@ def batch_key(kind, payload):
     return hashlib.sha256(dump([kind,grouping]).encode()).hexdigest()
 
 
-def enqueue(db, kind, value, source='aso', request_id=None, *, submitted_by=None, due=0):
+def enqueue(db, kind, value, source='aso', request_id=None, *, submitted_by=None, due=0, submitted_at=None):
     payload = normalize(kind,value)
+    explicit_request_id = request_id is not None
     source = text(source,64); request_id = text(uuid.uuid4().hex if request_id is None else request_id,120)
     if kind in ad_sources.KINDS:
         if type(submitted_by) is not int or submitted_by <= 0:
@@ -75,29 +79,103 @@ def enqueue(db, kind, value, source='aso', request_id=None, *, submitted_by=None
             if not schedule or kind not in json.loads(schedule['kinds']):
                 raise ValueError('没有生效的用户广告周期任务')
     fingerprint = batch_key(kind, payload)
-    with db.named_lock('source-intake:'+dump([source,request_id]),timeout=10):
+    request_hash = intake.digest([kind,payload])
+    with db:
+        intake.lock_source_intake(db)
+        alias = intake.find_alias(db,'sources',source,request_id)
+        if alias:
+            if alias['fingerprint'] != request_hash:
+                raise ValueError('同一来源请求编号不能对应不同任务')
+            return receipt(db,alias['task_id']) | {'reused':True,'source':source,'request_id':request_id}
         old = db.execute('SELECT id,kind,payload FROM collection_source_tasks WHERE source=%s AND request_id=%s',(source,request_id)).fetchone()
         if old:
             if old['kind']!=kind or json.loads(old['payload'])!=payload:
                 raise ValueError('同一来源请求编号不能对应不同任务')
             return receipt(db,old['id']) | {'reused':True}
+        current = active_task(db,kind,payload,fingerprint)
+        if not current and submitted_at is not None:
+            # Another plan may have finished the work while this one was expanding.
+            current = matching_task(db,kind,payload,fingerprint,'due IS NULL AND success_at>=%s',(submitted_at,))
+        if current:
+            identifier = current['id']
+            if explicit_request_id or (source != current['source'] and not db.execute(
+                    "SELECT 1 FROM collection_request_aliases WHERE resource='sources' AND source=%s AND task_id=%s LIMIT 1",
+                    (source,identifier)).fetchone()):
+                intake.record_alias(db,'sources',source,request_id,identifier,request_hash)
+            if current['due'] is not None and current['enabled'] and not current['failures'] and current['lease_until'] <= time.time() and due < current['due']:
+                db.execute('UPDATE collection_source_tasks SET due=%s WHERE id=%s',(due,identifier))
+                touch(db)
+            result = receipt(db,identifier) | {'reused':True}
+            return result | {'source':source,'request_id':request_id} if explicit_request_id else result
         label = str(payload.get('filename') or payload.get('genre') or KINDS[kind])[:255]
-        with db:
-            db.execute('''INSERT INTO collection_source_tasks(store,app_id,country,language,kind,label,payload,batch_key,source,request_id,created_at,due)
-                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
-                (payload['store'],payload.get('app_id',''),payload['country'],payload['language'],kind,label,dump(payload),fingerprint,source,request_id,time.time(),due))
-            identifier=db.cursor.lastrowid
-            emit(db,'sources',identifier,'queued','采集任务已入队：'+KINDS[kind],
-                 details={'submitted_by':submitted_by} if submitted_by is not None else None)
-            touch(db)
+        db.execute("""INSERT INTO collection_source_tasks(store,app_id,country,language,kind,label,payload,batch_key,source,request_id,created_at,due)
+            VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (payload['store'],payload.get('app_id',''),payload['country'],payload['language'],kind,label,dump(payload),fingerprint,source,request_id,time.time(),due))
+        identifier=db.cursor.lastrowid
+        emit(db,'sources',identifier,'queued','采集任务已入队：'+KINDS[kind],
+             details={'submitted_by':submitted_by} if submitted_by is not None else None)
+        touch(db)
     return receipt(db,identifier) | {'reused':False}
+
+
+def active_task(db, kind, payload, fingerprint):
+    return matching_task(db,kind,payload,fingerprint,'due IS NOT NULL AND failures<3')
+
+
+def matching_task(db, kind, payload, fingerprint, state, params=()):
+    # Compatible Apple popularity requests may differ in output language or depth.
+    exact = '' if kind in ad_sources.KINDS else ' AND payload=%s'
+    args = (fingerprint,*params) if not exact else (fingerprint,*params,dump(payload))
+    return db.execute(f"""SELECT id,source,enabled,failures,lease_until,due FROM collection_source_tasks
+        WHERE batch_key=%s AND {state} AND {admitted()}{exact}
+        ORDER BY id LIMIT 1 FOR UPDATE""",args).fetchone()
+
+
+def consolidate_pending(db):
+    """Merge legacy pending receipts, keeping old request IDs resolvable."""
+    batches = db.execute(f"""SELECT batch_key FROM collection_source_tasks
+        WHERE due IS NOT NULL AND failures<3 AND {admitted()} GROUP BY batch_key HAVING COUNT(*)>1""").fetchall()
+    for batch in batches:
+        with db:
+            intake.lock_source_intake(db)
+            rows = db.execute(f"""SELECT * FROM collection_source_tasks WHERE batch_key=%s AND due IS NOT NULL
+                AND failures<3 AND {admitted()} ORDER BY (lease_until>%s) DESC,enabled DESC,
+                (result IS NOT NULL) DESC,id FOR UPDATE""",(batch['batch_key'],time.time())).fetchall()
+            seen = {}
+            for row in rows:
+                payload = json.loads(row['payload'])
+                key = row['batch_key'] if row['kind'] in ad_sources.KINDS else dump(payload)
+                keeper = seen.setdefault(key,row)
+                if keeper is row:continue
+                db.execute("""UPDATE collection_request_aliases SET task_id=%s
+                    WHERE resource='sources' AND task_id=%s""",(keeper['id'],row['id']))
+                intake.record_alias(db,'sources',row['source'],row['request_id'],keeper['id'],
+                                    intake.digest([row['kind'],payload]),row['id'])
+                if not keeper['failures'] and not row['failures'] and row['enabled']:
+                    db.execute('UPDATE collection_source_tasks SET due=LEAST(due,%s) WHERE id=%s',(row['due'],keeper['id']))
+                if row['success_at'] is None:
+                    db.execute('DELETE FROM collection_source_tasks WHERE id=%s',(row['id'],))
+                else:
+                    db.execute('UPDATE collection_source_tasks SET due=NULL,token=NULL,lease_until=0 WHERE id=%s',(row['id'],))
+                touch(db)
+
+
+def request_task(db,source,request_id):
+    alias = intake.find_alias(db,'sources',source,request_id)
+    if alias:
+        return {'id':alias['task_id']}
+    return db.execute('SELECT id FROM collection_source_tasks WHERE source=%s AND request_id=%s',
+                      (source,request_id)).fetchone()
 
 
 def receipt(db, identifier):
     row = db.execute(f'''SELECT id,kind,source,request_id,enabled,due,lease_until,failures,last_error,result,created_at,success_at,
         {admitted()} AS admitted
         FROM collection_source_tasks WHERE id=%s''',(identifier,)).fetchone()
-    if not row: raise ValueError('任务不存在')
+    if not row:
+        current = intake.resolve_id(db,'sources',identifier)
+        if current != identifier:return receipt(db,current)
+        raise ValueError('任务不存在')
     status = ('done' if row['due'] is None else 'stopped' if not row['admitted'] else 'paused' if not row['enabled'] else
               'running' if row['lease_until']>time.time() else 'error' if row['failures'] else 'pending')
     return row | {'resource':'sources','status':status,'result':json.loads(row['result']) if row['result'] else None}

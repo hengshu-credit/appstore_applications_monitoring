@@ -108,6 +108,9 @@ def verify(archive):
     expected_tables = set(TABLES)
     if 'ad_tracking_schedules' not in manifest['tables']:
         expected_tables.remove('ad_tracking_schedules')  # Earlier backups had no recurring ad opt-ins.
+    intake_tables = {'collection_plan_keys','collection_request_aliases'}
+    if intake_tables.isdisjoint(manifest['tables']):
+        expected_tables -= intake_tables
     bulk_tables = {'collection_bulk_operations','collection_bulk_chunks'}
     if set(manifest['tables']) == expected_tables - bulk_tables:
         expected_tables -= bulk_tables  # Older format-4 backups predate background controls.

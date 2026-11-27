@@ -29,7 +29,7 @@ def action_target(db,action):
     return {'resource':resource,'id':row['id'],'kind':kind} if row else None
 
 
-def schedule_action(db,action):
+def schedule_action(db,action,submitted_at=None):
     # Explicit app refresh activates these targets. Existing periods/depth are kept.
     existing=action_target(db,action)
     if not existing:
@@ -41,15 +41,26 @@ def schedule_action(db,action):
     with db:
         db.execute(f'UPDATE {table} SET enabled=1 WHERE id=%s',(ref['id'],))
         if ref['resource']=='watchlist':
-            v=action['value'];db.execute('''UPDATE jobs SET due=LEAST(due,%s) WHERE store=%s AND app_id=%s AND country=%s AND language=%s AND lease_until<=%s''',
-                (PAGE_DUE,*[v[k] for k in ('store','app_id','country','language')],time.time()))
-        else:db.execute(f'UPDATE {table} SET due=LEAST(due,%s) WHERE id=%s AND lease_until<=%s',(PAGE_DUE,ref['id'],time.time()))
+            v=action['value']
+            db.execute("""UPDATE jobs j SET j.due=LEAST(j.due,%s) WHERE j.store=%s AND j.app_id=%s AND j.country=%s
+                AND j.language=%s AND j.lease_until<=%s AND NOT EXISTS (SELECT 1 FROM listings l WHERE
+                l.store=j.store AND l.app_id=j.app_id AND l.country=j.country AND l.language=j.language AND l.checked_at>=%s)""",
+                (PAGE_DUE,*[v[k] for k in ('store','app_id','country','language')],time.time(),submitted_at))
+        else:
+            runs='keyword_runs' if ref['resource']=='keywords' else 'observation_runs'
+            db.execute(f"""UPDATE {table} t SET t.due=LEAST(t.due,%s) WHERE t.id=%s AND t.lease_until<=%s
+                AND NOT EXISTS (SELECT 1 FROM {runs} r WHERE r.id=t.latest_attempt_id AND r.observed_at>=%s)""",
+                (PAGE_DUE,ref['id'],time.time(),submitted_at))
         emit(db,ref['resource'],ref['id'],'refresh','应用详情请求采集：已创建或启用目标，并安排立即执行')
     return ref
 
 
 def report(db,identifier,allow_plan=False):
     plan=db.execute('SELECT * FROM collection_plans WHERE id=%s',(identifier,)).fetchone()
+    if plan is None and allow_plan:
+        from .intake import resolve_id
+        canonical = resolve_id(db,'plans',identifier)
+        if canonical != identifier:return report(db,canonical,allow_plan)
     if not plan or not allow_plan and 'app_request' not in json.loads(plan['specification']):raise ValueError('应用采集请求不存在')
     spec=json.loads(plan['specification'])
     actions=json.loads(plan['actions']);tasks=[];finished=0;errors=0;skipped=0
@@ -58,8 +69,7 @@ def report(db,identifier,allow_plan=False):
             ad = action['kind'] in ad_sources.KINDS
             explicit = bool(spec.get('input_source') and spec.get('ad_requested_by'))
             origin = 'user-ad-plan' if ad and explicit else 'collection-plan'
-            row = db.execute("""SELECT id FROM collection_source_tasks WHERE source=%s
-                AND request_id=%s""", (origin,f'{identifier}:{index}')).fetchone()
+            row = source_tasks.request_task(db,origin,f'{identifier}:{index}')
             task = source_tasks.receipt(db, row['id']) if row else None
             state = task['status'] if task else 'configuring'
             if state == 'done':
@@ -124,7 +134,7 @@ def collect(db,value):
     m=market(value);base={k:m[k] for k in ('store','country','language')}
     app=db.execute('SELECT name,category FROM apps WHERE store=%s AND app_id=%s',(m['store'],m['app_id'])).fetchone()
     if not app:raise ValueError('应用尚未进入应用池')
-    with db.named_lock('collect-app:'+dump(m)):
+    with db.named_lock('collect-app:'+dump(m),timeout=10):
         previous=latest(db,m)
         if previous and previous['state']=='running':return previous
         actions=[{'kind':'details','value':m|{'group_name':'应用详情采集','refresh_hours':24}},
@@ -144,10 +154,8 @@ def collect(db,value):
         for word in dict.fromkeys(names):
             actions.append({'kind':'keywords','value':validate_target(base|{'keyword':word,'depth':50,'refresh_hours':24})})
         if m['store']=='apple':actions.append({'kind':'featured','value':base|{'kind':'featured','depth':100,'refresh_hours':24}})
+        from .collection import unique_actions, save_plan
+        actions=unique_actions(actions)
         for action in actions:action['immediate']=True
-        now=time.time()
-        with db:
-            db.execute('INSERT INTO collection_plans(name,specification,actions,total,created_at,updated_at) VALUES(%s,%s,%s,%s,%s,%s)',
-                       ('应用信息采集',dump({'app_request':m,'keyword_total':keyword_total}),dump(actions),len(actions),now,now))
-            identifier=db.cursor.lastrowid;emit(db,'plans',identifier,'queued',f'应用采集已排队：{len(actions)} 个目标')
-        return report(db,identifier)
+        plan = save_plan(db,'应用信息采集',{'app_request':m,'keyword_total':keyword_total},actions,'app')
+        return report(db,plan['id'])

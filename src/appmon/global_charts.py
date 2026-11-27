@@ -1,8 +1,5 @@
 """Country-by-country store charts on one page; no synthetic worldwide ranking."""
-import time
-import hashlib
 from . import charts, catalog, locales
-from .db import dump
 from .growth import cutoff
 from .intelligence import hours
 
@@ -111,17 +108,8 @@ def create_plan(db,value):
     plan=preview(value)
     if not plan['actions']:raise ValueError('所选组合没有可采集的基榜')
     # Preserve at execution time, including settings edited after this preview.
-    canonical=dump({'actions':sorted(plan['actions'],key=lambda a:dump(a['value']))})
-    lock='global-plan:'+hashlib.sha256(canonical.encode()).hexdigest()[:40]
-    now=time.time()
-    with db.named_lock(lock):
-        with db:
-            old=db.execute("SELECT id,total,status FROM collection_plans WHERE name=%s AND specification=%s AND status IN ('queued','running') ORDER BY id DESC LIMIT 1",('全球榜单 / '+value['store'],canonical)).fetchone()
-            if old:return old|{'reused':True,'note':plan['note']}
-            db.execute('INSERT INTO collection_plans(name,specification,actions,total,created_at,updated_at) VALUES(%s,%s,%s,%s,%s,%s)',
-                       ('全球榜单 / '+value['store'],canonical,dump(plan['actions']),plan['total'],now,now))
-            identifier=db.cursor.lastrowid
-    return {'id':identifier,'total':plan['total'],'status':'queued','note':plan['note']}
+    from .collection import save_plan
+    return save_plan(db,'全球榜单 / '+value['store'],{'actions':plan['actions']},plan['actions'],'configure') | {'note':plan['note']}
 
 
 def app_summary(db,store,app_id,selection='',collection='top-free,top-paid,top-grossing',category='',as_of=None,depth=10):

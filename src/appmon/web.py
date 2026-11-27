@@ -840,12 +840,7 @@ def create_app(cfg):
 
     @api.post('/research/plans/{identifier}/retry')
     def retry_plan(identifier:int,db=DB):
-        row=db.execute('SELECT status FROM collection_plans WHERE id=%s',(identifier,)).fetchone()
-        if not row or row['status']!='error':raise ValueError('只有失败计划可以重试')
-        with db:
-            db.execute("UPDATE collection_plans SET status='queued',error=NULL,updated_at=%s WHERE id=%s",(time.time(),identifier))
-            task_logs.emit(db,'plans',identifier,'retry','已安排从未完成的配置步骤继续重试')
-        return {'id':identifier,'status':'queued'}
+        return collection.retry_plan(db,identifier)
 
     app.include_router(api)
     @app.get("/health")

@@ -111,7 +111,11 @@ def target_state(db,resource,identifier):
     if not identifier.isdigit() or int(identifier)<1: raise ValueError('任务标识无效')
     if resource=='plans':
         row=db.execute('SELECT status,completed,total FROM collection_plans WHERE id=%s',(int(identifier),)).fetchone()
-        if not row: raise ValueError('计划不存在')
+        if not row:
+            from .intake import resolve_id
+            canonical = resolve_id(db,resource,int(identifier))
+            if canonical != int(identifier):return target_state(db,resource,str(canonical))
+            raise ValueError('计划不存在')
         return row
     if resource=='watchlist':
         row=db.execute('''SELECT w.enabled,j.lease_until,j.due,j.failures,j.last_error FROM watchlist w
@@ -124,6 +128,10 @@ def target_state(db,resource,identifier):
             from .source_tasks import admitted
             extra = ','+admitted()+' AS admitted'
         row=db.execute(f'SELECT enabled,lease_until,due,failures,last_error{extra} FROM {table} WHERE id=%s',(int(identifier),)).fetchone()
+    if not row and resource=='sources':
+        from .intake import resolve_id
+        canonical = resolve_id(db,resource,int(identifier))
+        if canonical != int(identifier):return target_state(db,resource,str(canonical))
     if not row: raise ValueError('任务不存在')
     now=time.time()
     status=('done' if resource=='sources' and row['due'] is None else 'stopped' if not row.get('admitted',True)

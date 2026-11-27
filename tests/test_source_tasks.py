@@ -2,6 +2,9 @@ import base64
 import json
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
+from appmon.db import connect
+from appmon.app_collection import report
 from types import SimpleNamespace
 from unittest.mock import patch
 from fastapi.testclient import TestClient
@@ -25,8 +28,57 @@ class SourceQueueTest(OceanBaseTestCase):
         with self.assertRaises(ValueError):queue.enqueue(self.db,'aso_popularity',self.spec,request_id=0)
         self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM collection_source_tasks').fetchone()['n'],0)
 
+    def test_one_active_source_per_payload_across_submissions_and_plan_receipts(self):
+        def submit(i):
+            db=connect(self.cfg,initialize=False)
+            try:return queue.enqueue(db,'aso_import',self.spec|{'response':self.response},source='page',request_id=str(i))
+            finally:db.close()
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            results=list(pool.map(submit,range(4)))
+        self.assertEqual(len({t['id'] for t in results}),1)
+        self.assertEqual(sum(not t['reused'] for t in results),1)
+        task=results[0]['id']
+        self.db.execute("UPDATE collection_source_tasks SET lease_until=%s,token='active'",(time.time()+600,))
+        plan=collection.enqueue(self.db,{'tasks':[self.spec|{'kind':'aso_import','response':self.response}]*2})
+        self.assertEqual(plan['total'],1)
+        collection.work_plans(self.db)
+        self.assertEqual(report(self.db,plan['id'],True)['tasks'][0]['ref']['id'],task)
+        self.assertEqual(self.db.execute('SELECT token FROM collection_source_tasks').fetchall(),[{'token':'active'}])
+        self.db.execute('UPDATE collection_source_tasks SET lease_until=0')
+        self.assertEqual(queue.work(self.db,self.cfg)['ok'],1)
+        self.assertEqual(report(self.db,plan['id'],True)['finished'],1)
+        for i in range(4):self.assertEqual(submit(i)['id'],task)
+        with self.assertRaisesRegex(ValueError,'不同任务'):
+            queue.enqueue(self.db,'aso_import',self.spec|{'response':self.response,'limit':99},source='page',request_id='0')
+        self.assertNotEqual(submit(4)['id'],task)
+        collection_tasks.control_tasks(self.db,{'action':'refresh','tasks':[{'resource':'sources','id':task}]})
+        self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM collection_source_tasks WHERE due IS NOT NULL').fetchone()['n'],1)
+
+    def test_overlapping_plan_expanded_after_first_result_reuses_the_finished_task(self):
+        action=self.spec|{'kind':'aso_import','response':self.response}
+        first=collection.enqueue(self.db,{'tasks':[action]})
+        second=collection.enqueue(self.db,{'tasks':[action,dict(kind='keywords',store='apple',country='us',keyword='loan')]})
+        collection.work_plans(self.db)
+        self.assertEqual(queue.work(self.db,self.cfg)['ok'],1)
+        collection.work_plans(self.db)
+        a=report(self.db,first['id'],True)['tasks'][0]
+        b=report(self.db,second['id'],True)['tasks'][0]
+        self.assertEqual((b['ref'],b['state']),(a['ref'],'complete'))
+        self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM collection_source_tasks').fetchone()['n'],1)
+
+    def test_upgrade_merges_pending_receipts_and_preserves_legacy_lookup_and_priority(self):
+        payload=queue.normalize('aso_import',self.spec|{'response':self.response})
+        task=queue.enqueue(self.db,'aso_import',payload,request_id='first')['id']
+        other=self.db.execute("""INSERT INTO collection_source_tasks(store,app_id,country,language,kind,label,payload,
+            batch_key,source,request_id,created_at,due) SELECT store,app_id,country,language,kind,label,payload,
+            batch_key,'another','other',created_at,-1000 FROM collection_source_tasks WHERE id=%s""",(task,)).lastrowid
+        for _ in range(2):queue.consolidate_pending(self.db)
+        self.assertEqual(self.db.execute('SELECT id,due FROM collection_source_tasks').fetchall(),[{'id':task,'due':-1000}])
+        self.assertEqual(queue.receipt(self.db,other)['id'],task)
+        self.assertEqual(queue.enqueue(self.db,'aso_import',payload,source='another',request_id='other')['id'],task)
+
     def test_compatible_one_shot_receipts_exceed_old_fifty_task_limit(self):
-        for i in range(70):queue.enqueue(self.db,'aso_popularity',self.spec,request_id=f'large-{i}')
+        for i in range(70):queue.enqueue(self.db,'aso_popularity',self.spec|{'limit':i+1},request_id=f'large-{i}')
         with patch('appmon.apple_popularity.request_data',return_value=self.response) as fetch:
             result=queue.work(self.db,self.cfg)
         self.assertEqual((result['processed'],result['ok']),(70,70));fetch.assert_called_once()
@@ -104,8 +156,10 @@ class SourceQueueTest(OceanBaseTestCase):
         self.assertEqual(queue.receipt(self.db,identifier)['failures'],0)
 
     def test_atomic_data_and_acknowledgements_rollback_and_expired_lease_recovery(self):
-        a=queue.enqueue(self.db,'aso_import',self.spec|{'response':self.response})['id']
-        b=queue.enqueue(self.db,'aso_import',self.spec|{'response':self.response})['id']
+        a=queue.enqueue(self.db,'aso_popularity',self.spec)['id']
+        b=queue.enqueue(self.db,'aso_popularity',self.spec|{'limit':40})['id']
+        fetch=patch('appmon.apple_popularity.request_data',return_value=self.response)
+        fetch.start();self.addCleanup(fetch.stop)
         self.db.execute('UPDATE collection_source_tasks SET lease_until=%s,token="old"',(time.time()-1,))
         from appmon import source_tasks
         original=source_tasks.emit
@@ -117,5 +171,6 @@ class SourceQueueTest(OceanBaseTestCase):
         self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM keyword_signals').fetchone()['n'],0)
         self.assertIsNone(queue.receipt(self.db,a)['result'])
         collection_tasks.control_tasks(self.db,{'scope':'all','action':'retry'})
+        self.db.execute("UPDATE schedules SET next_at=0 WHERE name LIKE 'rate:%'")
         self.assertEqual(queue.work(self.db,self.cfg)['ok'],2)
         self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM keyword_source_fetches').fetchone()['n'],1)

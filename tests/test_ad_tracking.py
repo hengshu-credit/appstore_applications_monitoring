@@ -316,14 +316,31 @@ class AppAdTrackingTest(OceanBaseTestCase):
         with patch('appmon.ad_sources.fetch',side_effect=self.empty_source):
             self.assertEqual(dispatcher.dispatch_once(self.db,self.cfg,'ad-test')['ok'],1)
         once=client.post(path+'/collect',json=self.m).json()['tasks']
+        # One already finished; the remaining schedule work is shared with the once request.
+        self.assertEqual(len({t['id'] for t in once} & {r['id'] for r in pending}),len(pending)-1)
         stopped=client.delete(path+'/schedule',params=self.m).json()['schedule']
         self.assertFalse(stopped['enabled']);self.assertIsNone(stopped['next_due'])
-        self.assertTrue(all(source_tasks.receipt(self.db,r['id'])['status'] in ('done','stopped') for r in pending))
+        self.assertEqual({source_tasks.receipt(self.db,r['id'])['status'] for r in pending},{'done','pending'})
         self.assertTrue(all(source_tasks.receipt(self.db,t['id'])['status']=='pending' for t in once))
         restarted=client.post(path+'/collect',json=spec).json()['schedule']
         self.assertEqual(restarted['run_number'],1)
-        self.assertTrue(all(source_tasks.receipt(self.db,r['id'])['status'] in ('done','stopped') for r in pending))
+        self.assertEqual({source_tasks.receipt(self.db,r['id'])['status'] for r in pending},{'done','pending'})
         self.assertEqual(set(requirements('/api/ads/apps/{store}/{app_id}/schedule','DELETE')),{'ads:write','collection:write'})
+
+    def test_shared_global_task_survives_until_its_last_schedule_stops(self):
+        a=ad_tracking.enqueue(self.db,self.m|{'mode':'periodic','refresh_hours':2},submitted_by=1)
+        other=self.m|{'country':'fr','language':'fr'}
+        b=ad_tracking.enqueue(self.db,other|{'mode':'periodic','refresh_hours':2},submitted_by=1)
+        shared={t['id'] for t in a['tasks']} & {t['id'] for t in b['tasks']}
+        self.assertTrue(shared)
+        ad_tracking.stop_schedule(self.db,self.m)
+        self.assertTrue(all(source_tasks.receipt(self.db,i)['status']=='pending' for i in shared))
+        active=next(iter(shared))
+        self.db.execute("UPDATE collection_source_tasks SET lease_until=%s,token='active' WHERE id=%s",(time.time()+60,active))
+        ad_tracking.stop_schedule(self.db,other)
+        row=self.db.execute('SELECT enabled,token,lease_until FROM collection_source_tasks WHERE id=%s',(active,)).fetchone()
+        self.assertEqual(row,dict(enabled=0,token=None,lease_until=0))
+        self.assertTrue(all(source_tasks.receipt(self.db,i)['status']=='stopped' for i in shared))
 
     def test_implicit_legacy_receipts_cannot_be_dispatched_or_batched_with_new_manual_tasks(self):
         m=self.m;kind='ad_creatives';actions=[{'kind':kind,'value':m},{'kind':'ad_apple','value':m}]

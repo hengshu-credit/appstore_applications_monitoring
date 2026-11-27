@@ -1,5 +1,7 @@
 """One paginated task registry and atomic controls for all observation workers."""
 import time
+import json
+from . import intake, source_tasks
 from .collection_batch import PAGE_DUE
 from .intelligence import hours, text
 from .app_search import LISTING_NAME
@@ -200,7 +202,7 @@ def _enqueue_selected(db, cfg, resource, table, row, action, due, now):
         if action=='refresh':
             db.execute('''INSERT INTO jobs(store,app_id,country,language) VALUES(%s,%s,%s,%s)
                 ON DUPLICATE KEY UPDATE app_id=jobs.app_id''',key)
-        row = db.execute('SELECT failures,lease_until FROM jobs WHERE '+where+' FOR UPDATE',key).fetchone()
+        row = db.execute('SELECT due,failures,lease_until FROM jobs WHERE '+where+' FOR UPDATE',key).fetchone()
     if not row or (action=='retry' and not row['failures']):
         return 'skipped'
     if row['lease_until']>now:
@@ -213,6 +215,9 @@ def _enqueue_selected(db, cfg, resource, table, row, action, due, now):
         from .app_media import active_predicate
         if not db.execute('SELECT 1 FROM app_media_assets a WHERE id=%s AND '+active_predicate(),key).fetchone():
             return 'out_of_scope'
+    if row['due'] is not None and row['due']<0 and not row['failures']:
+        if row['due'] < PAGE_DUE or due == PAGE_DUE:
+            return 'skipped'
     reset = ',failures=0,last_error=NULL' if resource=='sources' else ''
     db.execute(f'UPDATE {table} SET due=LEAST(COALESCE(due,%s),%s){reset} WHERE {where}',(due,due,*key))
     return 'updated'
@@ -254,7 +259,11 @@ def control_tasks(db, value, cfg=None):
     with db:
         if any(not isinstance(ref,dict) or ref.get('resource') not in TABLES or type(ref.get('id')) is not int for ref in refs):
             raise ValueError('任务标识无效')
-        refs = [dict(resource=r,id=i) for r,i in sorted({(ref['resource'],ref['id']) for ref in refs})]
+        refs = [dict(resource=r,id=i) for r,i in sorted({
+            (ref['resource'],intake.resolve_id(db,'sources',ref['id']) if ref['resource']=='sources' else ref['id'])
+            for ref in refs})]
+        if action in ('refresh','retry') and any(r['resource']=='sources' for r in refs):
+            intake.lock_source_intake(db)
         for ref in refs:
             resource, identifier = ref.get('resource'), ref.get('id')
             if resource=='sources' and action=='interval':raise ValueError('一次性任务不设置周期，请仅选择周期任务')
@@ -264,6 +273,12 @@ def control_tasks(db, value, cfg=None):
                 counts['skipped'] += 1
                 continue
             if action in ('refresh','retry'):
+                if resource=='sources' and row['enabled'] and (row['due'] is None or row['failures']>=3):
+                    # Requeue a historical receipt on the existing task, when present.
+                    current = source_tasks.active_task(db,row['kind'],json.loads(row['payload']),row['batch_key'])
+                    if current:
+                        identifier = current['id']
+                        table,row = _target(db,resource,identifier)
                 outcome = _enqueue_selected(db,cfg or {},resource,table,row,action,due,time.time())
                 counts[outcome] += 1
                 if outcome=='updated':
@@ -312,6 +327,18 @@ def _control_scope(db, query, args, action, interval):
     try:
         with db:
             db.execute(f'INSERT INTO collection_selection SELECT resource,id FROM ({query}) matched',args)
+            if action=='retry' and db.execute("SELECT 1 FROM collection_selection WHERE resource='sources' LIMIT 1").fetchone():
+                intake.lock_source_intake(db)
+                # Retry at most one receipt per unfinished source request.
+                ids = db.execute("SELECT id FROM collection_selection WHERE resource='sources' ORDER BY id").fetchall()
+                for ref in ids:
+                    _,row = _target(db,'sources',ref['id'])
+                    current = source_tasks.active_task(db,row['kind'],json.loads(row['payload']),row['batch_key'])
+                    if current and current['id'] != row['id']:
+                        db.execute("DELETE FROM collection_selection WHERE resource='sources' AND id=%s",(row['id'],))
+                    elif row['enabled'] and row['failures'] and row['lease_until']<=time.time() and db.execute(
+                            f'SELECT 1 FROM collection_source_tasks WHERE id=%s AND {admitted()}',(row['id'],)).fetchone():
+                        db.execute('UPDATE collection_source_tasks SET due=0,failures=0,last_error=NULL WHERE id=%s',(row['id'],))
             if action in ('resume','retry'):
                 db.execute(f"""DELETE FROM collection_selection WHERE resource='sources' AND id IN
                     (SELECT id FROM collection_source_tasks WHERE NOT {admitted()})""")
@@ -328,8 +355,8 @@ def _control_scope(db, query, args, action, interval):
                     if resource=='sources':continue
                     db.execute(f'UPDATE {join} SET t.refresh_hours=%s'+('' if resource=='watchlist' else ',t.due=%s,t.token=NULL,t.lease_until=0'),
                                (resource,interval) if resource=='watchlist' else (resource,interval,now+interval*3600))
-                elif resource!='watchlist':
-                    db.execute(f'UPDATE {join} SET t.due=0'+(',t.failures=0,t.last_error=NULL' if resource=='sources' else '')+' WHERE t.enabled=1 AND t.failures>0 AND t.lease_until<=%s',(resource,now))
+                elif resource not in ('watchlist','sources'):
+                    db.execute(f'UPDATE {join} SET t.due=0 WHERE t.enabled=1 AND t.failures>0 AND t.lease_until<=%s',(resource,now))
                 if resource=='watchlist':
                     jobs_join = join+' JOIN jobs j ON j.store=t.store AND j.app_id=t.app_id AND j.country=t.country AND j.language=t.language'
                     if action=='retry':

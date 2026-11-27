@@ -10,7 +10,7 @@ from .collection_batch import PAGE_DUE
 from .task_logs import emit
 from .log_details import diagnostics
 from .source_tasks import KINDS as SOURCE_KINDS
-from . import ad_sources
+from . import ad_sources, intake
 from .listing_status import CURRENT_STATE
 
 SOURCES = [
@@ -30,6 +30,61 @@ SOURCES = [
      'cadence':'按报表覆盖期间与授权配额配置','fields':'真实广告指标、后台关键词、转化与回复权限',
      'coverage':'现支持广告报表导入及本地草稿；尚未连接开发者账户，不读取竞品私有后台'},
 ]
+
+
+def unique_actions(actions):
+    """Keep the first position and combine compatible requirements on one target."""
+    unique = {}
+    for action in actions:
+        value = action['value'].copy()
+        settings = {}
+        if action['kind'] not in SOURCE_KINDS:
+            for key in ('refresh_hours','depth'):
+                if key in value:
+                    number = value.pop(key)
+                    settings[key] = int(number) if isinstance(number,float) and number.is_integer() else number
+        identity = dump(action | {'value':value})
+        if identity not in unique:
+            unique[identity] = action | {'value':value | settings}
+        else:
+            target = unique[identity]['value']
+            for key, number in settings.items():
+                target[key] = (max if key=='depth' else min)(target[key],number)
+    return list(unique.values())
+
+
+def plan_key(mode,actions,spec=None):
+    if mode=='app':
+        return intake.digest(['app',spec['app_request']])
+    return intake.digest([mode,sorted(dump(a) for a in actions)])
+
+
+def active_plan(db,fingerprint):
+    from .app_collection import report
+    # Serialize by normalized work, independently of a producer's request ID.
+    db.execute("""INSERT INTO collection_plan_keys VALUES(%s,0)
+        ON DUPLICATE KEY UPDATE fingerprint=collection_plan_keys.fingerprint""",(fingerprint,))
+    current = db.execute('SELECT plan_id FROM collection_plan_keys WHERE fingerprint=%s FOR UPDATE',(fingerprint,)).fetchone()
+    old = db.execute('SELECT id,total,status FROM collection_plans WHERE id=%s',(current['plan_id'],)).fetchone()
+    if old and (old['status'] in ('queued','running') or
+                old['status']=='complete' and report(db,old['id'],True)['state']=='running'):
+        return old
+
+
+def save_plan(db,name,spec,actions,mode,source=None,request_id=None):
+    fingerprint = plan_key(mode,actions,spec)
+    now = time.time()
+    with db:
+        old = active_plan(db,fingerprint)
+        if old:
+            if source:
+                intake.record_alias(db,'plans',source,request_id,old['id'],fingerprint)
+            return old | {'reused':True}
+        identifier = db.execute("""INSERT INTO collection_plans(name,specification,actions,total,created_at,updated_at,request_source,request_id)
+            VALUES(%s,%s,%s,%s,%s,%s,%s,%s)""",(name,dump(spec),dump(actions),len(actions),now,now,source,request_id)).lastrowid
+        db.execute('UPDATE collection_plan_keys SET plan_id=%s WHERE fingerprint=%s',(identifier,fingerprint))
+        emit(db,'plans',identifier,'queued',f'采集计划已创建，待配置 {len(actions)} 个目标')
+    return {'id':identifier,'total':len(actions),'status':'queued','reused':False}
 
 
 def preview_plan(value):
@@ -72,6 +127,7 @@ def preview_plan(value):
     if flags['featured']:
         if m['store']!='apple':raise ValueError('Today推荐只支持Apple')
         actions.append({'kind':'featured','value':base|{'kind':'featured','depth':depth,'refresh_hours':interval}})
+    actions=unique_actions(actions)
     if not actions:raise ValueError('请至少选择一个有目标的采集任务')
     return {'actions':actions,'total':len(actions),'market':base,
             'scope':'这是任务配置数量，不是请求量或完成时间承诺。已有目标会更新周期，暂停状态保留。'}
@@ -80,13 +136,7 @@ def preview_plan(value):
 def create_plan(db, value):
     result=preview_plan(value)
     name=text(value.get('name','采集计划'))
-    now=time.time()
-    with db:
-        db.execute('INSERT INTO collection_plans(name,specification,actions,total,created_at,updated_at,request_source,request_id) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)',
-                   (name,dump(value),dump(result['actions']),result['total'],now,now,None,None))
-        identifier=db.cursor.lastrowid
-        emit(db,'plans',identifier,'queued',f'采集计划已创建，待配置 {result["total"]} 个目标')
-    return {'id':identifier,'total':result['total'],'status':'queued'}
+    return save_plan(db,name,value,result['actions'],'configure')
 
 
 def enqueue(db, value, *, ad_requested_by=None):
@@ -125,12 +175,20 @@ def enqueue(db, value, *, ad_requested_by=None):
             actions.extend(result['actions'])
         else:
             raise ValueError('未知采集类型')
+    actions = unique_actions(actions)
     ad_actions = [(index,action) for index,action in enumerate(actions) if action['kind'] in ad_sources.KINDS]
     with db.named_lock('enqueue:'+dump([source,request_id]),timeout=10):
+        alias = intake.find_alias(db,'plans',source,request_id)
+        if alias:
+            if alias['fingerprint'] != plan_key('collect',actions):
+                raise ValueError('同一来源请求编号不能对应不同任务')
+            row = db.execute('SELECT id,total,status FROM collection_plans WHERE id=%s',(alias['task_id'],)).fetchone()
+            return row | {'reused':True,'request_id':request_id}
         old = db.execute('''SELECT id,total,status,actions,specification FROM collection_plans WHERE
             request_source=%s AND request_id=%s LIMIT 1''',(source,request_id)).fetchone()
         if old:
-            if json.loads(old['actions'])!=actions:raise ValueError('同一来源请求编号不能对应不同任务')
+            stored_actions = json.loads(old['actions'])
+            if plan_key('collect',unique_actions(stored_actions))!=plan_key('collect',actions):raise ValueError('同一来源请求编号不能对应不同任务')
             spec = json.loads(old['specification'])
             if ad_actions and not spec.get('ad_requested_by'):
                 # An authenticated user has now explicitly re-submitted an old
@@ -139,7 +197,8 @@ def enqueue(db, value, *, ad_requested_by=None):
                 from .collection_batch import write_batch
                 from .source_tasks import enqueue as enqueue_source
                 with write_batch(db) as writer:
-                    for index, action in ad_actions:
+                    for index, action in enumerate(stored_actions):
+                        if action['kind'] not in ad_sources.KINDS:continue
                         key = f'{old["id"]}:{index}'
                         saved = writer.execute("""UPDATE collection_source_tasks SET source='user-ad-plan'
                             WHERE source='collection-plan' AND request_id=%s AND due IS NULL AND success_at IS NOT NULL""",(key,)).rowcount
@@ -153,13 +212,31 @@ def enqueue(db, value, *, ad_requested_by=None):
         specification = {'input_source':source,'request_id':request_id}
         if ad_actions:
             specification['ad_requested_by'] = ad_requested_by
-        now=time.time()
-        with db:
-            db.execute('INSERT INTO collection_plans(name,specification,actions,total,created_at,updated_at,request_source,request_id) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)',
-                (text(value.get('name',source+' 采集请求')),dump(specification),dump(actions),len(actions),now,now,source,request_id))
-            identifier=db.cursor.lastrowid
-            emit(db,'plans',identifier,'queued',f'统一入队：{source}，{len(actions)} 个请求目标')
-        return {'id':identifier,'total':len(actions),'status':'queued','reused':False,'request_id':request_id}
+        name = text(value.get('name',source+' 采集请求'))
+        return save_plan(db,name,specification,actions,'collect',source,request_id) | {'request_id':request_id}
+
+
+def retry_plan(db,identifier):
+    identifier = intake.resolve_id(db,'plans',identifier)
+    row = db.execute('SELECT status,actions,request_source,specification FROM collection_plans WHERE id=%s',(identifier,)).fetchone()
+    if not row or row['status']!='error':raise ValueError('只有失败计划可以重试')
+    spec = json.loads(row['specification'])
+    actions = unique_actions(json.loads(row['actions']))
+    mode = 'collect' if row['request_source'] is not None else 'configure'
+    if mode=='configure' and 'app_request' in spec:mode='app'
+    key = plan_key(mode,actions,spec)
+    with db:
+        current = active_plan(db,key)
+        if current:
+            return current | {'reused':True}
+        if not db.execute("""UPDATE collection_plans SET status='queued',error=NULL,updated_at=%s
+                WHERE id=%s AND status='error'""",(time.time(),identifier)).rowcount:
+            raise ValueError('只有失败计划可以重试')
+        # Legacy implicit advertising receipts cannot stand in for an explicit request.
+        if not any(a['kind'] in ad_sources.KINDS for a in actions) or spec.get('ad_requested_by'):
+            db.execute('UPDATE collection_plan_keys SET plan_id=%s WHERE fingerprint=%s',(identifier,key))
+        emit(db,'plans',identifier,'retry','已安排从未完成的配置步骤继续重试')
+    return {'id':identifier,'status':'queued'}
 
 
 def configure_asset(db, action):
@@ -217,15 +294,15 @@ def work_plans(db, limit=20):
                         if specification.get('input_source') and specification.get('ad_requested_by'):
                             from .source_tasks import enqueue as enqueue_source
                             enqueue_source(db,action['kind'],action['value'],source='user-ad-plan',request_id=f'{row["id"]}:{completed}',
-                                           submitted_by=specification['ad_requested_by'])
+                                           submitted_by=specification['ad_requested_by'],submitted_at=row['created_at'])
                         else:
                             emit(db,'plans',row['id'],'skipped','已跳过旧计划附带的广告任务')
                     elif action['kind'] in SOURCE_KINDS:
                         from .source_tasks import enqueue as enqueue_source
-                        enqueue_source(db,action['kind'],action['value'],source='collection-plan',request_id=f'{row["id"]}:{completed}')
+                        enqueue_source(db,action['kind'],action['value'],source='collection-plan',request_id=f'{row["id"]}:{completed}',submitted_at=row['created_at'])
                     elif action.get('immediate'):
                         from .app_collection import schedule_action
-                        schedule_action(db,action)
+                        schedule_action(db,action,row['created_at'])
                     elif action['kind']=='details':watch(db,action['value'],merge_existing=True,initial_due=initial_due)
                     elif action['kind']=='keywords':add_targets(db,[action['value']],merge_existing=True,initial_due=initial_due)
                     elif action['kind'] in ('icons','permissions'):configure_asset(db,action)

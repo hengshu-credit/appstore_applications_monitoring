@@ -324,8 +324,8 @@ export function createCollectionCenter(ctx) {
         const b = e.currentTarget;
         b.disabled = true;
         try {
-          await api("/research/plans", spec);
-          toast("计划已提交，后台正在配置任务");
+          const plan = await api("/research/plans", spec);
+          toast(plan?.reused ? "相同采集计划已提交，已复用原任务" : "计划已提交，后台正在配置任务");
           section = "tasks";
           preset = null;
           location.hash = "#collection";

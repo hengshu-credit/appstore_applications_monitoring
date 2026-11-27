@@ -5,7 +5,7 @@ import time
 import uuid
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from . import ad_sources, ad_channels, source_tasks
+from . import ad_sources, ad_channels, source_tasks, intake
 from .db import dump
 from .collection_batch import BatchWriter, touch, PAGE_DUE
 from .intelligence import market, hours
@@ -38,9 +38,7 @@ def queue_round(db, m, kinds, actor, *, schedule=None, due=PAGE_DUE):
             task = source_tasks.enqueue(writer,kind,m,source=schedule['receipt_source'],
                 request_id=f"{schedule['run_number']+1}:{kind}",submitted_by=actor,due=due)
         else:
-            active = db.execute("""SELECT id FROM collection_source_tasks WHERE batch_key=%s AND source='app-ads'
-                AND enabled=1 AND due IS NOT NULL AND failures<3 ORDER BY id DESC LIMIT 1""",(source_tasks.batch_key(kind,m),)).fetchone()
-            task = source_tasks.receipt(db,active['id']) if active else source_tasks.enqueue(writer,kind,m,source='app-ads',submitted_by=actor,due=due)
+            task = source_tasks.enqueue(writer,kind,m,source='app-ads',submitted_by=actor,due=due)
         tasks.append({k: task[k] for k in ('id','kind','status')})
     if schedule:
         now = time.time()
@@ -89,8 +87,11 @@ def stop_schedule(db, value):
         row = db.execute(f'SELECT * FROM ad_tracking_schedules WHERE {MARKET_WHERE} FOR UPDATE',key).fetchone()
         if row and row['enabled']:
             db.execute('UPDATE ad_tracking_schedules SET enabled=0,next_due=NULL WHERE id=%s',(row['id'],))
-            db.execute('''UPDATE collection_source_tasks SET enabled=0,token=NULL,lease_until=0
-                WHERE source=%s AND due IS NOT NULL''',(row['receipt_source'],))
+            intake.lock_source_intake(db)
+            db.execute(f'''UPDATE collection_source_tasks SET enabled=0,token=NULL,lease_until=0
+                WHERE due IS NOT NULL AND (source=%s OR EXISTS (SELECT 1 FROM collection_request_aliases r
+                    WHERE r.resource='sources' AND r.task_id=collection_source_tasks.id AND r.source=%s))
+                    AND NOT {source_tasks.admitted()}''',(row['receipt_source'],row['receipt_source']))
             touch(db)
         return {'schedule':schedule_for(db,m)}
 
@@ -101,7 +102,8 @@ def schedule_due(db):
         return
     with db:
         row = db.claim('''SELECT * FROM ad_tracking_schedules s WHERE s.enabled=1 AND s.next_due<=%s
-            AND NOT EXISTS(SELECT 1 FROM collection_source_tasks t WHERE t.source=s.receipt_source
+            AND NOT EXISTS(SELECT 1 FROM collection_source_tasks t WHERE (t.source=s.receipt_source OR EXISTS
+                           (SELECT 1 FROM collection_request_aliases r WHERE r.resource='sources' AND r.task_id=t.id AND r.source=s.receipt_source))
                            AND t.due IS NOT NULL AND t.failures<3)
             ORDER BY s.next_due,s.id LIMIT 1 FOR UPDATE SKIP LOCKED''',(now,)).fetchone()
         if not row:

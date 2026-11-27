@@ -193,7 +193,10 @@ def connect(cfg, *, initialize=False, allow_migration=False):
             for table, columns in TABLES.items():
                 db.execute(create_table_sql(table, if_not_exists=True))
             ensure_listing_market_index(db)
-            from .source_tasks import admitted
+            from .intake import index_existing_plans
+            from .source_tasks import admitted, consolidate_pending
+            index_existing_plans(db)
+            consolidate_pending(db)
             db.execute(f'''UPDATE collection_source_tasks SET enabled=0,token=NULL,lease_until=0
                 WHERE enabled=1 AND due IS NOT NULL AND NOT {admitted()}''')
             # Match the deterministic candidate order without sorting millions
