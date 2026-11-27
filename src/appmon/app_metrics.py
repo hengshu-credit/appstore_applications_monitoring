@@ -1,6 +1,7 @@
 """Market-scoped monitoring evidence. Absence never proves an Apple penalty."""
 import json
 import time
+from . import listing_status
 from .intelligence import market
 
 
@@ -27,7 +28,7 @@ def report(db, value):
     now = time.time(); since = now - days * 86400
     key = tuple(m[k] for k in ('store', 'app_id', 'country', 'language'))
     mk = (m['store'], m['country'], m['language'])
-    listing = db.execute('SELECT * FROM listings WHERE store=%s AND app_id=%s AND country=%s AND language=%s', key).fetchone()
+    listing = listing_status.listing(db,key)
     healthy = bool(listing and listing['state'] == 'available' and listing['last_success'] and now-listing['last_success'] < 48*3600)
     series = []; losses = {'keyword': [], 'chart': []}; totals = {'tracked': 0, 'fresh': 0, 'covered': 0, 'top3': 0, 'top10': 0}
     truncated = False
@@ -85,7 +86,7 @@ def report(db, value):
             'snapshots': snapshots, 'review_distribution': reviews, 'review_daily': review_daily,
             'coverage_daily': coverage_daily,
             'availability': [{'at': r['at'], 'value': {'ok': 1, 'missing': 0}.get(r['outcome']),
-                              'note': {'ok': '当前市场可访问', 'missing': '当前市场单次未查到，尚不能判定下架'}.get(r['outcome'], '请求失败，保留上次有效状态')} for r in reversed(availability)],
+                              'note': {'ok': '当前市场可访问', 'missing': '商店明确未返回该应用，地区不可用'}.get(r['outcome'], '请求失败，状态未知')} for r in reversed(availability)],
             'signals': signals, 'truncated': truncated,
             'downloads': {'available': False, 'reason': '日下载量需接入开发者授权报表或有来源的第三方估算；Google 安装下限不能换算日下载量。'},
             'scope': '当前市场启用目标最多各200个，每个目标区间内最近300次尝试。覆盖数仅计最新成功且未过期的命中词；未采集不计为0。连续两次同口径缺失且返回深度足够才提示异常，不代表官方处罚。'}

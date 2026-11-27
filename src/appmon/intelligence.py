@@ -8,6 +8,7 @@ import uuid
 
 from .collection_batch import pending_due_on_insert, target_settings_update
 from .db import add_apps, dump
+from . import listing_status
 from .ingest import valid_id, disk_check
 from .keywords import validate_target, observation, comparable, app_coverage
 from .monitor import raw_save, save_result
@@ -247,8 +248,7 @@ def compare_apps(db, values):
         raise ValueError("Comparisons require the same store, country and language")
     columns, coverage = [], []
     for m in markets:
-        listing = db.execute("SELECT * FROM listings WHERE store=%s AND app_id=%s AND country=%s AND language=%s",
-                             (m["store"], m["app_id"], m["country"], m["language"])).fetchone()
+        listing = listing_status.listing(db,(m["store"], m["app_id"], m["country"], m["language"]))
         words = app_coverage(db, m["store"], m["app_id"], m["country"], m["language"])["coverage"]
         coverage.append({w["target"]["keyword"]: w for w in words if w["position"] is not None and not w["stale"]})
         columns.append(m | {"listing": listing, "payload": json.loads(listing["payload"]) if listing and listing["payload"] else None})

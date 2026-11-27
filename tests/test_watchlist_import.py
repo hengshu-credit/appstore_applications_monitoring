@@ -59,7 +59,7 @@ class WatchlistImportTest(OceanBaseTestCase):
             self.assertEqual(self.db.execute(f'SELECT COUNT(*) n FROM {table}').fetchone()['n'],0)
         rows=availability.watched(self.db,group_name=watchlist_import.GROUP)
         self.assertEqual(rows['total'],3)
-        self.assertTrue(all(r['state'] is None and r['enabled'] for r in rows['items']))
+        self.assertTrue(all(r['state']=='unverified' and r['checked_at'] is None and r['enabled'] for r in rows['items']))
         self.assertEqual(availability.watched(self.db,store='apple',country='TH',group_name=watchlist_import.GROUP)['total'],1)
         self.assertEqual(availability.watched(self.db,q='com.loan')['total'],2)
         self.assertEqual(len(Path(result['mapping']).read_text(encoding='utf-8').splitlines()),3)

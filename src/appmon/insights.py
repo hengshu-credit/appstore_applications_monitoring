@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 from .intelligence import market, text, compare_apps
 from .db import dump
 from .app_search import identity_filter, market_joins, LISTING_NAME
+from .listing_status import CURRENT_STATE
 
 
 def event_feed(db, filters, markets=None):
@@ -80,8 +81,13 @@ def add_annotation(db, value):
 
 def app_markets(db, store, app_id):
     market(dict(store=store,app_id=app_id,country='us',language='en'))
-    rows=db.execute('''SELECT l.*,j.failures,j.last_error FROM listings l LEFT JOIN jobs j
-        USING(store,app_id,country,language) WHERE l.store=%s AND l.app_id=%s ORDER BY l.country,l.language''',(store,app_id)).fetchall()
+    rows=db.execute(f'''SELECT l.store,l.app_id,l.country,l.language,{CURRENT_STATE} state,l.checked_at,l.last_success,
+        l.misses,l.payload,l.digest,j.failures,j.last_error FROM listings l LEFT JOIN jobs j USING(store,app_id,country,language)
+        WHERE l.store=%s AND l.app_id=%s UNION ALL
+        SELECT j.store,j.app_id,j.country,j.language,'unverified',NULL,NULL,0,NULL,NULL,j.failures,j.last_error
+        FROM jobs j LEFT JOIN listings l USING(store,app_id,country,language)
+        WHERE j.store=%s AND j.app_id=%s AND j.failures>0 AND l.app_id IS NULL ORDER BY country,language''',
+        (store,app_id,store,app_id)).fetchall()
     for row in rows:
         row['payload']=json.loads(row['payload']) if row['payload'] else None
     return {'items':rows,'scope':'仅展示实际观察过的市场；未列出地区为未知。'}
@@ -105,14 +111,17 @@ def developers(db, store, query=''):
 def developer_apps(db, store, name, developer_id=''):
     if store not in ('apple','google'):
         raise ValueError('未知商店')
-    where="store=%s"
+    where="l.store=%s"
     args=[store]
     if developer_id and developer_id!='null':
         where+=" AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.developer_id'))=%s";args.append(developer_id)
     else:
         where+=" AND JSON_UNQUOTE(JSON_EXTRACT(payload,'$.developer'))=%s";args.append(name)
-    rows=db.execute('SELECT * FROM listings WHERE '+where+' ORDER BY app_id,country,language LIMIT 500',args).fetchall()
-    for row in rows:row['payload']=json.loads(row['payload'])
+    rows=db.execute(f'''SELECT l.*,{CURRENT_STATE} current_state FROM listings l LEFT JOIN jobs j USING(store,app_id,country,language)
+        WHERE '''+where+' ORDER BY l.app_id,l.country,l.language LIMIT 500',args).fetchall()
+    for row in rows:
+        row['payload']=json.loads(row['payload'])
+        row['state']=row.pop('current_state')
     return {'items':rows,'scope':'旗下已观察应用，最多500个地区记录；不代表发行商全部产品。'}
 
 

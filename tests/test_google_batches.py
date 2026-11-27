@@ -40,6 +40,19 @@ def response(calls, payloads):
 
 
 class GoogleBatchParserTest(unittest.TestCase):
+    def test_only_the_requested_storefront_detail_404_is_missing(self):
+        client=Client({},None)
+        job=dict(store='google',app_id='com.sample.app',country='de',language='de')
+        detail='https://play.google.com/store/apps/details?id=com.sample.app&gl=DE&hl=de'
+        for url,body in [(detail,'not found'),(detail,'unusual traffic'),('https://consent.google.com/','not found'),
+                         (detail.replace('gl=DE','gl=US'),'not found'),(detail.replace('com.sample.app','com.other.app'),'not found')]:
+            response=SimpleNamespace(url=url,status_code=404,content=body.encode(),text=body)
+            with self.subTest(url=url,body=body), patch.object(client,'get',return_value=response):
+                if url==detail and body=='not found':
+                    self.assertEqual(client.fetch(job).outcome,'missing')
+                else:
+                    with self.assertRaises(FetchError):client.fetch(job)
+
     def test_envelopes_correlate_out_of_order_and_isolate_missing_or_bad_items(self):
         text=")]}'\n42\n"+json.dumps([['wrb.fr','rpc','[2]',None,None,None,'1']])
         values=parse_frames(text,['rpc','rpc'])

@@ -4,6 +4,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from . import app_groups, app_permissions, intelligence
+from .listing_status import CURRENT_STATE
 from .db import dump
 
 
@@ -18,7 +19,7 @@ def rows(db, cfg, targets, days=30):
         id FOR ORDINALITY, store VARCHAR(16) PATH '$.store', app_id VARCHAR(255) PATH '$.app_id',
         country VARCHAR(8) PATH '$.country', language VARCHAR(32) PATH '$.language'))"""
     args=(dump(markets),)
-    result=db.execute(f'''SELECT m.*,a.name,a.category,l.payload,l.state,l.last_success,
+    result=db.execute(f'''SELECT m.*,a.name,a.category,l.payload,{CURRENT_STATE} state,l.last_success,
         w.enabled,w.refresh_hours,j.failures,j.last_error,j.due,j.lease_until,
         p.id permission_id,p.enabled permission_enabled,p.refresh_hours permission_refresh_hours,
         p.success_at permission_success,p.checked_at permission_checked,p.permission_count,
@@ -37,7 +38,6 @@ def rows(db, cfg, targets, days=30):
         for key in ('rating','ratings','installs'):row[key]=app_groups._number(payload.get(key))
         row['permission_groups']=json.loads(row['permission_groups'] or '[]')
         row['permission_overrides']={}
-        row['state']=row['state'] or 'unverified'
         row['classification']=row['state']
         row['permission_state']=app_permissions.state(row)
         row['details_state']=('not_scheduled' if row['enabled'] is None or row['due'] is None else 'paused' if not row['enabled']

@@ -113,7 +113,7 @@ const newModules = (
     wrappedModule("global-charts.js", "createGlobalCharts"),
     wrappedModule("chart-detail.js", "createChartDetail"),
     wrappedModule("availability.js", "createAvailabilityPage"),
-    wrappedModule("app-detail-table.js", "createAppDetailTable"),
+    wrappedModule("app-detail-table.js", "createAppDetailTable,listingStates"),
     wrappedModule("app-detail-rows.js", "createAppDetailRows"),
     wrappedModule("app-groups.js", "createGroupWorkspace"),
     wrappedModule(

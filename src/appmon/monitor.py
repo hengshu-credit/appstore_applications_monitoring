@@ -10,6 +10,7 @@ from .db import add_apps, claim, dump, enqueue, key, reserve
 from .ingest import disk_check, sync_seed, valid_id
 from .stores import Client, FetchError
 from .catalog import listing_category
+from .listing_status import state_key
 
 log = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ def save_result(db, cfg, job, result=None, error=None, now=None):
             outcome = result.outcome
             due = now + cfg["refresh_hours"] * 3600
             last_success = previous["last_success"] if previous else None
+            previous_state = state_key(previous['state']) if previous else None
             payload = previous["payload"] if previous else None
             digest = previous["digest"] if previous else None
             if outcome == "ok":
@@ -60,7 +62,7 @@ def save_result(db, cfg, job, result=None, error=None, now=None):
                 state, misses, last_success = "available", 0, now
                 if not previous or previous["digest"] is None:
                     events.append(("first_verified", {}))
-                elif previous["state"] == "region_unavailable":
+                elif previous_state == "region_unavailable":
                     events.append(("reappeared", {}))
                 if digest != new_digest:
                     if payload:
@@ -78,13 +80,10 @@ def save_result(db, cfg, job, result=None, error=None, now=None):
                 if payload is not None:
                     from .content_store import put
                     payload = put(db, payload, project=True)
-                misses = (previous["misses"] if previous else 0)
-                # Repeated manual invocations cannot accelerate confirmation.
-                if not previous or not misses or now - previous["checked_at"] >= cfg["missing_recheck_hours"] * 3600:
-                    misses += 1
-                state = "region_unavailable" if misses >= cfg["missing_confirmations"] else "suspected_missing"
+                misses = (previous["misses"] if previous else 0) + 1
+                state = "region_unavailable"
                 due = now + cfg["missing_recheck_hours"] * 3600
-                if state == "region_unavailable" and (not previous or previous["state"] != state):
+                if previous_state != state:
                     events.append(("region_unavailable", {"confirmations": misses, "evidence": raw_path}))
             else:
                 raise ValueError(f"Unknown result outcome: {outcome}")

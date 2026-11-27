@@ -11,6 +11,7 @@ from .task_logs import emit
 from .log_details import diagnostics
 from .source_tasks import KINDS as SOURCE_KINDS
 from . import ad_sources
+from .listing_status import CURRENT_STATE
 
 SOURCES = [
     {'id':'details','name':'应用详情与版本','source':'Apple lookup / Google Play详情','method':'public','cadence':'重点池默认24小时，可配置',
@@ -262,8 +263,8 @@ def quality(db):
             row['kind']=kind or row['kind'];row['resource']='keywords' if kind else 'targets'
             row['stale']=row['success_at'] is None or bool(row['failures']) or now>=row['success_at']+row['refresh_hours']*3600
         targets.extend(rows)
-    rows=db.execute('''SELECT w.*,j.due,j.failures,j.last_error,l.last_success success_at,r.observed_at attempt_at,
-        r.outcome attempt_outcome,l.state FROM watchlist w LEFT JOIN jobs j USING(store,app_id,country,language)
+    rows=db.execute(f'''SELECT w.*,j.due,j.failures,j.last_error,l.last_success success_at,r.observed_at attempt_at,
+        r.outcome attempt_outcome,{CURRENT_STATE} state FROM watchlist w LEFT JOIN jobs j USING(store,app_id,country,language)
         LEFT JOIN listings l USING(store,app_id,country,language)
         LEFT JOIN requests r ON r.id=(SELECT qr.id FROM requests qr WHERE qr.store=w.store AND qr.app_id=w.app_id
             AND qr.country=w.country AND qr.language=w.language ORDER BY qr.id DESC LIMIT 1)

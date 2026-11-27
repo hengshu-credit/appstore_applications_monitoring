@@ -30,6 +30,7 @@ from . import apple_popularity
 from . import app_discovery, app_metrics, availability
 from .collection_batch import PAGE_DUE
 from . import app_groups
+from . import listing_status
 from .stores import FetchError
 from datetime import date, datetime, timezone
 from . import keywords, intelligence as intel, analytics, alerts, exports
@@ -269,7 +270,7 @@ def create_app(cfg):
         base['category_id'] = catalog.category_id(store, base['category'])
         base['category_name'] = catalog.BY_ID[store].get(base['category_id'], {}).get('name')
         key = (store, app_id, country, language)
-        listing = db.execute("SELECT * FROM listings WHERE store=%s AND app_id=%s AND country=%s AND language=%s", key).fetchone()
+        listing = listing_status.listing(db,key)
         snapshots = db.execute("SELECT * FROM snapshots WHERE store=%s AND app_id=%s AND country=%s AND language=%s ORDER BY id DESC LIMIT 100", key).fetchall()
         for row in [*snapshots, *([listing] if listing else [])]:
             row["payload"] = json.loads(row["payload"]) if row["payload"] else None
@@ -515,7 +516,7 @@ def create_app(cfg):
     @api.get("/watchlist")
     def watchlist(store:str="all",country:str="",language:str="",db=DB):
         scope,args=locales.where(store,country,language,'w')
-        return db.execute('''SELECT w.*,a.name,j.due,j.failures,j.last_error,l.state,l.last_success FROM watchlist w JOIN apps a USING(store,app_id) LEFT JOIN jobs j USING(store,app_id,country,language) LEFT JOIN listings l USING(store,app_id,country,language) WHERE '''+scope+' ORDER BY w.id DESC LIMIT 2000',args).fetchall()
+        return db.execute(f'''SELECT w.*,a.name,j.due,j.failures,j.last_error,{listing_status.CURRENT_STATE} state,l.last_success FROM watchlist w JOIN apps a USING(store,app_id) LEFT JOIN jobs j USING(store,app_id,country,language) LEFT JOIN listings l USING(store,app_id,country,language) WHERE '''+scope+' ORDER BY w.id DESC LIMIT 2000',args).fetchall()
 
     @api.post("/watchlist")
     def add_watch(value: dict = Body(...), db=DB):

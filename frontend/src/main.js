@@ -44,6 +44,7 @@ import { createAdTracking } from "./app-ad-tracking.js";
 import { createAvailabilityPage } from "./availability.js";
 import { createGroupWorkspace } from "./app-groups.js";
 import { createAppDetailRows } from "./app-detail-rows.js";
+import { listingStates } from "./app-detail-table.js";
 import "./app-groups.css";
 import { initTheme } from "./theme.js";
 import {
@@ -272,9 +273,7 @@ function table(headers, rows) {
     : empty();
 }
 const stateLabels = {
-  available: "在架观察",
-  region_unavailable: "地区不可用",
-  suspected_missing: "待确认",
+  ...listingStates,
   ok: "成功",
   error: "失败",
   queued: "排队中",
@@ -286,12 +285,12 @@ const stateLabels = {
 function badge(value) {
   const cls = ["error", "region_unavailable"].includes(value)
     ? "error"
-    : ["suspected_missing", "queued", "running"].includes(value)
+    : ["queued", "running"].includes(value)
       ? "warn"
       : value
         ? ""
         : "neutral";
-  return `<span class="badge ${cls}">${esc(stateLabels[value] || value || "未验证")}</span>`;
+  return `<span class="badge ${cls}">${esc(stateLabels[value] || value || "未知")}</span>`;
 }
 function move(value) {
   return value == null
@@ -525,9 +524,7 @@ async function applications(rev, filters = {}, page = 1, limit = 50) {
               type: "panel",
               options: [
                 ["", "全部状态"],
-                ["available", "在架观察"],
-                ["region_unavailable", "地区不可用"],
-                ["suspected_missing", "待确认"],
+                ...Object.entries(listingStates),
               ],
             },
           ],
@@ -697,9 +694,8 @@ async function appDetail(store, id, rev = ++revision, previousProgress = null) {
       )}${appChartRankings(store, data.chart_rankings || [])}${panel("变更时间线", data.events.length ? `<div class="timeline">${data.events.map((r) => `<article><strong>${esc(kindLabel(r.kind))}</strong><div class="sub">${esc(stamp(r.observed_at))}</div><details><summary>查看字段差异</summary>${jsonBlock(JSON.parse(r.changes))}</details></article>`).join("")}</div>` : empty())}${panel("ASO 核查与候选词", '<button id="aso-check" class="secondary">根据已存记录生成建议</button><div id="aso-result" class="spacer"></div>')}`,
       rev,
       [
-        data.listing
-          ? `最近观察 ${stamp(data.listing.last_success)} · ${stateLabels[data.listing.state] || data.listing.state}`
-          : "等待首次采集",
+        `当前状态 · ${listingStates[data.listing?.state] || "未知"}`,
+        data.listing?.checked_at && `最近有效观察 ${stamp(data.listing.checked_at)}`,
         data.job?.last_error && `最近失败 ${data.job.last_error}`,
       ]
         .filter(Boolean)
@@ -1204,10 +1200,7 @@ async function watchlist(rev) {
                 type: "panel",
                 options: [
                   ["", "全部状态"],
-                  ["available", "在架"],
-                  ["suspected_missing", "待复核"],
-                  ["region_unavailable", "地区不可用"],
-                  ["unobserved", "尚未验证"],
+                  ...Object.entries(listingStates),
                 ],
               },
               {

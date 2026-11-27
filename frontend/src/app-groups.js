@@ -1,4 +1,4 @@
-import { createAppDetailTable } from "./app-detail-table.js";
+import { createAppDetailTable, listingStates } from "./app-detail-table.js";
 import { pagination, bindPagination } from "./pagination.js";
 import { filterBar, bindFilterBar } from "./filter-bar.js";
 export function createGroupWorkspace(ctx) {
@@ -25,20 +25,9 @@ export function createGroupWorkspace(ctx) {
       })[id] || id,
     appIconMarkup = () => "",
   } = ctx;
-  const stateNames = {
-    available: "已验证在架",
-    suspected_missing: "本次未检出",
-    region_unavailable: "地区不可用",
-    unverified: "无商店记录",
-  };
-  const classifications = {
-    available: "在架",
-    region_unavailable: "地区不可用",
-    suspected_missing: "商店未检出",
-    unverified: "暂无依据",
-  };
   const sources = {
     store: "商店观察",
+    store_error: "最近一次商店查询失败",
     corroborated: "商店与导入一致",
     reference: "导入记录",
     adjustment: "明细修正",
@@ -156,19 +145,15 @@ export function createGroupWorkspace(ctx) {
       : num(value);
   };
   function countryCard(country) {
-    const states = [
-      ["available", "在架"],
-      ["unverified", "无依据"],
-      ["suspected_missing", "未检出"],
-      ["region_unavailable", "不可用"],
-    ].map(([key, label]) => ({
+    const counts = country.classifications || country.states;
+    const states = Object.entries(listingStates).map(([key, label]) => ({
       key,
       label,
-      count: (country.classifications || country.states)[key] || 0,
+      count: (counts[key] || 0) + (key === "region_unavailable" ? counts.suspected_missing || 0 : 0),
     }));
     const total = states.reduce((sum, state) => sum + state.count, 0);
     const summary = states
-      .map((s) => `${classifications[s.key]} ${num(s.count)}`)
+      .map((s) => `${s.label} ${num(s.count)}`)
       .join("，");
     let start = 0;
     const segments = states
@@ -183,8 +168,8 @@ export function createGroupWorkspace(ctx) {
       <span class="country-heading"><span class="country-name"><img class="country-flag" src="/flags/${esc(country.country)}.svg" alt="" loading="lazy"><strong>${esc(countryName(country.country))}</strong></span><small>${esc(country.country.toUpperCase())}</small></span>
       <span class="country-total"><b title="${num(country.apps)}">${compactCount(country.apps)}</b><small>APP</small></span>
       <svg class="country-status-bar" viewBox="0 0 1000 8" preserveAspectRatio="none" aria-hidden="true"><rect width="1000" height="8" class="country-state-empty"/>${segments}</svg>
-      <span class="country-status-counts">${states.map((s) => `<span class="country-status" title="${esc(classifications[s.key])}：${num(s.count)}"><b>${compactCount(s.count)}</b><small>${s.label}</small></span>`).join("")}</span>
-      <template class="country-detail"><div class="country-hint-heading"><strong>${esc(countryName(country.country))}</strong><span>${num(country.apps)} APP · ${num(country.targets)} 个观察目标</span></div>${states.map((s) => `<div class="country-hint-row"><i class="country-state-${s.key}" aria-hidden="true"></i><span>${esc(classifications[s.key])}</span><b>${num(s.count)}</b><small>${total ? ((s.count / total) * 100).toFixed(1) + "%" : "—"}</small></div>`).join("")}<p>状态按国家 / 语言目标统计</p></template>
+      <span class="country-status-counts">${states.map((s) => `<span class="country-status" title="${esc(s.label)}：${num(s.count)}"><b>${compactCount(s.count)}</b><small>${s.label}</small></span>`).join("")}</span>
+      <template class="country-detail"><div class="country-hint-heading"><strong>${esc(countryName(country.country))}</strong><span>${num(country.apps)} APP · ${num(country.targets)} 个观察目标</span></div>${states.map((s) => `<div class="country-hint-row"><i class="country-state-${s.key}" aria-hidden="true"></i><span>${esc(s.label)}</span><b>${num(s.count)}</b><small>${total ? ((s.count / total) * 100).toFixed(1) + "%" : "—"}</small></div>`).join("")}<p>按国家 / 语言目标统计。查询失败或缺少依据时显示未知。</p></template>
     </button>`;
   }
 
@@ -763,8 +748,7 @@ export function createGroupWorkspace(ctx) {
                   type: "panel",
                   options: [
                     ["", "全部状态"],
-                    ...Object.entries(classifications),
-                    ["error", "采集异常"],
+                    ...Object.entries(listingStates),
                   ],
                 },
                 {
@@ -792,7 +776,7 @@ export function createGroupWorkspace(ctx) {
         .join("")}</div>
       <div id="group-tab-content">${
         tab === "overview"
-          ? `<div class="cards group-kpis">${badge("分组应用", s.apps, `${num(s.targets)} 个国家 / 语言目标`)}${badge("覆盖国家", s.countries, "当前商店与国家范围")}${badge("在架", counts.available || 0, "按当前分组判定")}${badge("暂无依据", counts.unverified || 0, "等待首份有效数据")}${badge("商店未检出", counts.suspected_missing || 0, "最近一次查询未返回应用")}${badge("地区不可用", counts.region_unavailable || 0, "当前国家的分组判定")}</div>
+          ? `<div class="cards group-kpis">${badge("分组应用", s.apps, `${num(s.targets)} 个国家 / 语言目标`)}${badge("覆盖国家", s.countries, "当前商店与国家范围")}${badge("在架", counts.available || 0, "按当前分组判定")}${badge("未知", counts.unverified || 0, "最近查询失败或暂无可用依据")}${badge("地区不可用", (counts.region_unavailable || 0) + (counts.suspected_missing || 0), "当前国家的分组判定")}</div>
           <div class="group-health"><span>48 小时内取得详情：${num(s.fresh)} / ${num(s.targets)}</span><span>采集异常：${num(s.errors)}</span><span>${data.collection.paused ? "采集已全局暂停" : data.collection.cooldown_seconds ? `距离下次可请求：${data.collection.cooldown_seconds} 秒` : "采集开关已启用"}</span><span>看板更新：${stamp(data.observed_at)}</span></div>
           ${panel(
             "各国家应用分布",
@@ -801,7 +785,7 @@ export function createGroupWorkspace(ctx) {
               .map(countryCard)
               .join("")}</div>`,
           )}
-        <div class="cards">${badge("首次验证在架", ev.first_verified || 0, "所选期间去重应用×国家，不等于新发布")}${badge("重新出现", ev.reappeared || 0, "有历史证据的恢复可用")}${badge("确认地区不可用", ev.region_unavailable || 0, "按缺失确认策略产生事件")}${badge("新增关注目标", s.new_members, `近 ${filters.days} 天加入，不等于新上架`)}</div>
+        <div class="cards">${badge("首次验证在架", ev.first_verified || 0, "所选期间去重应用×国家，不等于新发布")}${badge("重新出现", ev.reappeared || 0, "有历史证据的恢复可用")}${badge("确认地区不可用", ev.region_unavailable || 0, "商店首次明确查不到时记录")}${badge("新增关注目标", s.new_members, `近 ${filters.days} 天加入，不等于新上架`)}</div>
         <div class="grid2">${Object.entries(eventNames)
           .map(([kind, label]) =>
             panel(
@@ -955,8 +939,8 @@ export function createGroupWorkspace(ctx) {
       });
     }
     const sections = {
-      overview: `<div class="cards">${panel("分组状态", `<strong>${esc(classifications[r.classification || r.listing?.state || "unverified"])}</strong><p class="sub">${esc(sources[r.classification_source || "unknown"])}</p>`)}${metric("评分", p.rating, "商店最近一次观察")}${metric("评分数", p.ratings, "累计公开评分数量")}${metric("权限声明项", r.permission?.permission_count, permissionNames[r.permission_state])}</div><dl class="detail-facts">${[
-        ["商店实测", stateNames[r.listing?.state || "unverified"]],
+      overview: `<div class="cards">${panel("分组状态", `<strong>${esc(listingStates[r.classification || r.listing?.state] || "未知")}</strong><p class="sub">${esc(sources[r.classification_source || "unknown"])}</p>`)}${metric("评分", p.rating, "商店最近一次观察")}${metric("评分数", p.ratings, "累计公开评分数量")}${metric("权限声明项", r.permission?.permission_count, permissionNames[r.permission_state])}</div><dl class="detail-facts">${[
+        ["商店实测", listingStates[r.listing?.state] || "未知"],
         ["应用 ID", m.app_id],
         ["国家 / 语言", m.country.toUpperCase() + " / " + m.language],
         ["版本", p.version],
@@ -1156,7 +1140,7 @@ export function createGroupWorkspace(ctx) {
       .map(([v, n]) => `<button data-member-tab="${v}">${n}</button>`)
       .join(
         "",
-      )}</div>${(r.markets || []).length > 1 ? `<label>切换本组内的应用市场<select id="group-member-market">${r.markets.map((v) => `<option value="${v.id}" ${v.id === memberId ? "selected" : ""}>${esc(countryName(v.country))} / ${esc(v.language)} · ${esc(stateNames[v.state || "unverified"])}</option>`).join("")}</select></label>` : ""}${can("groups", "write") && can("collection", "write") ? '<button id="group-member-refresh" class="secondary">复核当前应用的详情 / 权限</button>' : ""}<div id="group-member-content"></div>${can("apps") ? `<a class="button secondary" href="#app/${encodeURIComponent(m.store)}/${encodeURIComponent(m.app_id)}?country=${encodeURIComponent(m.country)}&language=${encodeURIComponent(m.language)}">打开完整应用详情</a>` : ""}`;
+      )}</div>${(r.markets || []).length > 1 ? `<label>切换本组内的应用市场<select id="group-member-market">${r.markets.map((v) => `<option value="${v.id}" ${v.id === memberId ? "selected" : ""}>${esc(countryName(v.country))} / ${esc(v.language)} · ${esc(listingStates[v.state] || "未知")}</option>`).join("")}</select></label>` : ""}${can("groups", "write") && can("collection", "write") ? '<button id="group-member-refresh" class="secondary">复核当前应用的详情 / 权限</button>' : ""}<div id="group-member-content"></div>${can("apps") ? `<a class="button secondary" href="#app/${encodeURIComponent(m.store)}/${encodeURIComponent(m.app_id)}?country=${encodeURIComponent(m.country)}&language=${encodeURIComponent(m.language)}">打开完整应用详情</a>` : ""}`;
     el.querySelector("#group-member-market")?.addEventListener(
       "change",
       (event) =>

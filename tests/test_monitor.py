@@ -133,14 +133,22 @@ class MonitorTest(OceanBaseTestCase):
 
     def test_changes_missing_errors_and_reappearance(self):
         self.seed()
+        self.cfg['missing_confirmations'] = 3  # Older deployment configurations must also use the first miss.
         self.complete(100, Result("ok", {"name": "A", "version": "1"}, b"first"))
         self.complete(86500, Result("ok", {"name": "A", "version": "1"}, b"unchanged"))
         self.assertEqual(self.db.execute("SELECT count(*) count FROM snapshots").fetchone()["count"], 1)
         self.complete(172900, Result("ok", {"name": "A", "version": "2"}, b"update"))
         self.complete(259300, Result("missing", raw=b"missing"))
+        missing = self.db.execute("SELECT state,misses,last_success FROM listings").fetchone()
+        self.assertEqual(missing, {"state":"region_unavailable", "misses":1, "last_success":172900})
+        event = self.db.execute("SELECT observed_at,changes FROM events WHERE kind='region_unavailable'").fetchone()
+        self.assertEqual((event["observed_at"],json.loads(event["changes"])["confirmations"]),(259300,1))
         self.complete(345700, error=FetchError("HTTP 429", 900))
         row = self.db.execute("SELECT * FROM listings").fetchone()
-        self.assertEqual((row["misses"], row["state"]), (1, "suspected_missing"))
+        self.assertEqual((row["misses"], row["state"], json.loads(row['payload'])['version']), (1, "region_unavailable", "2"))
+        from appmon.availability import report
+        scope=dict(store="google", country="us", language="en")
+        self.assertEqual([(c['state'],c['count']) for c in report(self.db,scope)['counts']],[('unverified',1)])
         self.complete(346600, Result("missing"))
         self.complete(433000, Result("missing"))
         self.assertEqual(self.db.execute("SELECT state FROM listings").fetchone()["state"], "region_unavailable")
@@ -155,7 +163,7 @@ class MonitorTest(OceanBaseTestCase):
         gb = claim(self.db, ["gb"], "en", 60, 100)
         save_result(self.db, self.cfg, gb, Result("missing"), now=100)
         states = {r["country"]: r["state"] for r in self.db.execute("SELECT country,state FROM listings")}
-        self.assertEqual(states, {"us": "available", "gb": "suspected_missing"})
+        self.assertEqual(states, {"us": "available", "gb": "region_unavailable"})
 
     def test_rate_reservations_shared_across_connections(self):
         other = connect(self.cfg)
@@ -183,6 +191,10 @@ class MonitorTest(OceanBaseTestCase):
         self.assertEqual(result["error"], 1)
         self.assertEqual(self.db.execute("SELECT count(*) count FROM listings").fetchone()["count"], 0)
         self.assertEqual(status(self.db)["jobs"]["retrying"], 1)
+        from appmon.availability import report
+        availability=report(self.db,dict(store='google',country='us',language='en'))
+        self.assertEqual([(c['state'],c['count']) for c in availability['counts']], [('unverified',1)])
+        self.assertEqual(availability['events'],[])
 
     def test_bad_apple_json_is_error_not_missing(self):
         client = Client(self.cfg, self.db)

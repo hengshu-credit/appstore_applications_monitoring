@@ -5,6 +5,7 @@ import gzip
 import math
 from pathlib import Path
 from datetime import datetime, timezone
+from .listing_status import CURRENT_STATE
 
 DEFINITIONS = [
     ('top-free','免费榜','top-free'),('top-paid','付费榜','top-paid'),('top-grossing','畅销榜','top-grossing'),
@@ -184,8 +185,9 @@ def detail(db,store,country,language,collection='top-free',category='',as_of=Non
                 FROM snapshots WHERE store=%s AND country=%s AND language=%s AND observed_at<=%s AND app_id IN ({marks})
                 ) s WHERE rn=1''',(store,country,language,report['latest_success']['observed_at'],*ids)).fetchall()
         else:
-            rows=db.execute(f'''SELECT app_id,payload,last_success observed_at,state FROM listings
-                WHERE store=%s AND country=%s AND language=%s AND app_id IN ({marks})''',(store,country,language,*ids)).fetchall()
+            rows=db.execute(f'''SELECT l.app_id,l.payload,l.last_success observed_at,{CURRENT_STATE} state FROM listings l
+                LEFT JOIN jobs j USING(store,app_id,country,language)
+                WHERE l.store=%s AND l.country=%s AND l.language=%s AND l.app_id IN ({marks})''',(store,country,language,*ids)).fetchall()
         metadata={r['app_id']:r|{'payload':json.loads(r['payload'] or '{}')} for r in rows}
     enriched=[]
     for item in items:

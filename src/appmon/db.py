@@ -364,6 +364,7 @@ def reserve(db, name, interval, now=None):
 
 
 def status(db):
+    from .listing_status import counts
     now = time.time()
     return {
         'at': now, 'storage': 'oceanbase',
@@ -373,9 +374,8 @@ def status(db):
             CAST(coalesce(sum(due<=%s AND lease_until<=%s),0) AS UNSIGNED) due,
             CAST(coalesce(sum(lease_until>%s),0) AS UNSIGNED) leased,
             CAST(coalesce(sum(failures>0),0) AS UNSIGNED) retrying FROM jobs''', (now, now, now)).fetchone(),
-        'listings': list(db.execute('''SELECT store,country,language,state,count(*) count,
-            max(last_success) newest_success,min(last_success) oldest_success
-            FROM listings GROUP BY store,country,language,state''')),
+        'listings': [dict(store=r['store'],country=r['country'],language=r['language'],state=r['state'],
+                          count=r['count'],newest_success=r['last_success'],oldest_success=r['oldest_success']) for r in counts(db,now)],
         'freshness': list(db.execute('''SELECT store,country,language,count(*) observed,
             CAST(coalesce(sum(last_success>=%s),0) AS UNSIGNED) succeeded_last_24h,
             CAST(coalesce(sum(last_success IS NULL),0) AS UNSIGNED) never_succeeded

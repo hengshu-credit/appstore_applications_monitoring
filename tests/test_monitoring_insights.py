@@ -27,6 +27,19 @@ class MonitoringRulesTest(unittest.TestCase):
 
 
 class MonitoringDataTest(OceanBaseTestCase):
+    def test_market_unknown_combines_failed_and_unchecked_watches_once(self):
+        from appmon.intelligence import watch
+        m=dict(store='apple',country='us',language='en')
+        for app_id in ('111','222'):
+            watch(self.db,m|{'app_id':app_id})
+        self.db.execute("UPDATE jobs SET failures=1,last_error='ReadTimeout' WHERE app_id='111'")
+        report=availability.report(self.db,m)
+        self.assertEqual([(r['state'],r['count']) for r in report['counts']],[('unverified',2)])
+        self.assertEqual(report['unobserved_watched'],1)
+        self.assertEqual([r['app_id'] for r in report['pending']],['111'])
+        availability.record_daily(self.db)
+        self.assertEqual(availability.report(self.db,m)['history'][-1]['counts']['unverified'],{'count':2,'fresh':0})
+
     def test_availability_snapshots_are_scoped_throttled_and_do_not_backfill(self):
         now=time.time();m=dict(store='apple',country='us',language='en')
         add_apps(self.db,[('apple','123','Example',None)],'test')
@@ -36,8 +49,12 @@ class MonitoringDataTest(OceanBaseTestCase):
         self.assertEqual(availability.record_daily(self.db,now+60),0)
         r=availability.report(self.db,m)
         self.assertEqual(len(r['history']),1)
-        self.assertEqual(r['counts'][0]['state'],'suspected_missing')
-        self.assertEqual(len(r['pending']),1)
+        self.assertEqual(r['counts'][0]['state'],'region_unavailable')
+        self.assertEqual(r['history'][0]['counts'],{'region_unavailable':{'count':1,'fresh':1},'unverified':{'count':0,'fresh':0}})
+        self.assertEqual(r['pending'],[])
+        self.db.execute("UPDATE availability_daily SET counts=%s",(dump({
+            'suspected_missing':{'count':2,'fresh':1},'region_unavailable':{'count':3,'fresh':2}}),))
+        self.assertEqual(availability.report(self.db,m)['history'][0]['counts'],{'region_unavailable':{'count':5,'fresh':3}})
         self.assertEqual(availability.report(self.db,m|{'country':'gb'})['history'],[])
         self.db.execute("UPDATE listings SET state='available',misses=0")
         availability.record_daily(self.db,now+3601)

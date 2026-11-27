@@ -76,11 +76,6 @@ export function createResearchPages(ctx) {
     region_unavailable: "地区不可用",
     reappeared: "重新出现",
   };
-  const stateNames = {
-    available: "已观察在架",
-    suspected_missing: "待确认",
-    region_unavailable: "地区不可用",
-  };
   const fieldNames = {
     name: "名称",
     version: "版本",

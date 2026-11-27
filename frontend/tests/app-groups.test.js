@@ -1,5 +1,5 @@
 import { pagination, bindPagination } from "../src/pagination.js";
-import { createAppDetailTable } from "../src/app-detail-table.js";
+import { createAppDetailTable, listingStates } from "../src/app-detail-table.js";
 import { filterBar, bindFilterBar } from "../src/filter-bar.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -88,6 +88,7 @@ function setup(handler = () => undefined, write = true, overrides = {}) {
   window.filterBar = filterBar;
   window.bindFilterBar = bindFilterBar;
   window.createAppDetailTable = createAppDetailTable;
+  window.listingStates = listingStates;
   window.eval(source + ";window.createGroupWorkspace=createGroupWorkspace;");
   const esc = (value) =>
     String(value ?? "")
@@ -178,7 +179,7 @@ test("group dashboard drills through countries and keeps unknown observations se
     await tick();
     assert.match(
       c.doc.querySelector("#group-dialog").textContent,
-      /无商店记录/,
+      /未知/,
     );
     assert.ok(
       !c.doc.querySelector("#group-dialog").textContent.includes("NaN"),
@@ -201,16 +202,17 @@ test("group overview separates unchecked targets and clears hidden list filters"
     const cards = [...c.doc.querySelectorAll(".group-kpis article")];
     assert.equal(
       cards
-        .find((e) => e.textContent.startsWith("暂无依据"))
-        .querySelector("strong").textContent,
+        .find((e) => e.textContent.startsWith("未知"))
+        ?.querySelector("strong").textContent,
       "3",
     );
     assert.equal(
       cards
-        .find((e) => e.textContent.startsWith("商店未检出"))
+        .find((e) => e.textContent.startsWith("地区不可用"))
         .querySelector("strong").textContent,
       "0",
     );
+    assert.equal(cards.length, 5);
     assert.equal(c.doc.querySelector('[name="state"]'), null);
     c.doc.querySelector('[data-group-country="th"]').click();
     await tick();
@@ -275,7 +277,7 @@ test("country charts show observed status proportions and keep imported referenc
     assert.equal(card.querySelector(".country-targets"), null);
     assert.deepEqual(
       [...card.querySelectorAll(".country-status b")].map((e) => e.textContent),
-      ["4", "3", "2", "1"],
+      ["4", "3", "3"],
     );
     card.dispatchEvent(new c.window.Event("pointerenter"));
     const hint = c.doc.querySelector("#group-country-hint");
@@ -285,26 +287,27 @@ test("country charts show observed status proportions and keep imported referenc
       [...hint.querySelectorAll(".country-hint-row b")].map(
         (e) => e.textContent,
       ),
-      ["4", "3", "2", "1"],
+      ["4", "3", "3"],
     );
     const bars = [
       ...card.querySelectorAll("svg rect:not(.country-state-empty)"),
     ];
     assert.deepEqual(
       bars.map((e) => Number(e.getAttribute("width"))),
-      [400, 300, 200, 100],
+      [400, 300, 300],
     );
     assert.deepEqual(
       bars.map((e) => Number(e.getAttribute("x"))),
-      [0, 400, 700, 900],
+      [0, 400, 700],
     );
     assert.match(card.getAttribute("aria-label"), /在架 4/);
+    assert.match(card.getAttribute("aria-label"), /未知 3，地区不可用 3/);
     assert.ok(!card.textContent.includes("99"));
     assert.deepEqual(
       [...hint.querySelectorAll(".country-hint-row small")].map(
         (e) => e.textContent,
       ),
-      ["40.0%", "30.0%", "20.0%", "10.0%"],
+      ["40.0%", "30.0%", "30.0%"],
     );
     card.dispatchEvent(new c.window.Event("pointerleave"));
     assert.equal(hint.hidden, true);

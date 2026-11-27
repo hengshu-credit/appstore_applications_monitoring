@@ -17,6 +17,11 @@ def permission_bytes(value):
 
 
 class GroupRulesTest(unittest.TestCase):
+    def test_single_legacy_miss_takes_precedence_over_an_imported_on_label(self):
+        self.assertEqual(groups.resolve_state('suspected_missing','on'),('region_unavailable','store'))
+        self.assertEqual(groups.resolve_state('suspected_missing',None),('region_unavailable','store'))
+        self.assertEqual(groups.resolve_state('suspected_missing','off'),('region_unavailable','corroborated'))
+
     def test_permissions_parse_rpc_and_distinguish_missing_from_empty(self):
         raw=permission_bytes([[['Camera',None,[[None,'take pictures and videos']],None],['Location',None,[[None,'precise location']],None]]])
         self.assertEqual(app_permissions.parse(raw),{'Camera':['take pictures and videos'],'Location':['precise location']})
@@ -111,6 +116,32 @@ class GroupDashboardTest(OceanBaseTestCase):
         self.assertEqual(self.db.execute("SELECT count(*) n FROM jobs WHERE country='vn'").fetchone()['n'],0)
         self.assertEqual(self.db.execute("SELECT due,token,lease_until FROM jobs WHERE store='apple'").fetchone(),{'due':123456,'token':'owned','lease_until':777})
 
+    def test_failed_lookup_is_unknown_across_group_filters_and_detail_rows(self):
+        from appmon import app_details, scoped_views, availability
+        gid=self.seed()['id']
+        m=dict(store='google',app_id='com.loan.example',country='th',language='en')
+        groups.import_references(self.db,[m|{'source_status':'on'},m|{'country':'vn','source_status':'on'}])
+        self.db.execute("""INSERT INTO listings(store,app_id,country,language,state,checked_at,last_success,payload)
+            VALUES('google','com.loan.example','th','en','available',100,100,'{"name":"Saved title"}')""")
+        self.db.execute("UPDATE jobs SET failures=1,last_error='ReadTimeout' WHERE store='google'")
+        view=groups.dashboard(self.db,self.cfg,gid,classification='unverified')
+        self.assertEqual(view['stats']['classifications'],{'unverified':3})
+        th=next(r for r in view['items'] if r['country']=='th' and r['store']=='google')
+        self.assertEqual((th['state'],th['classification_source'],th['last_error']),('unverified','store_error','ReadTimeout'))
+        detail=groups.member_detail(self.db,gid,th['id'])
+        self.assertEqual((detail['classification'],detail['listing']['state'],detail['listing']['payload']['name']),
+                         ('unverified','unverified','Saved title'))
+        self.assertEqual({r['state'] for r in detail['markets']},{'unverified'})
+        self.assertEqual(app_details.rows(self.db,self.cfg,[m])['items'][0]['classification'],'unverified')
+        apps=scoped_views.apps(self.db,store='google',country='th',language='en',state='unverified')['items']
+        self.assertEqual([(r['app_id'],r['state']) for r in apps],[(m['app_id'],'unverified')])
+        from appmon.insights import app_markets
+        markets=app_markets(self.db,m['store'],m['app_id'])['items']
+        self.assertEqual([(r['country'],r['state']) for r in markets],[('th','unverified'),('vn','unverified')])
+        self.assertEqual(availability.watched(self.db,store='google',state='unverified')['total'],2)
+        groups.adjust_member(self.db,gid,th['id'],dict(revision=0,status_override='available',permission_overrides={}), 'editor')
+        self.assertEqual(groups.member_detail(self.db,gid,th['id'])['classification'],'available')
+
     def test_classification_uses_store_reference_and_scoped_reversible_adjustments(self):
         owner=self.seed();gid=owner['id'];now=time.time()
         common=dict(store='google',app_id='com.loan.example',language='en')
@@ -120,7 +151,7 @@ class GroupDashboardTest(OceanBaseTestCase):
         before=groups.dashboard(self.db,self.cfg,gid)
         th=next(r for r in before['items'] if r['country']=='th' and r['store']=='google')
         vn=next(r for r in before['items'] if r['country']=='vn')
-        self.assertEqual((th['classification'],th['classification_source'],th['state']),('region_unavailable','corroborated','suspected_missing'))
+        self.assertEqual((th['classification'],th['classification_source'],th['state']),('region_unavailable','corroborated','region_unavailable'))
         self.assertEqual((vn['classification'],vn['classification_source']),('available','reference'))
         self.assertEqual(before['stats']['classifications'],{'region_unavailable':1,'unverified':1,'available':1})
         second=groups.create(self.db,{'name':'另一组'});groups.add_members(self.db,second['id'],{'members':[common|{'country':'th'}]})

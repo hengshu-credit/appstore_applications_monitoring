@@ -1,3 +1,4 @@
+import { listingStates } from "./app-detail-table.js";
 import { pagination, bindPagination } from "./pagination.js";
 import { filterBar, bindFilterBar } from "./filter-bar.js";
 export function createAvailabilityPage(ctx) {
@@ -19,11 +20,6 @@ export function createAvailabilityPage(ctx) {
     toast,
     nextRevision,
   } = ctx;
-  const labels = {
-    available: "已观察在架",
-    suspected_missing: "待复核",
-    region_unavailable: "地区不可用",
-  };
   const names = {
     first_verified: "首次验证",
     reappeared: "重新出现",
@@ -40,7 +36,7 @@ export function createAvailabilityPage(ctx) {
         qs({ ...watchedFilters, offset: watchedOffset, limit: 100 }),
     );
     if (!anchor?.isConnected || revision !== watchedRevision) return;
-    anchor.innerHTML = `<p class="sub">名单跟随顶部商店与国家，包含该国全部请求语言。未验证不代表下架；跨国分类看板请进入<a href="#groups">应用分组</a>。</p>
+    anchor.innerHTML = `<p class="sub">名单跟随顶部商店与国家，包含该国全部请求语言。未知表示查询失败或暂无观察依据。跨国分类看板请进入<a href="#groups">应用分组</a>。</p>
       ${filterBar({
         id: "watched-filter", appScope: "country",
         values: watchedFilters,
@@ -103,15 +99,15 @@ export function createAvailabilityPage(ctx) {
     if (
       !mount(
         `<a class="button secondary" data-workspace-action href="#groups">应用分组看板</a><div class="cards">${Object.entries(
-          labels,
+          listingStates,
         )
           .map(([s, label]) =>
-            metric(label, count(s), "最近有效状态，含待刷新记录"),
+            metric(label, count(s), s === "unverified" ? `查询失败或缺少依据，含 ${num(r.unobserved_watched)} 个待首次查询目标` : "按最近一次商店查询统计"),
           )
           .join(
             "",
-          )}${metric("未验证的重点应用", r.unobserved_watched, "当前市场已启用但尚无观察")}</div>${panel("观察范围与新鲜度", `${filterBar({ id: "availability-period", submit: "查看", values: { days }, fields: [{ name: "days", label: "趋势区间", type: "select", options: [7, 30, 90, 365].map((n) => [n, `最近${n}天`]) }], actions: '<a class="button secondary" href="#collection">管理采集与复核</a>' })}<p class="sub">${esc(r.scope)}</p><p>统计时间 ${stamp(r.observed_at)} · 最近48小时检查 ${num(r.counts.reduce((s, c) => s + Number(c.fresh), 0))} / 已观察 ${num(r.counts.reduce((s, c) => s + c.count, 0))} 个应用。请求失败保留原状态。</p>`)}<div class="grid2">${Object.entries(
-          labels,
+          )}</div>${panel("观察范围与新鲜度", `${filterBar({ id: "availability-period", submit: "查看", values: { days }, fields: [{ name: "days", label: "趋势区间", type: "select", options: [7, 30, 90, 365].map((n) => [n, `最近${n}天`]) }], actions: '<a class="button secondary" href="#collection">管理采集与复核</a>' })}<p class="sub">${esc(r.scope)}</p><p>统计时间 ${stamp(r.observed_at)} · 最近48小时有效观察 ${num(r.counts.reduce((s, c) => s + Number(c.fresh), 0))} / 共 ${num(r.counts.reduce((s, c) => s + c.count, 0))} 个市场目标。商店明确查不到即标记地区不可用，查询失败显示未知。</p>`)}<div class="grid2">${Object.entries(
+          listingStates,
         )
           .map(([state, label]) =>
             panel(
@@ -123,8 +119,8 @@ export function createAvailabilityPage(ctx) {
                     chart(
                       part.history.map((h) => ({
                         at: h.day,
-                        value: h.counts[state]?.count || 0,
-                        note: `${label} · 快照采集 ${stamp(h.observed_at)} · 最近48小时检查 ${h.counts[state]?.fresh || 0}`,
+                        value: h.counts[state]?.count ?? (state === "unverified" ? null : 0),
+                        note: `${label} · 快照采集 ${stamp(h.observed_at)} · 最近48小时有效观察 ${h.counts[state]?.fresh || 0}`,
                       })),
                     ),
                 )
@@ -133,10 +129,10 @@ export function createAvailabilityPage(ctx) {
           )
           .join(
             "",
-          )}${panel("区间采集结果", bars(r.attempts.map((a) => ({ label: { ok: "成功访问", missing: "单次未查到", error: "采集失败" }[a.outcome] || a.outcome, count: a.count }))))}</div>${panel(
-          "待复核与采集异常",
-          `<p class="sub">最近最多${r.limit}条。缺失次数须满足采集配置的次数和间隔，网络错误单独重试。</p>${table(
-            ["应用", "有效状态", "已计入缺失次数", "最近检查", "采集错误"],
+          )}${panel("区间采集结果", bars(r.attempts.map((a) => ({ label: { ok: "成功访问", missing: "地区不可用", error: "采集失败" }[a.outcome] || a.outcome, count: a.count }))))}</div>${panel(
+          "查询失败的应用",
+          `<p class="sub">最近最多${r.limit}条。按失败次数排序，错误原因保留供排查。</p>${table(
+            ["应用", "当前状态", "失败次数", "上次取得详情", "采集错误"],
             r.pending.map((a) => [
               appLink(
                 a.store || m.store,
@@ -146,9 +142,9 @@ export function createAvailabilityPage(ctx) {
                 a.country,
                 a.language,
               ),
-              esc(labels[a.state] || a.state),
-              num(a.misses),
-              stamp(a.checked_at),
+              esc(listingStates[a.state] || "未知"),
+              num(a.failures),
+              stamp(a.last_success),
               esc(a.last_error || "—"),
             ]),
           )}`,

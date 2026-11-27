@@ -3,7 +3,8 @@ data_dir = "data"
 countries = ["us"]
 language = "en"
 refresh_hours = 24
-missing_confirmations = 3
+# Read by older collector images. The current rule always uses the first explicit store miss.
+missing_confirmations = 1
 missing_recheck_hours = 24
 lease_seconds = 600
 timeout_seconds = 30

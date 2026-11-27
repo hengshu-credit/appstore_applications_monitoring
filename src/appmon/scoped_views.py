@@ -5,6 +5,7 @@ from datetime import date,datetime,timezone
 from . import locales,catalog,insights,review_desk
 from .ingest import valid_id
 from .app_search import LISTING_NAME, identity_filter
+from . import listing_status
 
 
 def overview(db,store='all'):
@@ -16,8 +17,7 @@ def overview(db,store='all'):
     counts['unread_alerts']=db.execute('SELECT count(*) n FROM alerts WHERE acknowledged=0 AND '+alert_scope,selected).fetchone()['n']
     events_scope,events_args=locales.where(store,alias='e')
     return {'counts':counts,'at':time.time(),'stores':selected,
-        'freshness':db.execute('''SELECT store,country,language,state,count(*) count,max(last_success) last_success
-            FROM listings WHERE '''+scope+' GROUP BY store,country,language,state',args).fetchall(),
+        'freshness':listing_status.counts(db,time.time(),store),
         'recent_events':db.execute('SELECT e.*,a.name FROM events e LEFT JOIN apps a USING(store,app_id) WHERE '+events_scope+' ORDER BY e.id DESC LIMIT 20',events_args).fetchall(),
         'worker':db.execute("SELECT next_at FROM schedules WHERE name='console-heartbeat'").fetchone(),
         'failures':{table:db.execute(f'SELECT id,store,last_error,failures FROM {table} WHERE failures>0 AND {scope} ORDER BY id DESC LIMIT 20',args).fetchall() for table in ('keyword_targets','observation_targets')}}
@@ -119,7 +119,7 @@ def apps(db,*,store='',country='us',language='en',q='',category='',developer='',
                 'effective_languages':{s:locales.language_for(s,country,language) for s in selected}}
     store=selected[0];language=locales.language_for(store,country,language)
     clauses=['a.store=%s'];args=[country,language,store]
-    if state:clauses.append('l.state=%s');args.append(state)
+    if state:clauses.append(listing_status.CURRENT_STATE+'=%s');args.append(listing_status.state_key(state))
     if category:
         aliases=catalog.category_aliases(store,category);marks=','.join('%s' for _ in aliases)
         clauses.append(f'(a.category IS NULL OR a.category NOT IN ({marks}))' if category=='__unknown__' else f'a.category IN ({marks})');args.extend(aliases)
@@ -149,12 +149,14 @@ def apps(db,*,store='',country='us',language='en',q='',category='',developer='',
             clauses.append(f"((JSON_TYPE({path}) IN ('INTEGER','DOUBLE') AND CAST(JSON_UNQUOTE({path}) AS DECIMAL(20,6))>=%s) OR (JSON_UNQUOTE({path}) REGEXP '^[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}' AND LEFT(JSON_UNQUOTE({path}),10)>=%s))");args.extend([epoch,minimum])
     if after_store or after_id:clauses.append('(a.store,a.app_id)>(%s,%s)');args.extend([after_store,after_id])
     join=" FROM apps a LEFT JOIN listings l ON a.store=l.store AND a.app_id=l.app_id AND l.country=%s AND l.language=%s"
+    if state or not _count:
+        join+=" LEFT JOIN jobs j ON j.store=l.store AND j.app_id=l.app_id AND j.country=l.country AND j.language=l.language"
     where=' WHERE '+' AND '.join(clauses)
     if _count:
         needs_listing=any('l.' in clause for clause in clauses)
         return db.execute('SELECT /*+ MAX_EXECUTION_TIME(15000) */ COUNT(*) n'+(join if needs_listing else ' FROM apps a')+where,
                           args if needs_listing else args[2:]).fetchone()['n']
-    rows=db.execute('SELECT /*+ MAX_EXECUTION_TIME(15000) */ a.*,l.state,l.last_success,l.checked_at,l.payload'+join+where+
+    rows=db.execute(f'SELECT /*+ MAX_EXECUTION_TIME(15000) */ a.*,{listing_status.CURRENT_STATE} state,l.last_success,l.checked_at,l.payload'+join+where+
                     ' ORDER BY a.store,a.app_id LIMIT %s OFFSET %s',(*args,limit+1,_offset)).fetchall()
     more=len(rows)>limit;rows=rows[:limit]
     for row in rows:

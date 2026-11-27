@@ -119,11 +119,6 @@
     var(--accent-text) 16%,
     var(--line-soft)
   );
-  --country-pending: color-mix(
-    in srgb,
-    var(--chart-secondary) 64%,
-    var(--surface)
-  );
   --country-unavailable: color-mix(in srgb, var(--accent-text) 55%, var(--ink));
 }
 .group-country {
@@ -192,9 +187,6 @@
 }
 .country-state-unverified {
   --state-color: var(--country-unverified);
-}
-.country-state-suspected_missing {
-  --state-color: var(--country-pending);
 }
 .country-state-region_unavailable {
   --state-color: var(--country-unavailable);
@@ -292,7 +284,7 @@
 }
 @media (min-width: 1800px) {
   .group-kpis {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
   .group-kpis .metric {
     padding: 16px;
@@ -350,7 +342,7 @@
 
 .country-status-counts {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 .country-status {
@@ -709,9 +701,6 @@
 }
 .member-state[data-status="region_unavailable"]::before {
   background: var(--red);
-}
-.member-state[data-status="suspected_missing"]::before {
-  background: var(--warning-text);
 }
 .permission-mark {
   display: inline-block;

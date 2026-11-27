@@ -8,7 +8,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from urllib.parse import unquote_plus, urlsplit
+from urllib.parse import parse_qs, unquote_plus, urlsplit
 
 import requests
 
@@ -191,16 +191,22 @@ class Client:
             from appgoblin_play_scraper.features.app import parse_dom
             r = self.get(store, "https://play.google.com/store/apps/details",
                          {"id": app_id, "gl": job["country"], "hl": job["language"]})
-            if r.status_code == 404:
-                return Result("missing", raw=r.content)
             if "consent.google" in r.url or "recaptcha" in r.text.lower() or "unusual traffic" in r.text.lower():
                 raise FetchError("Google consent or challenge page")
+            if r.status_code == 404:
+                final = urlsplit(r.url)
+                params = parse_qs(final.query)
+                if (final.scheme != 'https' or final.netloc != 'play.google.com' or final.path.rstrip('/') != '/store/apps/details'
+                        or params.get('id') != [app_id] or [v.lower() for v in params.get('gl',[])] != [job['country'].lower()]
+                        or [v.lower().replace('_','-') for v in params.get('hl',[])] != [job['language'].lower().replace('_','-')]):
+                    raise FetchError("Google detail 404 could not be matched to the requested app and market")
+                return Result("missing", raw=r.content)
             try:
                 app = parse_dom(r.text, app_id, r.url)
                 if not app.get("title") or app.get("appId") != app_id:
                     raise ValueError("Missing title")
             except Exception as e:
-                raise FetchError("Google parser failed; retain previous state") from e
+                raise FetchError("Google detail response could not be parsed") from e
             mapping = GOOGLE_MAPPING
         payload = detail_payload(app,mapping,app_id)
         return Result("ok", payload, r.content)

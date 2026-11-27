@@ -1,5 +1,7 @@
 import { storeLogo } from "./icons.js";
 
+export const listingStates = { available: "在架", unverified: "未知", region_unavailable: "地区不可用" };
+
 let sequence = 0;
 export function createAppDetailTable(ctx) {
   const {
@@ -17,18 +19,6 @@ export function createAppDetailTable(ctx) {
     appIconMarkup = () => "",
   } = ctx;
   const storeName = (s) => (s === "apple" ? "App Store" : "Google Play");
-  const stateNames = {
-    available: "已验证在架",
-    suspected_missing: "本次未检出",
-    region_unavailable: "地区不可用",
-    unverified: "无商店记录",
-  };
-  const classifications = {
-    available: "在架",
-    region_unavailable: "地区不可用",
-    suspected_missing: "商店未检出",
-    unverified: "暂无依据",
-  };
   const permissionNames = {
     ok: "已采集",
     pending: "待采集",
@@ -183,7 +173,7 @@ export function createAppDetailTable(ctx) {
     );
     add("state", "状态", "状态监控", (r) => {
       const state = r.classification || r.state || "unverified";
-      return `<span class="member-state" data-status="${esc(state)}" title="${esc(stateNames[r.state] || "")}">${esc(classifications[state])}</span>`;
+      return `<span class="member-state" data-status="${esc(state)}" title="商店实测 · ${esc(listingStates[r.state] || "未知")}">${esc(listingStates[state] || "未知")}</span>`;
     });
     add(
       "task",

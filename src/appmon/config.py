@@ -43,7 +43,7 @@ def load(path="config.toml"):
             raise ValueError(f'{key} must be between {low} and {high}')
     for key in ("refresh_hours", "missing_recheck_hours", "lease_seconds", "timeout_seconds",
                 "google_interval_seconds", "apple_interval_seconds", "batch_size",
-                "missing_confirmations", "discovery_hours", "seed_sync_hours"):
+                "discovery_hours", "seed_sync_hours"):
         if cfg[key] <= 0:
             raise ValueError(f"{key} must be positive")
     if cfg["lease_seconds"] < cfg["timeout_seconds"] * 2:

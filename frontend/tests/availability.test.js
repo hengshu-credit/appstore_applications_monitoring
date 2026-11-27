@@ -1,4 +1,4 @@
-import { createAppDetailTable } from "../src/app-detail-table.js";
+import { createAppDetailTable, listingStates } from "../src/app-detail-table.js";
 import { pagination, bindPagination } from "../src/pagination.js";
 import { filterBar, bindFilterBar } from "../src/filter-bar.js";
 import { test } from "node:test";
@@ -19,7 +19,7 @@ test("availability keeps classified watches in the header market and paginates r
     calls = [];
   let market = { store: "all", country: "th", language: "en" };
   doc.body.innerHTML = "<main></main>";
-  Object.assign(window, { pagination, bindPagination });
+  Object.assign(window, { pagination, bindPagination, listingStates });
   window.filterBar = filterBar;
   window.bindFilterBar = bindFilterBar;
   window.eval(source + ";window.createPage=createAvailabilityPage;");
@@ -104,7 +104,7 @@ test("availability keeps classified watches in the header market and paginates r
     const panel = doc.querySelector("#availability-watched");
     assert.match(panel.textContent, /2132/);
     assert.match(panel.textContent, /现金贷类APP/);
-    assert.match(panel.textContent, /未验证/);
+    assert.match(panel.textContent, /未知/);
     assert.equal(panel.querySelector('img[src="x"]'), null);
     assert.equal(
       panel.querySelector(".country-flag").getAttribute("src"),

@@ -10,7 +10,7 @@ import pymysql
 from .db import add_apps, dump
 from .catalog import listing_category
 from .intelligence import market, text
-from . import app_permissions, metric_facts
+from . import app_permissions, metric_facts, listing_status
 from . import developer_refs
 
 
@@ -169,16 +169,17 @@ def _number(value):
     except (ValueError,TypeError):return None
 
 
-def resolve_state(observed, reference, override=None):
+def resolve_state(observed, reference, override=None, failures=0):
     """Derive a group display decision while keeping its evidence and origin separate."""
     if override:
         return override, 'adjustment'
+    if failures:
+        return 'unverified', 'store_error'
+    observed = listing_status.state_key(observed)
+    if observed == 'region_unavailable' and reference == 'off':
+        return observed, 'corroborated'
     if observed in ('available', 'region_unavailable'):
         return observed, 'store'
-    if observed == 'suspected_missing':
-        if reference == 'off':
-            return 'region_unavailable', 'corroborated'
-        return 'suspected_missing', 'store'
     if reference in ('on', 'off'):
         return ('available' if reference == 'on' else 'region_unavailable'), 'reference'
     return 'unverified', 'unknown'
@@ -235,7 +236,7 @@ def adjust_member(db, identifier, member_id, value, actor):
 
 def member_rows(db, identifier, store='all'):
     where,args=_scope(identifier,store)
-    rows=db.execute('''SELECT m.*,a.name,JSON_UNQUOTE(JSON_EXTRACT(l.payload,'$.name')) listing_name,a.category,w.enabled,w.refresh_hours,l.state,l.checked_at,l.last_success,
+    rows=db.execute(f'''SELECT m.*,a.name,JSON_UNQUOTE(JSON_EXTRACT(l.payload,'$.name')) listing_name,a.category,w.enabled,w.refresh_hours,{listing_status.CURRENT_STATE} state,l.checked_at,l.last_success,
         j.failures,j.last_error,j.due,j.lease_until,
         JSON_UNQUOTE(JSON_EXTRACT(l.payload,'$.rating')) rating,
         JSON_UNQUOTE(JSON_EXTRACT(l.payload,'$.ratings')) ratings,
@@ -256,8 +257,7 @@ def member_rows(db, identifier, store='all'):
     for r in rows:
         for key in ('rating','ratings','installs'):r[key]=_number(r[key])
         r['permission_groups']=json.loads(r['permission_groups']) if r['permission_groups'] else []
-        r['state']=r['state'] or 'unverified'
-        r['classification'],r['classification_source']=resolve_state(r['state'],r['reference_state'],r['status_override'])
+        r['classification'],r['classification_source']=resolve_state(r['state'],r['reference_state'],r['status_override'],r['failures'])
         r['permission_overrides']=json.loads(r['permission_overrides'] or '{}')
         r['permission_state']=app_permissions.state(r)
         r['details_state']=('not_scheduled' if r['enabled'] is None or r['due'] is None else 'paused' if not r['enabled']
@@ -432,8 +432,9 @@ def fact_summaries(db, identifier, days, store='all', country='', member_ids=Non
 def dashboard(db, cfg, identifier, store='all', country='', state='', q='', days=30, offset=0, limit=50, classification=''):
     owner=group(db,identifier)
     if type(days) is not int or not 1<=days<=365 or type(offset) is not int or not 0<=offset<=1000000 or not 1<=limit<=200:raise ValueError('观察期间或分页参数无效')
-    if len(q)>255 or state not in ('','available','suspected_missing','region_unavailable','unverified','error'):raise ValueError('筛选参数无效')
-    if classification not in ('','available','suspected_missing','region_unavailable','unverified'):raise ValueError('分组状态无效')
+    state,classification=listing_status.state_key(state),listing_status.state_key(classification)
+    if len(q)>255 or state not in ('','available','region_unavailable','unverified','error'):raise ValueError('筛选参数无效')
+    if classification not in ('','available','region_unavailable','unverified'):raise ValueError('分组状态无效')
     country=country.lower();where,args=_scope(identifier,store,country)
     all_rows=member_rows(db,identifier,store)
     countries={}
@@ -487,7 +488,7 @@ def member_detail(db, identifier, member_id, days=30, cfg=None):
     member=db.execute('SELECT m.*,a.name FROM app_group_members m LEFT JOIN apps a USING(store,app_id) WHERE m.group_id=%s AND m.id=%s',(identifier,member_id)).fetchone()
     if not member:raise ValueError('该应用不在当前分组')
     key=tuple(member[k] for k in ('store','app_id','country','language'));since=time.time()-days*86400
-    listing=db.execute('SELECT * FROM listings WHERE store=%s AND app_id=%s AND country=%s AND language=%s',key).fetchone()
+    listing=listing_status.listing(db,key)
     if listing:listing['payload']=json.loads(listing['payload']) if listing['payload'] else {}
     refs = developer_refs.references(cfg) if cfg else ({},{})
     member.update(developer_refs.identity(member, (listing or {}).get('payload') or {}, refs))
@@ -512,13 +513,14 @@ def member_detail(db, identifier, member_id, days=30, cfg=None):
     references=db.execute('SELECT state,observed_text FROM app_reference_states WHERE store=%s AND app_id=%s AND country=%s AND language=%s',key).fetchone()
     adjustment=db.execute('SELECT status_override,permission_overrides,updated_by,updated_at FROM app_group_adjustments WHERE member_id=%s',(member_id,)).fetchone() or {}
     adjustment['permission_overrides'] = json.loads(adjustment.get('permission_overrides') or '{}')
-    classification,source=resolve_state((listing or {}).get('state'),(references or {}).get('state'),adjustment.get('status_override'))
+    classification,source=resolve_state((listing or {}).get('state'),(references or {}).get('state'),adjustment.get('status_override'),(job or {}).get('failures'))
     permissions_history=[] if not permission else db.execute('SELECT observed_at,outcome,error FROM app_permission_runs WHERE target_id=%s ORDER BY id DESC LIMIT 30',(permission['id'],)).fetchall()
     reports=db.execute('SELECT id,observed_at,imported_at,summary FROM keyword_reports WHERE store=%s AND app_id=%s AND country=%s AND language=%s ORDER BY observed_at DESC LIMIT 100',key).fetchall()
     for report in reports:
         report['summary']=[{k:s.get(k) for k in ('sheet','rows','imported_keyword_rows')} for s in json.loads(report['summary'])]
-    markets=db.execute('''SELECT m.id,m.country,m.language,l.state,l.last_success FROM app_group_members m
+    markets=db.execute(f'''SELECT m.id,m.country,m.language,{listing_status.CURRENT_STATE} state,l.last_success FROM app_group_members m
         LEFT JOIN listings l USING(store,app_id,country,language)
+        LEFT JOIN jobs j USING(store,app_id,country,language)
         WHERE m.group_id=%s AND m.store=%s AND m.app_id=%s ORDER BY m.country,m.language''',(identifier,member['store'],member['app_id'])).fetchall()
     return dict(member=member,classification=classification,classification_source=source,adjustment=adjustment,listing=listing,job=job,watch=watch,permission=permission,permission_state=app_permissions.state(permission or {'store':member['store']}),permission_history=permissions_history,
                 keywords=keyword,charts=chart,snapshots=snapshots,events=events,reference=references,reports=reports,markets=markets,
