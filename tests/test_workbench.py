@@ -64,6 +64,20 @@ class WorkbenchTest(OceanBaseTestCase):
         self.assertEqual(filter_options(self.db,'app',q='x',**common),[])
         with self.assertRaises(ValueError):filter_options(self.db,'unexpected',q='loan',**common)
 
+    def test_text_filter_merges_catalog_and_market_before_pagination(self):
+        from appmon.scoped_views import apps
+        self.seed_listing('100',name='Loan 100',description='Large description')
+        self.seed_listing('200',name='Loan 200')
+        self.db.execute("UPDATE apps SET name='Catalog' WHERE app_id='200'")
+        add_apps(self.db,[('apple','300','Loan 300',None)],'fixture')
+        filters=dict(store='apple',country='us',language='en',q='loan',q_match='contains',limit=1)
+        pages=[apps(self.db,**filters,page=i,compact=True) for i in (1,2,3,4)]
+        self.assertEqual([[r['app_id'] for r in p['items']] for p in pages],[['100'],['200'],['300'],['300']])
+        self.assertEqual([p['has_more'] for p in pages],[True,True,False,False])
+        self.assertNotIn('description',pages[0]['items'][0]['payload'])
+        self.assertEqual(apps(self.db,**filters)['items'][0]['payload']['description'],'Large description')
+        self.assertEqual(apps(self.db,**filters,after_store='apple',after_id='100')['items'][0]['app_id'],'200')
+
     def test_app_name_filters_match_localized_reviews_events_and_annotations(self):
         m=self.seed_listing('com.example.app',store='google',name='Быстрые займы Кз')
         self.db.execute("UPDATE apps SET name='Loans' WHERE app_id='com.example.app'")

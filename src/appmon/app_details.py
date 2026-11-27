@@ -19,7 +19,8 @@ def rows(db, cfg, targets, days=30):
         id FOR ORDINALITY, store VARCHAR(16) PATH '$.store', app_id VARCHAR(255) PATH '$.app_id',
         country VARCHAR(8) PATH '$.country', language VARCHAR(32) PATH '$.language'))"""
     args=(dump(markets),)
-    result=db.execute(f'''SELECT m.*,a.name,a.category,l.payload,{CURRENT_STATE} state,l.last_success,
+    result=db.execute(f'''SELECT m.*,a.name,a.category,JSON_OBJECT('name',l.payload->'$.name','rating',l.payload->'$.rating',
+        'ratings',l.payload->'$.ratings','installs',l.payload->'$.installs') summary,{CURRENT_STATE} state,l.last_success,
         w.enabled,w.refresh_hours,j.failures,j.last_error,j.due,j.lease_until,
         p.id permission_id,p.enabled permission_enabled,p.refresh_hours permission_refresh_hours,
         p.success_at permission_success,p.checked_at permission_checked,p.permission_count,
@@ -33,7 +34,7 @@ def rows(db, cfg, targets, days=30):
         ORDER BY m.id''',args).fetchall()
     now=time.time()
     for row in result:
-        payload=json.loads(row.pop('payload') or '{}')
+        payload=json.loads(row.pop('summary'))
         row['name']=payload.get('name') or row['name']
         for key in ('rating','ratings','installs'):row[key]=app_groups._number(payload.get(key))
         row['permission_groups']=json.loads(row['permission_groups'] or '[]')

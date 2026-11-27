@@ -683,6 +683,7 @@ export function createGroupWorkspace(ctx) {
       `/groups/${id}/dashboard?` +
       qs({
         ...filters,
+        view: tab,
         state: filters.state === "error" ? "error" : "",
         classification: filters.state === "error" ? "" : filters.state,
         offset,
@@ -712,7 +713,7 @@ export function createGroupWorkspace(ctx) {
     if (!host.isConnected || ticket !== generation || selected !== id) return;
     cached = { query, data };
     const s = data.stats,
-      counts = s.classifications || s.states,
+      counts = s?.classifications || s?.states,
       ev = data.event_counts;
     const badge = (name, value, note) => metric(name, value, note);
     host.innerHTML = `<div class="panel group-title"><div><h2>${esc(data.group.name)}</h2><p class="sub">${esc(data.group.description || "跨商店、跨国家的应用监控组合")}</p></div><div class="toolbar">${can("groups", "write") ? '<button id="group-edit-button" class="secondary">编辑分组</button>' : ""}${can("groups", "write") && can("watchlist", "write") ? '<button id="group-add-button">批量加入 APP</button>' : ""}${can("groups", "write") && can("collection", "write") ? '<button id="group-collect-button" class="secondary">配置采集</button>' : ""}<button id="group-reload" class="secondary">刷新</button></div></div>
@@ -825,8 +826,10 @@ export function createGroupWorkspace(ctx) {
     }
     host.querySelector("#group-reload").onclick = () =>
       load().catch((e) => toast(e.message));
+    const filterForm = host.querySelector("#group-filter");
+    filterForm.dataset.groupId = String(id);
     bindFilterBar(
-      host.querySelector("#group-filter"),
+      filterForm,
       async (values) => {
         filters = {
           store: values.store,

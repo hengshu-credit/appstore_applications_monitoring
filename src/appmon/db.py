@@ -27,7 +27,7 @@ TABLES = {
         INDEX jobs_market_due(store,country,language,due,lease_until),INDEX jobs_retry(failures,due,lease_until)''',
     'listings': f'''{APP_KEY}, {REGION}, state VARCHAR(32) NOT NULL, checked_at DOUBLE NOT NULL,
         last_success DOUBLE, misses INT NOT NULL DEFAULT 0, payload LONGTEXT, digest CHAR(64),
-        PRIMARY KEY(store,app_id,country,language)''',
+        PRIMARY KEY(store,app_id,country,language), INDEX listings_market(store,country,language,app_id)''',
     'snapshots': f'''id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, {APP_KEY}, {REGION},
         observed_at DOUBLE NOT NULL, digest CHAR(64) NOT NULL, raw_path TEXT NOT NULL,
         payload LONGTEXT NOT NULL, INDEX snapshots_app(store,app_id,country,language,id)''',
@@ -172,12 +172,27 @@ class Database:
         self.rollback() if kind else self.commit()
 
 
+def ensure_listing_market_index(db):
+    if db.execute("SHOW INDEX FROM listings WHERE Key_name='listings_market'").fetchone():
+        return
+    timeout = db.execute('SELECT @@ob_query_timeout value').fetchone()['value']
+    try:
+        db.execute('SET ob_query_timeout=%s',(max(int(timeout),300000000),))
+        db.execute('CREATE INDEX listings_market ON listings(store,country,language,app_id)')
+    except pymysql.MySQLError as exc:
+        if exc.args[0] != 1061:
+            raise
+    finally:
+        db.execute('SET ob_query_timeout=%s',(timeout,))
+
+
 def connect(cfg, *, initialize=False, allow_migration=False):
     db = Database(cfg['oceanbase'])
     try:
         if initialize:
             for table, columns in TABLES.items():
                 db.execute(create_table_sql(table, if_not_exists=True))
+            ensure_listing_market_index(db)
             from .source_tasks import admitted
             db.execute(f'''UPDATE collection_source_tasks SET enabled=0,token=NULL,lease_until=0
                 WHERE enabled=1 AND due IS NOT NULL AND NOT {admitted()}''')

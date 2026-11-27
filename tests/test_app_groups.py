@@ -40,6 +40,21 @@ class GroupRulesTest(unittest.TestCase):
 
 
 class GroupDashboardTest(OceanBaseTestCase):
+    def test_dashboard_views_keep_filtered_rows_counts_and_market_scope(self):
+        group_id = self.seed()['id']
+        for filters in ({}, {'country':'th','q':'LOAN'}, {'classification':'unverified'}, {'offset':5}):
+            args = dict(limit=1, **filters)
+            full = groups.dashboard(self.db,self.cfg,group_id,**args)
+            matrix = groups.dashboard(self.db,self.cfg,group_id,view='matrix',**args)
+            for key in ('items','total','scope_targets','has_more','permission_categories'):
+                self.assertEqual(matrix[key],full[key],(key,filters))
+            self.assertEqual([r['country'] for r in matrix['countries']],[r['country'] for r in full['countries']])
+            summary = groups.dashboard(self.db,self.cfg,group_id,view='overview',**args)
+            self.assertEqual(summary['stats'],full['stats'])
+            self.assertEqual(summary['items'],[])
+        self.assertEqual(groups.member_options(self.db,group_id,'all','th','loan')[0][0],'com.loan.example')
+        self.assertEqual(groups.member_options(self.db,group_id,'all','us','loan'),[])
+
     def test_yesterday_reviews_count_publication_date_in_the_member_market(self):
         from datetime import timedelta
         from appmon.intelligence import add_observation_target

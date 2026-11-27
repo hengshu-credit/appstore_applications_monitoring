@@ -6,6 +6,10 @@ from . import locales,catalog,insights,review_desk
 from .ingest import valid_id
 from .app_search import LISTING_NAME, identity_filter
 from . import listing_status
+from .content_store import SQL_FIELDS
+
+LIST_SUMMARY = "IF(l.payload IS NULL,NULL,JSON_OBJECT("+','.join(
+    f"'{key}',l.payload->'$.{key}'" for key in sorted(SQL_FIELDS))+"))"
 
 
 def overview(db,store='all'):
@@ -35,15 +39,26 @@ def filter_options(db, field, store, country, language, q, resolve=False):
         scope, args = locales.where(store, country, language, alias='l')
         match, terms = identity_filter('l.app_id', query)
         catalog_scope, stores = locales.where(store, alias='a')
-        rows = db.execute(f"""SELECT value,MIN(label) label FROM (
-            SELECT l.app_id value,COALESCE({LISTING_NAME},a.name,l.app_id) label
-            FROM listings l LEFT JOIN apps a USING(store,app_id) WHERE {scope} AND {match}
-            UNION ALL
-            SELECT a.app_id value,COALESCE(a.name,a.app_id) label FROM apps a
-            WHERE {catalog_scope} AND (LOCATE(LOWER(%s),LOWER(a.name))>0 OR
-            LOCATE(LOWER(%s),LOWER(CONVERT(a.app_id USING utf8mb4)))>0)
-            AND NOT EXISTS (SELECT 1 FROM listings other WHERE other.store=a.store AND other.app_id=a.app_id)
-            ) candidates GROUP BY value ORDER BY label,value LIMIT 12""", (*args,*terms,*stores,query,query)).fetchall()
+        observed = f"""SELECT l.app_id value,MIN(COALESCE({LISTING_NAME},a.name,l.app_id)) label
+            FROM listings l LEFT JOIN apps a USING(store,app_id) WHERE {scope}"""
+        seed = f"""SELECT a.app_id value,MIN(COALESCE(a.name,a.app_id)) label FROM apps a
+            WHERE {catalog_scope} AND NOT EXISTS (
+                SELECT 1 FROM listings other WHERE other.store=a.store AND other.app_id=a.app_id)"""
+        if resolve and any(valid_id(s,query) for s in stores):
+            exact = db.execute(observed+' AND l.app_id=%s GROUP BY l.app_id',(*args,query)).fetchone()
+            if not exact:
+                exact = db.execute(seed+' AND a.app_id=%s GROUP BY a.app_id',(*stores,query)).fetchone()
+            if exact:
+                return [[exact['value'],exact['label']]]
+        rows = db.execute(observed+' AND '+match+' GROUP BY l.app_id ORDER BY label,value LIMIT 12',
+                          (*args,*terms)).fetchall()
+        if len(rows)<12:
+            # The local-market observations rank first. Read the seed catalog only to fill empty slots.
+            extra = db.execute(seed+''' AND (LOCATE(LOWER(%s),LOWER(a.name))>0 OR
+                LOCATE(LOWER(%s),LOWER(CONVERT(a.app_id USING utf8mb4)))>0)
+                GROUP BY a.app_id ORDER BY label,value LIMIT 12''',(*stores,query,query)).fetchall()
+            seen = {row['value'] for row in rows}
+            rows = (list(rows)+[row for row in extra if row['value'] not in seen])[:12]
     else:
         label = "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload,'$.developer')),'null')"
         rows = db.execute(f"""SELECT DISTINCT {label} value,{label} label FROM listings WHERE {scope}
@@ -85,9 +100,41 @@ def _apps_page(db, selected, page, limit, options):
                 stores=selected,country=options['country'],language=options['language'])
 
 
+def text_page(db, store, country, language, q, mode, after_store, after_id, offset, size, count):
+    """Seek on the two independently ordered sources before fetching listing details."""
+    if mode=='contains':
+        catalog_match='(LOCATE(LOWER(%s),LOWER(CONVERT(a.app_id USING utf8mb4)))>0 OR LOCATE(LOWER(%s),LOWER(a.name))>0)'
+        terms=[q.strip(),q.strip()]
+        local_term=q.strip()
+    else:
+        catalog_match="(a.app_id=%s OR a.name COLLATE utf8mb4_0900_ai_ci LIKE %s ESCAPE '!')"
+        terms=[q,'%'+q.replace('!','!!').replace('%','!%').replace('_','!_')+'%']
+        local_term=q
+    catalog='SELECT a.app_id FROM apps a WHERE a.store=%s AND '+catalog_match
+    local=f'''SELECT l.app_id FROM listings l JOIN apps a USING(store,app_id)
+        WHERE l.store=%s AND l.country=%s AND l.language=%s AND LOCATE(LOWER(%s),LOWER({LISTING_NAME}))>0'''
+    left=[store,*terms]
+    right=[store,country,language,local_term]
+    if after_store or after_id:
+        catalog+=' AND (a.store,a.app_id)>(%s,%s)'
+        local+=' AND (l.store,l.app_id)>(%s,%s)'
+        left.extend([after_store,after_id])
+        right.extend([after_store,after_id])
+    if not count:
+        catalog+=' ORDER BY a.app_id LIMIT %s'
+        local+=' ORDER BY l.app_id LIMIT %s'
+        left.append(offset+size)
+        right.append(offset+size)
+    union=f' FROM (({catalog}) UNION ({local})) hits'
+    if count:
+        return db.execute('SELECT /*+ MAX_EXECUTION_TIME(15000) */ COUNT(*) n'+union,left+right).fetchone()['n']
+    return [r['app_id'] for r in db.execute('SELECT /*+ MAX_EXECUTION_TIME(15000) */ app_id'+union+' ORDER BY app_id LIMIT %s OFFSET %s',
+                                             [*left,*right,size,offset]).fetchall()]
+
+
 def apps(db,*,store='',country='us',language='en',q='',category='',developer='',state='',limit=50,
          after_store='',after_id='',after_google='',after_apple='',google_done=False,apple_done=False,
-         min_rating=None,min_ratings=None,pricing='',updated_since='',released_since='',q_match='auto',developer_match='exact',page=None,_offset=0,_count=False):
+         min_rating=None,min_ratings=None,pricing='',updated_since='',released_since='',q_match='auto',developer_match='exact',page=None,compact=False,_offset=0,_count=False):
     selected=locales.stores(store)
     if not 1<=limit<=200:raise ValueError('每页最多200个应用')
     if q_match not in ('auto','contains','id') or developer_match not in ('exact','contains'):
@@ -95,7 +142,7 @@ def apps(db,*,store='',country='us',language='en',q='',category='',developer='',
     if page is not None:
         options=dict(country=country,language=language,q=q,category=category,developer=developer,state=state,min_rating=min_rating,
                      min_ratings=min_ratings,pricing=pricing,updated_since=updated_since,released_since=released_since,
-                     q_match=q_match,developer_match=developer_match)
+                     q_match=q_match,developer_match=developer_match,compact=compact)
         return _apps_page(db,selected,page,limit,options)
     if len(selected)>1:
         if category:raise ValueError('两个商店的分类不同，请选择单个商店筛选分类')
@@ -106,7 +153,7 @@ def apps(db,*,store='',country='us',language='en',q='',category='',developer='',
             if not take:continue
             part=apps(db,store=name,country=country,language=language,q=q,developer=developer,state=state,limit=take,
                 after_store=name if cursors[name] else '',after_id=cursors[name],min_rating=min_rating,min_ratings=min_ratings,
-                pricing=pricing,updated_since=updated_since,released_since=released_since,q_match=q_match,developer_match=developer_match)
+                pricing=pricing,updated_since=updated_since,released_since=released_since,q_match=q_match,developer_match=developer_match,compact=compact)
             pages[name]=part['items'];remaining-=len(part['items'])
             if part['next']:cursors[name]=part['next']['after_id']
             else:done[name]=True
@@ -123,7 +170,16 @@ def apps(db,*,store='',country='us',language='en',q='',category='',developer='',
     if category:
         aliases=catalog.category_aliases(store,category);marks=','.join('%s' for _ in aliases)
         clauses.append(f'(a.category IS NULL OR a.category NOT IN ({marks}))' if category=='__unknown__' else f'a.category IN ({marks})');args.extend(aliases)
-    if q and (q_match=='id' or q_match=='auto' and valid_id(store,q)):
+    exact_id=q_match=='id' or q_match=='auto' and valid_id(store,q)
+    market_fields=bool(developer or pricing or updated_since or released_since or min_rating is not None or min_ratings is not None)
+    if q and not exact_id and not (category or state or market_fields):
+        hits=text_page(db,store,country,language,q,q_match,after_store,after_id,_offset,limit+1,_count)
+        if _count:return hits
+        if not hits:return {'items':[],'next':None,'country':country,'language':language}
+        clauses.append('a.app_id IN ('+','.join('%s' for _ in hits)+')')
+        args.extend(hits)
+        _offset=0
+    elif q and exact_id:
         clauses.append('a.app_id=%s');args.append(q)
     elif q and q_match == 'contains':
         match, terms = identity_filter('a.app_id', q)
@@ -148,7 +204,8 @@ def apps(db,*,store='',country='us',language='en',q='',category='',developer='',
             day=date.fromisoformat(minimum);epoch=datetime.combine(day,datetime.min.time(),tzinfo=timezone.utc).timestamp();path=f"JSON_EXTRACT(l.payload,'$.{field}')"
             clauses.append(f"((JSON_TYPE({path}) IN ('INTEGER','DOUBLE') AND CAST(JSON_UNQUOTE({path}) AS DECIMAL(20,6))>=%s) OR (JSON_UNQUOTE({path}) REGEXP '^[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}' AND LEFT(JSON_UNQUOTE({path}),10)>=%s))");args.extend([epoch,minimum])
     if after_store or after_id:clauses.append('(a.store,a.app_id)>(%s,%s)');args.extend([after_store,after_id])
-    join=" FROM apps a LEFT JOIN listings l ON a.store=l.store AND a.app_id=l.app_id AND l.country=%s AND l.language=%s"
+    listing_join='JOIN' if market_fields or listing_status.state_key(state) in ('available','region_unavailable') else 'LEFT JOIN'
+    join=f" FROM apps a {listing_join} listings l ON a.store=l.store AND a.app_id=l.app_id AND l.country=%s AND l.language=%s"
     if state or not _count:
         join+=" LEFT JOIN jobs j ON j.store=l.store AND j.app_id=l.app_id AND j.country=l.country AND j.language=l.language"
     where=' WHERE '+' AND '.join(clauses)
@@ -156,7 +213,8 @@ def apps(db,*,store='',country='us',language='en',q='',category='',developer='',
         needs_listing=any('l.' in clause for clause in clauses)
         return db.execute('SELECT /*+ MAX_EXECUTION_TIME(15000) */ COUNT(*) n'+(join if needs_listing else ' FROM apps a')+where,
                           args if needs_listing else args[2:]).fetchone()['n']
-    rows=db.execute(f'SELECT /*+ MAX_EXECUTION_TIME(15000) */ a.*,{listing_status.CURRENT_STATE} state,l.last_success,l.checked_at,l.payload'+join+where+
+    payload=LIST_SUMMARY if compact else 'l.payload'
+    rows=db.execute(f'SELECT /*+ MAX_EXECUTION_TIME(15000) */ a.*,{listing_status.CURRENT_STATE} state,l.last_success,l.checked_at,{payload} payload'+join+where+
                     ' ORDER BY a.store,a.app_id LIMIT %s OFFSET %s',(*args,limit+1,_offset)).fetchall()
     more=len(rows)>limit;rows=rows[:limit]
     for row in rows:

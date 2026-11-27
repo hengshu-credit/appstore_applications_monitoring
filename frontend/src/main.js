@@ -149,6 +149,9 @@ function filterScope(form) {
   return scope;
 }
 function suggestApplications(field, q, form) {
+  if (field === "app" && form?.dataset.groupId) {
+    return api(`/groups/${form.dataset.groupId}/filter-options?` + new URLSearchParams({ ...filterScope(form), q }));
+  }
   return api("/apps/filter-options?" + new URLSearchParams({ ...filterScope(form), field, q, resolve: field === "app" }));
 }
 function isAppId(value, store) {
@@ -481,7 +484,7 @@ const groupWorkspace = createGroupWorkspace({
 });
 async function applications(rev, filters = {}, page = 1, limit = 50) {
   const data = await api(
-    "/apps?" + qs({ ...market(), ...filters, page, limit }),
+    "/apps?" + qs({ ...market(), ...filters, page, limit, compact: true }),
   );
   if (
     !mount(

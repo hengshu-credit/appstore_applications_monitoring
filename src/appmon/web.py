@@ -187,10 +187,10 @@ def create_app(cfg):
              page:int|None=Query(None,ge=1,le=1000000),q_match: str = "auto", developer_match: str = "exact", developer: str = "", state: str = "", after_store: str = "", after_id: str = "", limit: int = Query(50, ge=1, le=200),
              after_google:str="",after_apple:str="",google_done:bool=False,apple_done:bool=False,
              min_rating: float | None = Query(None, ge=0, le=5), min_ratings: int | None = Query(None,ge=0),
-             pricing: str = "", updated_since: str = "", released_since: str = "", db=DB):
+             pricing: str = "", updated_since: str = "", released_since: str = "", compact:bool=False, db=DB):
         return scoped_views.apps(db,store=store,country=country,language=language,q=q,page=page,q_match=q_match,category=category,developer=developer,developer_match=developer_match,state=state,limit=limit,
             after_store=after_store,after_id=after_id,after_google=after_google,after_apple=after_apple,google_done=google_done,apple_done=apple_done,
-            min_rating=min_rating,min_ratings=min_ratings,pricing=pricing,updated_since=updated_since,released_since=released_since)
+            min_rating=min_rating,min_ratings=min_ratings,pricing=pricing,updated_since=updated_since,released_since=released_since,compact=compact)
 
     @api.post('/apps/detail-rows')
     def app_detail_rows(value:dict=Body(...),db=DB):
@@ -225,8 +225,12 @@ def create_app(cfg):
     def remove_group_members(identifier:int,value:dict=Body(...),db=DB):return app_groups.remove_members(db,identifier,value)
 
     @api.get('/groups/{identifier}/dashboard')
-    def group_dashboard(identifier:int,store:str='all',country:str='',state:str='',q:str='',days:int=30,offset:int=0,limit:int=50,classification:str='',db=DB):
-        return app_groups.dashboard(db,cfg,identifier,store,country,state,q,days,offset,limit,classification)
+    def group_dashboard(identifier:int,store:str='all',country:str='',state:str='',q:str='',days:int=30,offset:int=0,limit:int=50,classification:str='',view:str='full',db=DB):
+        return app_groups.dashboard(db,cfg,identifier,store,country,state,q,days,offset,limit,classification,view)
+
+    @api.get('/groups/{identifier}/filter-options')
+    def group_filter_options(identifier:int,q:str=Query('',max_length=255),store:str='all',country:str='',db=DB):
+        return app_groups.member_options(db,identifier,store,country,q)
 
     @api.put('/groups/{identifier}/members/{member_id}/adjustment')
     def adjust_group_member(identifier:int,member_id:int,request:Request,value:dict=Body(...),db=DB):

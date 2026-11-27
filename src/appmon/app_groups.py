@@ -234,8 +234,25 @@ def adjust_member(db, identifier, member_id, value, actor):
     return {'revision': revision + 1}
 
 
-def member_rows(db, identifier, store='all'):
+def member_options(db, identifier, store, country, q):
+    from .app_search import identity_filter, LISTING_NAME
+    if not q.strip():
+        return []
+    where,args = _scope(identifier,store,country)
+    match,terms = identity_filter('m.app_id',q)
+    rows = db.execute(f'''SELECT m.app_id,MIN(COALESCE({LISTING_NAME},a.name,m.app_id)) label
+        FROM app_group_members m LEFT JOIN apps a USING(store,app_id)
+        LEFT JOIN listings l USING(store,app_id,country,language)
+        WHERE {where} AND {match} GROUP BY m.app_id ORDER BY label,m.app_id LIMIT 12''',(*args,*terms)).fetchall()
+    return [[r['app_id'],r['label']] for r in rows]
+
+
+def member_rows(db, identifier, store='all', ids=None):
     where,args=_scope(identifier,store)
+    if ids is not None:
+        if not ids:return []
+        where+=' AND m.id IN ('+','.join('%s' for _ in ids)+')'
+        args.extend(ids)
     rows=db.execute(f'''SELECT m.*,a.name,JSON_UNQUOTE(JSON_EXTRACT(l.payload,'$.name')) listing_name,a.category,w.enabled,w.refresh_hours,{listing_status.CURRENT_STATE} state,l.checked_at,l.last_success,
         j.failures,j.last_error,j.due,j.lease_until,
         JSON_UNQUOTE(JSON_EXTRACT(l.payload,'$.rating')) rating,
@@ -265,8 +282,12 @@ def member_rows(db, identifier, store='all'):
     return rows
 
 
-def rankings(db, identifier, store='all', country='', now=None):
+def rankings(db, identifier, store='all', country='', now=None, ids=None):
     where,args=_scope(identifier,store,country);now=time.time() if now is None else now
+    if ids is not None:
+        if not ids:return {},{},{},{}
+        where+=' AND m.id IN ('+','.join('%s' for _ in ids)+')'
+        args.extend(ids)
     keyword=db.execute('''SELECT m.id,COUNT(DISTINCT t.id) keyword_count,MIN(k.position) keyword_best,
         COUNT(DISTINCT CASE WHEN k.position<=3 THEN t.id END) keyword_top3_count
         FROM app_group_members m JOIN keyword_ranks k ON k.app_id=m.app_id
@@ -276,7 +297,7 @@ def rankings(db, identifier, store='all', country='', now=None):
         AND r.observed_at+t.refresh_hours*3600>%s GROUP BY m.id''',(*args,now)).fetchall()
     chart=db.execute('''SELECT m.id,COUNT(DISTINCT t.id) chart_count,MIN(k.position) chart_best
         FROM app_group_members m JOIN observation_items k ON k.item_id=m.app_id
-        JOIN observation_targets t ON t.latest_success_id=k.run_id AND t.kind='chart'
+        JOIN observation_targets t ON t.latest_success_id=k.run_id AND t.kind='chart' AND t.app_id=''
             AND t.store=m.store AND t.country=m.country AND t.language=m.language
         JOIN observation_runs r ON r.id=k.run_id WHERE '''+where+'''
         AND t.enabled=1 AND t.failures=0 AND r.outcome='ok' AND r.observed_at+t.refresh_hours*3600>%s GROUP BY m.id''',(*args,now)).fetchall()
@@ -353,7 +374,7 @@ def member_rank_details(db, identifier, page, now, cfg, source=None):
         FROM {relation} m JOIN observation_targets t USING(store,country,language)
         LEFT JOIN observation_runs r ON r.id=t.latest_success_id
         LEFT JOIN observation_items k ON k.run_id=r.id AND k.item_id=m.app_id
-        WHERE {where} AND t.kind='chart' AND ({category_scope})
+        WHERE {where} AND t.kind='chart' AND t.app_id='' AND ({category_scope})
         ORDER BY t.collection,r.observed_at,t.category''', (now, *args,*(v for pair in category_args for v in pair))).fetchall()
     for item in charts:
         members[item['member_id']]['chart_positions'].append({
@@ -429,14 +450,104 @@ def fact_summaries(db, identifier, days, store='all', country='', member_ids=Non
     return rows
 
 
-def dashboard(db, cfg, identifier, store='all', country='', state='', q='', days=30, offset=0, limit=50, classification=''):
+def matches_member(row, state, classification, needle):
+    return ((not classification or row['classification']==classification) and
+            (not state or (bool(row['failures']) if state=='error' else row['state']==state)) and
+            (not needle or needle in ' '.join((row['app_id'],row['name'] or '',row['listing_name'] or '')).casefold()))
+
+
+def overview_rows(db,identifier,store,query):
+    where,args=_scope(identifier,store)
+    names=",a.name,l.payload->>'$.name' listing_name" if query else ''
+    catalog='LEFT JOIN apps a USING(store,app_id)' if query else ''
+    rows=db.execute(f'''SELECT m.id,m.app_id,m.store,m.country,m.language,m.added_at,{listing_status.CURRENT_STATE} state,
+        j.failures,l.last_success,l.payload->>'$.rating' rating,ref.state reference_state,adj.status_override,
+        p.id permission_id,p.enabled permission_enabled,p.lease_until permission_lease,p.failures permission_failures,
+        p.success_at permission_success,p.refresh_hours permission_refresh_hours {names}
+        FROM app_group_members m {catalog} LEFT JOIN listings l USING(store,app_id,country,language)
+        LEFT JOIN jobs j USING(store,app_id,country,language)
+        LEFT JOIN app_reference_states ref USING(store,app_id,country,language)
+        LEFT JOIN app_group_adjustments adj ON adj.member_id=m.id
+        LEFT JOIN app_permission_targets p ON p.store=m.store AND p.app_id=m.app_id AND p.country=m.country
+        WHERE {where} ORDER BY m.country,m.store,m.app_id,m.language''',args).fetchall()
+    for r in rows:
+        r['classification']=resolve_state(r['state'],r['reference_state'],r['status_override'],r['failures'])[0]
+        r['permission_state']=app_permissions.state(r)
+        r['rating']=_number(r['rating'])
+    return rows
+
+
+def matrix_page(db, identifier, store, country, state, classification, query, offset, limit):
+    scope,params = _scope(identifier,store)
+    countries = db.execute('SELECT m.country,COUNT(*) targets FROM app_group_members m WHERE '+scope+
+                           ' GROUP BY m.country ORDER BY m.country',params).fetchall()
+    scope_targets = sum(c['targets'] for c in countries if not country or c['country']==country)
+    where,args = _scope(identifier,store,country)
+    order = ' ORDER BY m.country,m.store,m.app_id,m.language'
+    if query or state or classification:
+        # Only the identity and status used by the predicate cross the wire. Casefold preserves
+        # the dashboard's literal Unicode substring matching, including searches spanning fields.
+        columns=['m.id','m.app_id']
+        joins=['LEFT JOIN listings l USING(store,app_id,country,language)']
+        if query:
+            columns.extend(['a.name',"JSON_UNQUOTE(JSON_EXTRACT(l.payload,'$.name')) listing_name"])
+            joins.append('LEFT JOIN apps a USING(store,app_id)')
+        if state or classification:
+            columns.extend([listing_status.CURRENT_STATE+' state','j.failures'])
+            joins.append('LEFT JOIN jobs j USING(store,app_id,country,language)')
+        if classification:
+            columns.extend(['ref.state reference_state','adj.status_override'])
+            joins.extend(['LEFT JOIN app_reference_states ref USING(store,app_id,country,language)',
+                          'LEFT JOIN app_group_adjustments adj ON adj.member_id=m.id'])
+        candidates=db.execute('SELECT '+','.join(columns)+' FROM app_group_members m '+' '.join(joins)+
+                              ' WHERE '+where+order,args).fetchall()
+        needle=query.casefold()
+        ids=[]
+        for row in candidates:
+            if classification:
+                row['classification']=resolve_state(row['state'],row['reference_state'],row['status_override'],row['failures'])[0]
+            if matches_member(row,state,classification,needle):
+                ids.append(row['id'])
+        total=len(ids)
+        ids=ids[offset:offset+limit]
+    else:
+        total=scope_targets
+        ids=[r['id'] for r in db.execute('SELECT m.id FROM app_group_members m WHERE '+where+order+
+                                         ' LIMIT %s OFFSET %s',(*args,limit,offset)).fetchall()]
+    category_rows=db.execute('''SELECT /*+ LEADING(m p adj) USE_NL(p adj) */ DISTINCT JSON_KEYS(p.payload) declared,JSON_KEYS(adj.permission_overrides) adjusted
+        FROM app_group_members m LEFT JOIN app_permission_targets p ON p.store=m.store AND p.app_id=m.app_id AND p.country=m.country
+        LEFT JOIN app_group_adjustments adj ON adj.member_id=m.id WHERE '''+scope,params).fetchall()
+    categories=sorted({name for r in category_rows for value in r.values() if value for name in json.loads(value)})
+    return member_rows(db,identifier,store,ids),total,scope_targets,countries,categories
+
+
+def add_rank_counts(db, identifier, store, country, now, rows, ids=None):
+    keywords,charts,keyword_samples,chart_samples=rankings(db,identifier,store,country,now,ids)
+    for r in rows:
+        key=(r['store'],r['country'],r['language'])
+        r.update(keywords.get(r['id'],{'keyword_count':0 if key in keyword_samples else None,'keyword_best':None,'keyword_top3_count':0 if key in keyword_samples else None}),
+                 **charts.get(r['id'],{'chart_count':0 if key in chart_samples else None,'chart_best':None}))
+        r['keyword_samples']=keyword_samples.get(key,0);r['chart_samples']=chart_samples.get(key,0)
+
+
+def dashboard(db, cfg, identifier, store='all', country='', state='', q='', days=30, offset=0, limit=50, classification='',view='full'):
     owner=group(db,identifier)
     if type(days) is not int or not 1<=days<=365 or type(offset) is not int or not 0<=offset<=1000000 or not 1<=limit<=200:raise ValueError('观察期间或分页参数无效')
     state,classification=listing_status.state_key(state),listing_status.state_key(classification)
     if len(q)>255 or state not in ('','available','region_unavailable','unverified','error'):raise ValueError('筛选参数无效')
     if classification not in ('','available','region_unavailable','unverified'):raise ValueError('分组状态无效')
     country=country.lower();where,args=_scope(identifier,store,country)
-    all_rows=member_rows(db,identifier,store)
+    if view not in ('full','matrix','overview'):raise ValueError('看板视图无效')
+    now = time.time()
+    if view=='matrix':
+        page,total,scope_targets,country_options,categories=matrix_page(db,identifier,store,country,state,classification,q,offset,limit)
+        add_rank_counts(db,identifier,store,country,now,page,[r['id'] for r in page])
+        member_rank_details(db,identifier,page,now,cfg)
+        page_metric_facts(db,identifier,page,days,now)
+        return dict(group=owner,items=page,total=total,offset=offset,limit=limit,has_more=offset+limit<total,
+                    countries=country_options,scope_targets=scope_targets,permission_categories=categories,
+                    scope='按当前分组、商店和国家筛选应用。')
+    all_rows=overview_rows(db,identifier,store,q) if view=='overview' else member_rows(db,identifier,store)
     countries={}
     for row in all_rows:
         c=countries.setdefault(row['country'],dict(country=row['country'],apps=set(),targets=0,states=Counter(),classifications=Counter(),reference=Counter()))
@@ -444,25 +555,17 @@ def dashboard(db, cfg, identifier, store='all', country='', state='', q='', days
         c['apps'].add((row['store'],row['app_id']));c['targets']+=1;c['states'][row['state']]+=1
         if row['reference_state']:c['reference'][row['reference_state']]+=1
     countries=[c|{'apps':len(c['apps']),'states':dict(c['states']),'reference':dict(c['reference'])} for c in countries.values()]
-    rows=[r for r in all_rows if (not country or r['country']==country) and
-          (not classification or r['classification']==classification) and
-          (not state or (bool(r['failures']) if state=='error' else r['state']==state)) and
-          (not q or q.casefold() in ' '.join((r['app_id'],r['name'] or '',r['listing_name'] or '')).casefold())]
-    now = time.time()
-    keywords,charts,keyword_samples,chart_samples=rankings(db,identifier,store,country,now)
-    for r in rows:
-        key=(r['store'],r['country'],r['language'])
-        r.update(keywords.get(r['id'],{'keyword_count':0 if key in keyword_samples else None,'keyword_best':None,'keyword_top3_count':0 if key in keyword_samples else None}),
-                 **charts.get(r['id'],{'chart_count':0 if key in chart_samples else None,'chart_best':None}))
-        r['keyword_samples']=keyword_samples.get(key,0);r['chart_samples']=chart_samples.get(key,0)
+    needle=q.casefold()
+    rows=[r for r in all_rows if (not country or r['country']==country) and matches_member(r,state,classification,needle)]
+    add_rank_counts(db,identifier,store,country,now,rows)
+    page=rows[offset:offset+limit] if view=='full' else []
+    member_rank_details(db,identifier,page,now,cfg)
+    page_metric_facts(db,identifier,page,days,now)
     since=time.time()-days*86400
     events=db.execute('''SELECT e.kind,FLOOR(e.observed_at/86400)*86400 day,COUNT(DISTINCT e.store,e.app_id,e.country) count
         FROM events e WHERE e.observed_at>=%s AND e.kind IN ('first_verified','reappeared','region_unavailable')
         AND EXISTS (SELECT 1 FROM app_group_members m WHERE '''+where+''' AND m.store=e.store AND m.app_id=e.app_id
             AND m.country=e.country AND m.language=e.language) GROUP BY e.kind,day ORDER BY day''',(since,*args)).fetchall()
-    page=rows[offset:offset+limit]
-    member_rank_details(db,identifier,page,now,cfg)
-    page_metric_facts(db,identifier,page,days,now)
     from .collection_limits import settings
     rate=db.execute("SELECT MAX(next_at) at FROM schedules WHERE name IN ('rate:global','rate:google','rate:apple')").fetchone()['at']
     statistics=dict(apps=len({(r['store'],r['app_id']) for r in rows}),targets=len(rows),countries=len({r['country'] for r in rows}),
@@ -475,7 +578,7 @@ def dashboard(db, cfg, identifier, store='all', country='', state='', q='', days
         WHERE e.observed_at>=%s AND e.kind IN ('first_verified','reappeared','region_unavailable')
         AND EXISTS (SELECT 1 FROM app_group_members m WHERE '''+where+''' AND m.store=e.store AND m.app_id=e.app_id AND m.country=e.country AND m.language=e.language)
         GROUP BY e.kind''',(since,*args)).fetchall()
-    permission_categories = sorted({name for row in all_rows for name in (*row['permission_groups'], *row['permission_overrides'])})
+    permission_categories = sorted({name for row in all_rows for name in (*row['permission_groups'], *row['permission_overrides'])}) if view=='full' else []
     return dict(group=owner,permission_categories=permission_categories,stats=statistics,countries=countries,events=events,event_counts={r['kind']:r['count'] for r in event_counts},
         scope_targets=sum(not country or r['country']==country for r in all_rows),
         money=fact_summaries(db,identifier,days,store,country),items=page,total=len(rows),offset=offset,limit=limit,has_more=offset+limit<len(rows),
