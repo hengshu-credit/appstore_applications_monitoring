@@ -39,14 +39,19 @@ export function createAdTracking(host, m, storeRankings, ctx) {
     const preview = safeURL(asset.preview_url);
     const picture = preview || (asset.type === "image" ? source : "");
     const caption = source ? `打开${label}` : `${label}预览图`;
-    const visual =
-      asset.type === "video" &&
-      !asset.external_only &&
-      source.startsWith("https:")
-        ? `<video controls playsinline preload="none" src="${source}" ${preview ? `poster="${preview}"` : ""} aria-label="广告视频 ${index + 1}"></video>`
-        : picture
-          ? `<img loading="lazy" decoding="async" referrerpolicy="no-referrer" src="${picture}" alt="${label}预览 ${index + 1}">`
-          : "";
+    const playable = asset.type === "video" && !asset.external_only && source.startsWith("https:");
+    const thumb = picture
+      ? `<img loading="lazy" decoding="async" referrerpolicy="no-referrer" src="${picture}" alt="${label}预览 ${index + 1}">`
+      : "";
+    let visual = "";
+    if (playable) {
+      visual = `<button type="button" data-media-preview="video" data-source="${source}" aria-haspopup="dialog" aria-label="播放广告视频 ${index + 1}">${thumb}<span class="ad-play" aria-hidden="true">▶</span></button>`;
+    } else if (asset.type === "video" && source) {
+      visual = thumb ? `<a href="${source}" target="_blank" rel="noopener noreferrer" aria-label="打开来源视频">${thumb}</a>` : "";
+    } else if (thumb) {
+      const full = asset.type === "image" && !asset.external_only && source ? source : picture;
+      visual = `<button type="button" data-media-preview="image" data-source="${full}" aria-haspopup="dialog" aria-label="查看${label}预览 ${index + 1}">${thumb}</button>`;
+    }
     return `<figure>${visual}<figcaption>${external(asset.url || asset.preview_url, caption)}</figcaption></figure>`;
   }
 
@@ -68,7 +73,7 @@ export function createAdTracking(host, m, storeRankings, ctx) {
     ];
     return `<article class="ad-creative">
       <div class="ad-creative-meta"><strong>${esc(ad.channel || "渠道未披露")}</strong><span>${esc(ad.country?.toUpperCase() || "地区未披露")}</span></div>
-      ${assets.length ? `<div class="ad-assets" tabindex="0" aria-label="广告素材，共 ${assets.length} 项">${assets.map(media).join("")}</div>` : ""}
+      ${assets.length ? `<div class="ad-assets" data-media-group tabindex="0" aria-label="广告素材，共 ${assets.length} 项">${assets.map(media).join("")}</div>` : ""}
       <h3>${esc(title)}</h3>
       ${text ? `<p class="ad-copy">${esc(text.length > 180 ? text.slice(0, 180) + "…" : text)}</p>` : ""}
       ${text.length > 180 ? `<details><summary>完整文案</summary><p class="ad-copy">${esc(text)}</p></details>` : ""}
@@ -319,7 +324,7 @@ export function createAdTracking(host, m, storeRankings, ctx) {
           "beforeend",
           `<div class="ad-version"><strong>${esc(v.title || v.format || "广告素材")}</strong>
           <p class="sub">采集于 ${esc(stamp(v.first_observed_at))} 至 ${esc(stamp(v.last_observed_at))}</p>
-          <p class="ad-copy">${esc(v.body || "")}</p><div class="ad-links">${(v.assets || []).map((a, i) => external(a.url || a.preview_url, "素材 " + (i + 1))).join("")}${external(v.landing_url, "落地页")}</div></div>`,
+          <p class="ad-copy">${esc(v.body || "")}</p><div class="ad-assets" data-media-group>${(v.assets || []).map(media).join("")}</div><div class="ad-links">${external(v.landing_url, "落地页")}</div></div>`,
         );
       }
       if (data.has_more)

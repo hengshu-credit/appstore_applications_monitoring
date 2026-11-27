@@ -113,11 +113,11 @@ export function createResearchPages(ctx) {
     if (value == null) return '<span class="sub">未提供</span>';
     if (["icon", "screenshots"].includes(field)) {
       const urls = Array.isArray(value) ? value : [value];
-      return `<div class="asset-comparison">${urls
+      return `<div class="asset-comparison" data-media-group>${urls
         .filter(link)
         .map(
-          (u) =>
-            `<img src="${link(u)}" alt="${esc(fieldNames[field])}" loading="lazy">`,
+          (u, i) =>
+            `<button type="button" data-media-preview="image" aria-haspopup="dialog" aria-label="查看${fieldNames[field]} ${i + 1}"><img src="${link(u)}" alt="${fieldNames[field]} ${i + 1}" loading="lazy"></button>`,
         )
         .join("")}</div>`;
     }

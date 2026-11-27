@@ -186,12 +186,23 @@ export function createAppInsights(ctx) {
 
   function snapshotMedia(payload) {
     const icon = ctx.safeURL(payload.icon);
-    const urls = Array.isArray(payload.screenshots) ? payload.screenshots : [];
-    const shots = [...new Set(urls.map(ctx.safeURL).filter(Boolean))].filter((url) => url !== icon);
-    const images = shots.map((url, i) => `<img src="${url}" alt="商店截图 ${i + 1}" loading="lazy">`).join("");
+    const urls = (value) => (Array.isArray(value) ? value : [value]).map(ctx.safeURL).filter(Boolean);
+    const shots = [...new Set([payload.screenshots, payload.ipad_screenshots, payload.appletv_screenshots].flatMap(urls))].filter((url) => url !== icon);
+    const thumbnail = (url, label) => `<button type="button" data-media-preview="image" aria-haspopup="dialog" aria-label="查看${label}"><img src="${url}" alt="${label}" loading="lazy"></button>`;
+    const images = shots.map((url, i) => thumbnail(url, `商店截图 ${i + 1}`)).join("");
+    const poster = ctx.safeURL(payload.video_image);
+    const artwork = [[ctx.safeURL(payload.header_image), "宣传图"], [poster, "视频封面"]]
+      .filter(([url]) => url).map(([url, label]) => thumbnail(url, label)).join("");
+    const videos = [...new Set([payload.video, payload.preview_video].flatMap(urls))].map((url, i) => {
+      const label = `商店视频 ${i + 1}`;
+      if (!url.startsWith("https:") || /(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com)$/.test(new URL(url).hostname))
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer">${label} ↗</a>`;
+      return `<button type="button" data-media-preview="video" data-source="${url}" aria-haspopup="dialog" aria-label="播放${label}">${poster ? `<img loading="lazy" src="${poster}" alt="">` : ""}<span>▶ ${label}</span></button>`;
+    }).join("");
     return `<div class="snapshot-media">
-      ${icon ? `<figure class="snapshot-icon"><figcaption>应用图标</figcaption><img src="${icon}" alt="应用图标" loading="lazy"></figure>` : ""}
-      ${shots.length ? `<figure class="snapshot-gallery"><figcaption>商店截图（${shots.length} 张）</figcaption><div class="screenshots">${images}</div></figure>` : '<p class="sub">此快照未收录商店截图。</p>'}
+      ${icon ? `<figure class="snapshot-icon"><figcaption>应用图标</figcaption>${thumbnail(icon, "应用图标")}</figure>` : ""}
+      ${shots.length ? `<figure class="snapshot-gallery"><figcaption>商店截图（${shots.length} 张）</figcaption><div class="screenshots" data-media-group>${images}</div></figure>` : '<p class="sub">此快照未收录商店截图。</p>'}
+      ${artwork || videos ? `<figure class="snapshot-gallery"><figcaption>宣传素材</figcaption><div class="screenshots" data-media-group>${artwork}${videos}</div></figure>` : ""}
     </div>`;
   }
 
