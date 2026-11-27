@@ -28,12 +28,13 @@ class StoragePolicyTest(OceanBaseTestCase):
             for country in ('us','gb'):
                 app_icons.remember(self.db,'apple',appid,country,'en','https://is1.mzstatic.com/shared.png')
         app_icons.remember(self.db,'google','100','us','en','https://is1.mzstatic.com/shared.png')
-        self.db.execute('UPDATE app_icons SET requested=1')
+        self.db.execute("UPDATE app_icons SET requested=1,source_url=NULL")
         self.db.execute("UPDATE app_icons SET enabled=0 WHERE app_id='300' AND country='gb'")
-        rows=claim(self.db,self.cfg,20,SimpleNamespace())
-        self.assertCountEqual([(r['store'],r['app_id'],r['country']) for r in rows],
+        rows=claim(self.db,self.cfg,20,SimpleNamespace(fetch_many=lambda rows: []))
+        second=claim(self.db,self.cfg,20,SimpleNamespace(fetch_many=lambda rows: []))
+        self.assertCountEqual([(r['store'],r['app_id'],r['country']) for r in rows+second],
                               [('apple','100','us'),('apple','100','gb'),('apple','300','us')])
-        self.assertEqual(len({r['id'] for r in rows}),3)
+        self.assertEqual(len({r['id'] for r in rows+second}),3)
         self.assertEqual(len({r['token'] for r in rows}),1)
         self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM app_icons WHERE token IS NOT NULL').fetchone()['n'],3)
 
@@ -44,7 +45,7 @@ class StoragePolicyTest(OceanBaseTestCase):
         result=app_media.sync_existing(self.db,self.cfg)
         self.assertEqual(result['listings'],0)
         self.assertEqual(self.db.execute("SELECT enabled FROM watchlist WHERE app_id='400'").fetchone()['enabled'],1)
-        self.assertEqual(self.db.execute("SELECT requested FROM app_icons WHERE app_id='400'").fetchone()['requested'],1)
+        self.assertEqual(self.db.execute("SELECT requested FROM app_icons WHERE app_id='400'").fetchone()['requested'],0)
         self.assertTrue(self.db.execute("SELECT 1 FROM jobs WHERE app_id='400' AND country='gb'").fetchone())
 
     def test_nonfocused_structured_record_saved_without_response_body(self):
@@ -73,7 +74,7 @@ class StoragePolicyTest(OceanBaseTestCase):
             for country in ('us','gb'):
                 app_icons.remember(self.db,'apple',appid,country,'en','https://is1.mzstatic.com/'+appid+'.png')
         app_icons.remember(self.db,'google','300','us','en','https://play-lh.googleusercontent.com/other-store.png')
-        self.db.execute('UPDATE app_icons SET requested=1')
+        self.db.execute("UPDATE app_icons SET requested=1,source_url=NULL")
         self.db.execute("UPDATE app_icons SET enabled=0 WHERE app_id='300' AND country='gb'")
         app_media.remember(self.db,self.cfg,self.m|{'app_id':'300','country':'gb'},{'screenshots':['https://is1.mzstatic.com/current.png']})
         self.db.execute("UPDATE app_media_assets SET manual_paused=1,enabled=0 WHERE source_url='https://is1.mzstatic.com/current.png'")

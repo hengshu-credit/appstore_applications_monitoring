@@ -42,7 +42,8 @@ def maintenance_once(cfg, db):
     from .collection import work_plans
     ensure_verification_jobs(db)
     work_plans(db,100)
-    from .chart_enrichment import sync as sync_chart_apps
+    from .chart_enrichment import ensure_daily_charts, sync as sync_chart_apps
+    ensure_daily_charts(db)
     sync_chart_apps(db,cfg,20)
     if cfg.get('media_scope')=='groups_and_current_charts':
         from .db import reserve

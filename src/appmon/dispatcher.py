@@ -43,10 +43,11 @@ def ready(db, cfg, lane, now, *, due_by=None):
             sql += ' AND kind=%s'
             args += (lane,)
         if lane == 'icons':
-            sql += ' AND requested=1'
+            from .app_icons import eligible
+            sql += ' AND requested=1 AND '+eligible(table)
             if cfg.get('media_scope','all')!='all':
                 from .storage_policy import media_predicate
-                sql+=' AND '+media_predicate(table)
+                sql+=" AND (request_mode<>'auto' OR "+media_predicate(table)+')'
         sql += ' LIMIT 1'
     return db.execute(sql,args).fetchone() is not None
 
@@ -78,6 +79,10 @@ def choose_batch(db, cfg):
             urgent = next((name for name in candidates if ready(db,cfg,name,now,due_by=IMMEDIATE_DUE_MAX)), None)
             lane, cutoff = (urgent, IMMEDIATE_DUE_MAX) if urgent else (lane, PAGE_DUE)
         else:
+            # Reserve routine turns for the daily chart backlog. Explicit
+            # submissions were handled above; turn ten still serves the pool.
+            if cfg.get('collection_priority_mode')=='focus' and 1 <= (int(turn)+1)%10 <= 7:
+                lanes=['chart']+[name for name in lanes if name!='chart']
             lane = next((lane for lane in lanes if ready(db,cfg,lane,now)), None)
         if lane:
             db.execute("UPDATE schedules SET next_at=%s WHERE name='dispatch:turn'",(turn+1,))
@@ -154,7 +159,7 @@ def worker(cfg, role='collector'):
     stop=Event()
     runtime=cfg | {'_rpc_coalescer':coalescer,'_lookup_coalescer':lookup}
     threads=[Thread(target=_worker_loop,args=(runtime,role,stop),name=f'{role}-{i+1}',daemon=True)
-             for i in range(cfg.get('collector_concurrency',4))]
+             for i in range(cfg.get('collector_concurrency',2))]
     try:
         for thread in threads:thread.start()
         for thread in threads:thread.join()

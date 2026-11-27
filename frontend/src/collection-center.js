@@ -212,7 +212,7 @@ export function createCollectionCenter(ctx) {
         Object.fromEntries(
           Object.entries(taskKinds).filter(
             ([k]) =>
-              !["icons", "permissions", "screenshots"].includes(k) &&
+              !["permissions", "screenshots"].includes(k) &&
               !k.startsWith("aso_"),
           ),
         ),
@@ -234,8 +234,8 @@ export function createCollectionCenter(ctx) {
             d.name + (d.mode === "derived" ? "（本站派生）" : ""),
           ]),
         preset?.collection || "top-free",
-      )}<p class="sub">本站派生榜复用对应基榜，不作为官方榜单。</p></div>
-      <div data-plan-field="observations">${field("榜单 / 评论 / 推荐结果上限", "depth", 100, "number", 'min="1" max="500" required')}</div>
+      )}${field("榜单采集深度", "chart_depth", m.store === "apple" ? 200 : 500, "number", `min="1" max="${m.store === "apple" ? 200 : 500}" required`)}<p class="sub">本站派生榜复用对应基榜。</p></div>
+      <div data-plan-field="observations">${field("评论 / 推荐结果上限", "depth", 100, "number", 'min="1" max="500" required')}</div>
       <div data-plan-field="keywords">${field("关键词结果上限", "keyword_depth", 50, "number", 'min="1" max="200" required')}</div>
       <p class="sub full">优先一次取足；接口限制时自动续采。来源上限会单独标明。已有目标保留暂停状态与历史。</p><div class="full form-actions"><button type="submit">预览采集计划</button></div></form><div id="plan-preview"></div><details class="plan-history"><summary>导入已有关键词词库（JSON）</summary><form id="keyword-import"><label>包含商店、国家、语言和关键词的数组<textarea name="json" required placeholder='[{"store":"google","country":"th","language":"th","keyword":"เงินกู้"}]'></textarea></label><button type="submit" class="spacer">校验并导入词库</button></form><p class="sub">支持跨市场批量导入；整批验证，保留已有任务历史和暂停状态。</p></details>`;
   }
@@ -252,9 +252,9 @@ export function createCollectionCenter(ctx) {
       form.querySelectorAll("[data-plan-field]").forEach((el) => {
         const name = el.dataset.planField;
         el.hidden = !(name === "apps"
-          ? enabled("details") || enabled("reviews")
+          ? enabled("details") || enabled("reviews") || enabled("icons")
           : name === "observations"
-            ? enabled("chart") || enabled("reviews") || enabled("featured")
+            ? enabled("reviews") || enabled("featured")
             : enabled(name));
       });
       $("#plan-preview").innerHTML = "";
@@ -284,7 +284,7 @@ export function createCollectionCenter(ctx) {
         group_name: v.group_name,
         refresh_hours: Number(v.refresh_hours),
         app_ids:
-          flags.details || flags.reviews
+          flags.details || flags.reviews || flags.icons
             ? v.app_ids.split(/\s+/).filter(Boolean)
             : [],
         keywords: flags.keywords
@@ -294,6 +294,7 @@ export function createCollectionCenter(ctx) {
               .filter(Boolean)
           : [],
         depth: Number(v.depth),
+        ...(flags.chart ? { chart_depth: Number(v.chart_depth) } : {}),
         keyword_depth: Number(v.keyword_depth),
         collection: v.collection,
         category: v.category,

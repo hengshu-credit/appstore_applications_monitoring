@@ -20,15 +20,25 @@ class ChartEnrichmentTest(OceanBaseTestCase):
     def enable(self):
         self.db.execute("INSERT INTO collection_controls VALUES('global-top50',%s,%s)",(dump({'enabled':True,'started_at':time.time()}),time.time()))
 
-    def test_global_matrix_covers_configured_countries_categories_and_three_boards(self):
+    def test_global_matrix_covers_each_direct_board_in_its_supported_categories(self):
         rows=list(enrichment.matrix())
         self.assertEqual(len(rows),len(set(rows)))
+        from collections import defaultdict
+        by_market=defaultdict(list)
+        for r in rows:by_market[r[0],r[1],r[3]].append(r)
         for store in ('apple','google'):
             selected=[r for r in rows if r[0]==store]
-            self.assertEqual({r[3] for r in selected},set(enrichment.COLLECTIONS))
+            direct={'top-free','top-paid','top-grossing','new-free','new-paid'}
+            if store=='google':direct.add('trending')
+            self.assertEqual({r[3] for r in selected},direct)
+            for code in {r[1] for r in selected}:
+                for board in direct:
+                    categories={r[4] for r in by_market[(store,code,board)]}
+                    expected={''}|{r['id'] for r in CATALOG['categories'][store] if not r['legacy']}
+                    self.assertEqual(categories,{''} if store=='apple' and board.startswith('new-') else expected)
             self.assertEqual({r[4] for r in selected},{''}|{r['id'] for r in CATALOG['categories'][store] if not r['legacy']})
             self.assertEqual({r[1] for r in selected},APPLE_COUNTRIES if store=='apple' else {c['code'] for c in CATALOG['countries']})
-        self.assertEqual(len(rows),62625)
+        self.assertEqual(len(rows),101975)
 
     def test_top50_enqueues_every_public_dependency_once_and_excludes_rank51(self):
         self.enable();self.prepare([('com.first',1,'First App'),('com.fifty',50,'Fifty'),('com.outside',51,'Outside')])
@@ -36,6 +46,7 @@ class ChartEnrichmentTest(OceanBaseTestCase):
         self.assertEqual(result,{'runs':1,'apps':2})
         for table in ('watchlist','jobs','app_permission_targets','keyword_targets','app_icons','chart_enrichment_apps'):
             self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM '+table).fetchone()['n'],2,table)
+        self.assertEqual(self.db.execute('SELECT SUM(requested) n FROM app_icons').fetchone()['n'],0)
         reviews=self.db.execute("SELECT app_id,depth FROM observation_targets WHERE kind='reviews'").fetchall()
         self.assertEqual({r['app_id'] for r in reviews},{'com.first','com.fifty'});self.assertTrue(all(r['depth']==500 for r in reviews))
         self.assertEqual(enrichment.sync(self.db,self.cfg),{'runs':0,'apps':0})
@@ -63,17 +74,32 @@ class ChartEnrichmentTest(OceanBaseTestCase):
 
     def test_start_is_idempotent_and_preserves_existing_depth_failure_backoff(self):
         self.prepare([('com.first',1,'First')])
-        self.db.execute("UPDATE observation_targets SET enabled=0,failures=2,due=%s",(time.time()+600,))
+        self.db.execute("UPDATE observation_targets SET enabled=0,failures=2,refresh_hours=96,due=%s",(time.time()+600,))
         subset=[('google','us','en','top-free','FINANCE'),('apple','us','en','top-paid','')]
         with patch('appmon.chart_enrichment.matrix',return_value=iter(subset)):
             first=enrichment.start(self.db)
-        row=self.db.execute("SELECT enabled,depth,failures,due FROM observation_targets WHERE store='google'").fetchone()
-        self.assertEqual((row['enabled'],row['depth'],row['failures']),(1,200,2));self.assertGreater(row['due'],time.time())
-        self.db.execute("UPDATE observation_targets SET enabled=0 WHERE store='google'")
+        row=self.db.execute("SELECT enabled,depth,refresh_hours,failures,due FROM observation_targets WHERE store='google'").fetchone()
+        self.assertEqual((row['enabled'],row['depth'],row['failures']),(0,500,2));self.assertGreater(row['due'],time.time())
+        self.assertEqual(row['refresh_hours'],24)
+        self.assertEqual(self.db.execute("SELECT depth FROM observation_targets WHERE store='apple'").fetchone()['depth'],200)
         with patch('appmon.chart_enrichment.matrix',return_value=iter(subset)):
             second=enrichment.start(self.db)
         self.assertTrue(second['reused']);self.assertEqual(first['signature'],second['signature'])
         self.assertEqual(self.db.execute("SELECT enabled FROM observation_targets WHERE store='google'").fetchone()['enabled'],0)
+
+    def test_daily_success_returns_to_next_utc_day_slot(self):
+        from appmon.intelligence import save_observation
+        from appmon.observation_stores import ObservationResult
+        from appmon.charts import daily_slot
+        self.prepare([])
+        self.db.execute("UPDATE observation_targets SET token='mine',due=-1,lease_until=9999999999")
+        target=self.db.execute('SELECT * FROM observation_targets').fetchone()
+        now=1795783200
+        result=ObservationResult([],b'','google-play-chart-rpc','chart_source_limit')
+        self.assertTrue(save_observation(self.db,self.cfg,target,result=result,now=now))
+        due=self.db.execute('SELECT due FROM observation_targets').fetchone()['due']
+        self.assertEqual(due,daily_slot('google','us','top-free',now)+86400)
+        self.assertEqual(int(due)//86400,now//86400+1)
 
     def test_dependency_failure_rolls_back_checkpoint_and_can_resume(self):
         self.enable();self.prepare([('com.first',1,'First')])

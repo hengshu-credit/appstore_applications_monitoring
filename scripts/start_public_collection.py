@@ -28,15 +28,13 @@ def main():
             with db:
                 # Explicit start applies to the chosen focus/current-chart dependencies.
                 resumed=db.execute('UPDATE watchlist w SET enabled=1 WHERE '+media_predicate('w')).rowcount
-                icons=db.execute('UPDATE app_icons i SET requested=1,enabled=1 WHERE '+media_predicate()).rowcount
-                excluded=db.execute('UPDATE app_icons i SET requested=0,token=NULL,lease_until=0 WHERE NOT '+media_predicate()).rowcount
                 charts=db.execute("UPDATE observation_targets SET enabled=1 WHERE kind='chart'").rowcount
             pipelines.save(db,cfg,'pool',{'enabled':True})
             collection_limits.save(db,cfg,{'paused':False})
             counts=db.execute('SELECT store,COUNT(*) apps FROM apps GROUP BY store').fetchall()
             result=dict(started_at=started,phase='全池公开主档首轮',inventory=counts,
                 baseline_markets=pool['countries'],baseline_language=pool['language'],added_jobs=added,
-                priority_targets_enabled=resumed,image_targets_updated=icons,out_of_scope_images_unrequested=excluded,
+                priority_targets_enabled=resumed,
                 chart_targets_enabled=charts,media=media,raw_scope='groups',media_scope='groups_and_current_charts',
                 videos=False,min_free_gib=cfg['min_free_gb'],previous=before,
                 later_phases={'global_expansion':'按覆盖缺口分阶段扩展；需先解决磁盘容量','history_commercial':'待对应来源覆盖和额度确认'})

@@ -6,6 +6,7 @@ from .db import dump
 from .intelligence import market, hours, text, watch, add_observation_target
 from .keywords import validate_target, add_targets
 from .catalog import BY_ID
+from .charts import CHART_DEPTH
 from .collection_batch import PAGE_DUE
 from .task_logs import emit
 from .log_details import diagnostics
@@ -104,16 +105,19 @@ def preview_plan(value):
     apps=list(dict.fromkeys(a.strip() for a in apps if a.strip()))
     base={k:m[k] for k in ('store','country','language')}
     for app_id in apps:market(base|{'app_id':app_id})
-    flags={name:value.get(name,False) for name in ('details','reviews','chart','featured')}
+    flags={name:value.get(name,False) for name in ('details','reviews','chart','featured','icons')}
     if any(type(v) is not bool for v in flags.values()):raise ValueError('采集开关必须是布尔值')
     group=text(value.get('group_name','重点应用'))
     actions=[]
     for app_id in apps:
+        if flags['icons']:actions.append({'kind':'icons','value':base|{'app_id':app_id,'refresh_hours':interval}})
         if flags['details']:actions.append({'kind':'details','value':base|{'app_id':app_id,'group_name':group,'refresh_hours':interval}})
         if flags['reviews']:actions.append({'kind':'reviews','value':base|{'app_id':app_id,'kind':'reviews','depth':depth,'refresh_hours':interval}})
     for keyword in list(dict.fromkeys(words)):
         if keyword.strip():actions.append({'kind':'keywords','value':validate_target(base|{'keyword':keyword,'depth':keyword_depth,'refresh_hours':interval})})
     if flags['chart']:
+        chart_depth=value.get('chart_depth',value.get('depth',CHART_DEPTH[m['store']]))
+        if type(chart_depth) is not int or not 1<=chart_depth<=500:raise ValueError('榜单采集深度须为1–500的整数')
         category=value.get('category',''); collection=value.get('collection','top-free')
         if not isinstance(category,str) or len(category)>64:raise ValueError('分类无效')
         from .charts import definition
@@ -123,7 +127,7 @@ def preview_plan(value):
         if category and category!='APPLICATION' and (category not in BY_ID[m['store']] or BY_ID[m['store']][category]['legacy']):
             raise ValueError('请选择当前商店的官方分类')
         if category=='APPLICATION' and m['store']!='google':raise ValueError('Apple不支持Google分类ID')
-        actions.append({'kind':'chart','value':base|{'kind':'chart','category':category,'collection':collection,'depth':depth,'refresh_hours':interval}})
+        actions.append({'kind':'chart','value':base|{'kind':'chart','category':category,'collection':collection,'depth':min(chart_depth,CHART_DEPTH[m['store']]),'refresh_hours':interval}})
     if flags['featured']:
         if m['store']!='apple':raise ValueError('Today推荐只支持Apple')
         actions.append({'kind':'featured','value':base|{'kind':'featured','depth':depth,'refresh_hours':interval}})
@@ -166,7 +170,7 @@ def enqueue(db, value, *, ad_requested_by=None):
             if kind=='permissions':target['language']='en'
             actions.append({'kind':kind,'value':target|{'refresh_hours':hours(task.get('refresh_hours',24))}})
         elif kind in ('details','keywords','chart','reviews','featured'):
-            spec = task | {k:k==kind for k in ('details','chart','reviews','featured')}
+            spec = task | {k:k==kind for k in ('details','chart','reviews','featured','icons')}
             spec['app_ids'] = [task.get('app_id','')] if kind in ('details','reviews') else []
             spec['keywords'] = [task.get('keyword','')] if kind=='keywords' else []
             spec['keyword_depth'] = task.get('depth',50) if kind=='keywords' else 50
@@ -239,7 +243,7 @@ def retry_plan(db,identifier):
     return {'id':identifier,'status':'queued'}
 
 
-def configure_asset(db, action):
+def configure_asset(db, action, initial_due=0):
     target=action['value']
     with db:
         if action['kind']=='permissions':
@@ -249,11 +253,14 @@ def configure_asset(db, action):
                 WHERE store=%s AND app_id=%s AND country=%s''',
                 (target['refresh_hours'],target['store'],target['app_id'],target['country']))
         else:
-            db.execute('''INSERT INTO app_icons(store,app_id,country,language,requested,status,refresh_hours)
-                VALUES(%s,%s,%s,%s,1,'queued',%s) ON DUPLICATE KEY UPDATE
+            db.execute("""INSERT INTO app_icons(store,app_id,country,language,requested,status,refresh_hours,request_mode,due)
+                VALUES(%s,%s,%s,%s,1,'queued',%s,'periodic',%s) ON DUPLICATE KEY UPDATE
                 status=IF(app_icons.requested=0,'queued',app_icons.status),
-                due=IF(app_icons.requested=0,0,app_icons.due),requested=1,refresh_hours=LEAST(app_icons.refresh_hours,VALUES(refresh_hours))''',
-                (target['store'],target['app_id'],target['country'],target['language'],target['refresh_hours']))
+                due=IF(app_icons.failures=0 AND app_icons.lease_until<=UNIX_TIMESTAMP() AND
+                    (app_icons.requested=0 OR app_icons.due<=UNIX_TIMESTAMP()),LEAST(app_icons.due,VALUES(due)),app_icons.due),requested=1,
+                refresh_hours=IF(app_icons.request_mode='periodic',LEAST(app_icons.refresh_hours,VALUES(refresh_hours)),VALUES(refresh_hours)),
+                request_mode='periodic'""",
+                (target['store'],target['app_id'],target['country'],target['language'],target['refresh_hours'],initial_due))
 
 
 def schedule_submission(db, action, submitted_at):
@@ -305,7 +312,7 @@ def work_plans(db, limit=20):
                         schedule_action(db,action,row['created_at'])
                     elif action['kind']=='details':watch(db,action['value'],merge_existing=True,initial_due=initial_due)
                     elif action['kind']=='keywords':add_targets(db,[action['value']],merge_existing=True,initial_due=initial_due)
-                    elif action['kind'] in ('icons','permissions'):configure_asset(db,action)
+                    elif action['kind'] in ('icons','permissions'):configure_asset(db,action,initial_due)
                     else:add_observation_target(db,action['value'],preserve_existing=action.get('preserve_existing',False),merge_existing=not action.get('preserve_existing',False),initial_due=initial_due)
                     if 'input_source' in specification and action['kind'] not in SOURCE_KINDS:
                         schedule_submission(db,action,row['created_at'])

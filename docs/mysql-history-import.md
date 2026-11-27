@@ -70,7 +70,7 @@ OceanBase 数据及日志仍使用 Linux 数据卷。导入大量数据时应监
 
 已收集主要业务表的优化器统计信息。当前单机的 `appmon` 租户设置 `freeze_trigger_percentage=10`、`writing_throttling_trigger_percentage=80`，让内存转储先于写入节流，保留内存上限和节流机制。这些是已持久化的租户参数；重新创建新集群时需按实际内存和写入负载评估配置。系统租户参数未改变。
 
-历史数据源配置为 Apple 每批 210、Google 详情每批 3,000 个逻辑目标。当前单机将 `collector_concurrency` 设为每服务 1 个消费者，`console` 与 `keywords` 合计 2 个，减少大批次同时回写引起的锁等待；原任务范围、数据源批量参数和共享 HTTP 频率保留。扩展资源后再评估增加消费者数。
+历史数据源配置为 Apple 每批 210、Google 详情每批 3,000 个逻辑目标。每日榜单默认使用每服务 2 个消费者，`console` 与 `keywords` 合计 4 个，共用整体与商店限速。
 
 恢复操作记录见 `resumption.json`，统计信息记录见 `optimizer-statistics.json`，均位于本机 `data/mysql-import-20261109/`。
 

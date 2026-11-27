@@ -40,7 +40,9 @@ class ExperienceTest(OceanBaseTestCase):
         m=dict(store='apple',app_id='123',country='us',language='en')
         app_icons.remember(self.db,**m,url='https://is1-ssl.mzstatic.com/image.png',name='Example')
         self.assertEqual(app_icons.work_icons(self.cfg,self.db,1)['processed'],0)
-        requested=app_icons.request_icon(self.db,self.cfg,m);identifier=requested['id']
+        passive=app_icons.request_icon(self.db,self.cfg,m)
+        self.assertFalse(passive['pending']);self.assertTrue(passive['url'].startswith('https://'))
+        requested=app_icons.request_icon(self.db,self.cfg,m,force=True);identifier=requested['id']
         self.assertTrue(requested['pending'])
         class Response:
             status_code=200;headers={}
@@ -55,7 +57,9 @@ class ExperienceTest(OceanBaseTestCase):
         self.assertEqual(app_icons.work_icons(self.cfg,self.db,1,Images())['ok'],1)
         ready=app_icons.request_icon(self.db,self.cfg,m)
         self.assertFalse(ready['pending']);self.assertIn('/api/icons/',ready['url'])
-        self.assertEqual(collection_tasks.list_tasks(self.db,kind='icons')['items'][0]['task_state'],'scheduled')
+        self.assertEqual(collection_tasks.list_tasks(self.db,kind='icons')['total'],0)
+        self.db.execute('UPDATE app_icons SET due=0')
+        self.assertEqual(app_icons.work_icons(self.cfg,self.db,1,Images())['processed'],0)
         self.assertEqual(task_logs.read_logs(self.db,'icons',str(identifier))['items'][-1]['event'],'ok')
         with patch.dict(os.environ,{'APPMON_API_TOKEN':''}):client=self.login_admin(TestClient(create_app(self.cfg)))
         r=client.get(ready['url']);self.assertEqual(r.status_code,200);self.assertEqual(r.content,PNG)
@@ -70,6 +74,67 @@ class ExperienceTest(OceanBaseTestCase):
         self.assertEqual(failed['url'],ready['url'])
         row=task_logs.read_logs(self.db,'icons',str(identifier))['items'][-1]
         self.assertEqual(row['details']['status_code'],503)
+
+    def test_missing_icon_lookup_stops_when_it_finds_a_displayable_url(self):
+        from appmon.stores import Result
+        from types import SimpleNamespace
+        m=dict(store='apple',app_id='123',country='us',language='en')
+        task=app_icons.request_icon(self.db,self.cfg,m)
+        self.assertTrue(task['pending'])
+        url='https://is1.mzstatic.com/icon.png'
+        client=SimpleNamespace(fetch=lambda row:Result('ok',{'icon':url},b'raw'))
+        self.assertEqual(app_icons.work_icons(self.cfg,self.db,1,client)['ok'],1)
+        self.assertEqual(app_icons.request_icon(self.db,self.cfg,m)['url'],url)
+        peer=app_icons.request_icon(self.db,self.cfg,m|{'country':'gb'})
+        self.assertEqual((peer['url'],peer['pending']),(url,False))
+        self.assertEqual(app_icons.work_icons(self.cfg,self.db,1,client)['processed'],0)
+
+    def test_passive_page_registers_only_link_for_later_pages(self):
+        m=dict(store='apple',app_id='123',country='us',language='en')
+        url='https://is1.mzstatic.com/page.png'
+        first=app_icons.request_icon(self.db,self.cfg,m|{'source_url':url})
+        second=app_icons.request_icon(self.db,self.cfg,m|{'country':'gb'})
+        self.assertEqual((first['url'],second['url'],first['pending'],second['pending']),(url,url,False,False))
+        self.assertEqual(self.db.execute('SELECT requested,file_path FROM app_icons').fetchall(),
+                         [{'requested':0,'file_path':None}])
+
+    def test_missing_lookup_uses_icon_discovered_before_worker_claims_it(self):
+        from types import SimpleNamespace
+        m=dict(store='apple',app_id='123',country='us',language='en')
+        self.assertTrue(app_icons.request_icon(self.db,self.cfg,m)['pending'])
+        app_icons.remember(self.db,'apple','123','gb','en','https://is1.mzstatic.com/found.png')
+        result=app_icons.work_icons(self.cfg,self.db,1,SimpleNamespace())
+        self.assertEqual((result['ok'],result['processed']),(1,1))
+        self.assertEqual(app_icons.request_icon(self.db,self.cfg,m)['url'],'https://is1.mzstatic.com/found.png')
+
+    def test_icon_plan_allows_periodic_download_but_passive_pages_do_not(self):
+        from appmon import collection
+        from appmon.icon_batches import claim
+        from types import SimpleNamespace
+        m=dict(store='apple',app_id='123',country='gb',language='en')
+        cfg=self.cfg|{'media_scope':'groups_and_current_charts'}
+        app_icons.remember(self.db,**m,url='https://is1.mzstatic.com/icon.png')
+        self.assertFalse(app_icons.request_icon(self.db,cfg,m)['pending'])
+        plan=collection.create_plan(self.db,m|{'app_ids':['123'],'icons':True,'refresh_hours':240})
+        self.assertEqual(plan['total'],1)
+        self.assertEqual(collection.work_plans(self.db)['error'],0)
+        [row]=claim(self.db,cfg,10,SimpleNamespace())
+        self.assertEqual((row['request_mode'],row['refresh_hours']),('periodic',240))
+
+    def test_upgrade_preserves_configured_and_explicit_icons_only(self):
+        from appmon import collection
+        for app in ('101','102','103','104'):
+            app_icons.remember(self.db,'apple',app,'us','en','https://is1.mzstatic.com/old.png')
+        value=dict(store='apple',country='us',language='en',app_ids=['101'],icons=True)
+        collection.create_plan(self.db,value);collection.work_plans(self.db)
+        self.db.execute("UPDATE app_icons SET requested=1,request_mode='auto',status='queued'")
+        self.db.execute("UPDATE app_icons SET due=-20 WHERE app_id='102'")
+        self.db.execute("UPDATE app_icons SET file_path='old-file' WHERE app_id='103'")
+        self.db.execute('ALTER TABLE app_icons DROP COLUMN request_mode')
+        for _ in range(2):app_icons.upgrade_requests(self.db)
+        rows=self.db.execute('SELECT app_id,requested,request_mode,file_path FROM app_icons ORDER BY app_id').fetchall()
+        self.assertEqual([(r['requested'],r['request_mode']) for r in rows],[(1,'periodic'),(1,'once'),(0,'auto'),(0,'auto')])
+        self.assertEqual(rows[2]['file_path'],'old-file')
 
     def test_failure_logs_include_safe_diagnostics_and_scoped_apis(self):
         a=add_targets(self.db,[dict(store=s,country='us',language='en',keyword='example') for s in ('apple','google')])['ids']
@@ -90,7 +155,7 @@ class ExperienceTest(OceanBaseTestCase):
 
     def test_icon_stale_worker_cannot_overwrite_a_paused_task(self):
         m=dict(store='google',app_id='com.example.app',country='us',language='en',source_url='https://play-lh.googleusercontent.com/test')
-        row=app_icons.request_icon(self.db,self.cfg,m)
+        row=app_icons.request_icon(self.db,self.cfg,m,force=True)
         db=self.db
         class Stale:
             def request(self,*args,**kwargs):

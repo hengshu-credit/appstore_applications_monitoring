@@ -427,13 +427,14 @@ export function createGlobalCharts(ctx) {
     $("#global-configure").onclick = async () => {
       const requestRevision = ++previewRevision;
       try {
-        const spec = { ...getFilters(), store, depth: 100, refresh_hours: 24 };
+        const spec = { ...getFilters(), store, refresh_hours: 24 };
+        delete spec.depth; // Display depth is independent of collection depth.
         const preview = await api("/charts/global/preview", spec);
         if (rev !== currentRevision() || requestRevision !== previewRevision)
           return;
         $("#global-plan-preview").innerHTML = panel(
           "采集计划预览",
-          `<p>${preview.countries}个国家，${preview.total}个独立基榜目标，新目标采集Top100，每24小时更新；已有目标保留原设置。${esc(preview.note)}${preview.unsupported.length ? ` 跳过 ${preview.unsupported.length} 个不支持的组合。` : ""}</p><button id="global-plan-confirm">确认创建采集计划</button>`,
+          `<p>${preview.countries}个国家，${preview.total}个独立基榜目标，新目标按商店请求最大深度（App Store 200 条，Google Play 500 条），每24小时更新；已有目标保留原设置。${esc(preview.note)}${preview.unsupported.length ? ` 跳过 ${preview.unsupported.length} 个不支持的组合。` : ""}</p><button id="global-plan-confirm">确认创建采集计划</button>`,
         );
         $("#global-plan-confirm").onclick = async () => {
           if (rev !== currentRevision() || requestRevision !== previewRevision)

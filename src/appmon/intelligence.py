@@ -76,7 +76,8 @@ def add_observation_target(db, value, preserve_existing=False, merge_existing=Fa
     if category and category != ('APPLICATION' if m['store']=='google' else ''):
         if category not in BY_ID[m['store']] or BY_ID[m['store']][category]['legacy']:
             raise ValueError('请选择该商店当前支持的官方分类')
-    depth = value.get("depth", 100)
+    from .charts import CHART_DEPTH
+    depth = value.get("depth", CHART_DEPTH[m["store"]] if kind=="chart" else 100)
     if type(depth) is not int or not 1 <= depth <= 500:
         raise ValueError("depth must be an integer from 1 to 500")
     interval = hours(value.get("refresh_hours", 24))
@@ -134,6 +135,9 @@ def save_observation(db, cfg, target, result=None, error=None, now=None):
         failures = current["failures"] + 1 if error else 0
         due = now + (max(min(86400, 60 * 2 ** min(failures, 10)), getattr(error, "retry_after", 0))
                      if error else current["refresh_hours"] * 3600)
+        if not error and target['kind']=='chart' and current['refresh_hours']==24:
+            from .charts import daily_slot
+            due=daily_slot(target['store'],target['country'],target['collection'],now)+86400
         if not error and current['depth']>target['depth']:
             due = now
         db.execute('''INSERT INTO observation_runs(target_id,observed_at,outcome,source,parser_version,coverage,
@@ -158,9 +162,9 @@ def save_observation(db, cfg, target, result=None, error=None, now=None):
                 if apps:
                     add_apps(db,[(target['store'],item['app_id'],item.get('name'),target['category'] or None) for item in apps],
                              f"{target['kind']}:{target['id']}",now)
-                    from .app_icons import remember
-                    for item in apps:
-                        remember(db,target['store'],item['app_id'],target['country'],target['language'],item.get('icon'),item.get('name'))
+                    from .app_icons import remember_many
+                    remember_many(db,[((target['store'],item['app_id'],target['country'],target['language']),
+                                       item.get('name'),item.get('icon')) for item in apps])
             db.execute('''UPDATE observation_targets SET previous_success_id=latest_success_id,
                 latest_success_id=%s WHERE id=%s''', (run_id, target["id"]))
         db.execute('''UPDATE observation_targets SET latest_attempt_id=%s,failures=%s,last_error=%s,

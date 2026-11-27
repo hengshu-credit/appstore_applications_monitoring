@@ -11,21 +11,25 @@ from .ingest import disk_check
 
 
 def claim(db,cfg,limit,client,*,due_by=None):
-    from .app_icons import source_url
+    from .app_icons import source_url,eligible
     now=time.time();token=uuid.uuid4().hex
     due_by = now if due_by is None else due_by
     from .storage_policy import media_scope_apps
     source='app_icons i'
     select='SELECT '
-    if cfg.get('media_scope','all')!='all':
-        source+=' JOIN ('+media_scope_apps()+') scope ON scope.store=i.store AND scope.app_id=i.app_id'
-        # Keep scope as a set: a nested-loop plan can rescan every historical
-        # chart item for each queued icon, timing out on a restored database.
-        select='SELECT /*+ USE_HASH(scope) */ '
-    ready='i.requested=1 AND i.enabled=1 AND i.due<=%s AND i.lease_until<=%s'
-    # Resolve scope outside the locking transaction. A slow membership scan
-    # must never hold icon locks needed by detail writes or Top50 expansion.
+    scoped = cfg.get('media_scope','all')!='all'
+    ready='i.requested=1 AND i.enabled=1 AND i.due<=%s AND i.lease_until<=%s AND '+eligible('i')
+    scope_filter=''
     first=db.execute(select+'i.* FROM '+source+' WHERE '+ready+' ORDER BY i.due,i.id LIMIT 1',(due_by,now)).fetchone()
+    if scoped and first:
+        if first['request_mode']!='auto':
+            # Explicit icon requests do not need the global chart membership scan.
+            scope_filter=" AND i.request_mode<>'auto'"
+        else:
+            source+=' LEFT JOIN ('+media_scope_apps()+') scope ON scope.store=i.store AND scope.app_id=i.app_id'
+            select='SELECT /*+ USE_HASH(scope) */ '
+            scope_filter=" AND (i.request_mode<>'auto' OR scope.app_id IS NOT NULL)"
+            first=db.execute(select+'i.* FROM '+source+' WHERE '+ready+scope_filter+' ORDER BY i.due,i.id LIMIT 1',(due_by,now)).fetchone()
     if not first:return []
     due_by=batch_due_limit(first['due'],now)
     url=source_url(first['source_url'])
@@ -38,7 +42,7 @@ def claim(db,cfg,limit,client,*,due_by=None):
         if not can_batch(first) or not callable(getattr(client,'fetch_many',None)):capacity=1
     ids=[first['id']]
     if capacity>1:
-        ids += [r['id'] for r in db.execute(select+'i.id FROM '+source+' WHERE '+ready+' AND i.id<>%s AND '+condition+
+        ids += [r['id'] for r in db.execute(select+'i.id FROM '+source+' WHERE '+ready+scope_filter+' AND i.id<>%s AND '+condition+
             ' ORDER BY i.due,i.id LIMIT %s',(due_by,now,first['id'],*args,capacity-1)).fetchall()]
     with db:
         rows=list(db.execute('SELECT i.* FROM app_icons i WHERE i.id IN ('+','.join('%s' for _ in ids)+') AND '+ready+
@@ -86,7 +90,7 @@ def download(cfg,db,client,row,started,max_bytes=None,max_age_seconds=None,force
 
 
 def work(cfg,db,limit=5,client=None,max_requests=None,*,due_by=None):
-    from .app_icons import source_url
+    from .app_icons import source_url,peer_urls
     own=client is None;client=client or Client(cfg,db)
     counts=dict(processed=0,ok=0,error=0,stale=0,prepared=0)
     completed=set();prepared=set();requests=0
@@ -97,6 +101,21 @@ def work(cfg,db,limit=5,client=None,max_requests=None,*,due_by=None):
             started=time.time()
             rows=claim(db,cfg,limit-len(completed),client,due_by=due_by)
             if not rows:break
+            missing=[r for r in rows if r['request_mode']=='auto' and not source_url(r['source_url'])]
+            if missing:
+                # A different storefront may have discovered an icon since the
+                # page submitted this lookup. A concurrent manual refresh wins.
+                first=missing[0]
+                known=peer_urls(db,cfg,first['store'],first['country'],first['language'],[r['app_id'] for r in missing])
+                reused=set()
+                for row in missing:
+                    if row['app_id'] in known and db.execute("""UPDATE app_icons SET requested=0,status='available',
+                            token=NULL,lease_until=0 WHERE id=%s AND token=%s AND request_mode='auto'""",
+                            (row['id'],row['token'])).rowcount:
+                        reused.add(row['id'])
+                completed.update(reused);counts['ok']+=len(reused)
+                rows=[row for row in rows if row['id'] not in reused]
+                if not rows:continue
             logs=[Execution(db,'icons',row['id']) for row in rows]
             old_guard,old_progress=getattr(client,'request_guard',None),getattr(client,'progress',None)
             metadata=not source_url(rows[0]['source_url'])
@@ -135,17 +154,25 @@ def work(cfg,db,limit=5,client=None,max_requests=None,*,due_by=None):
                                 if result.outcome!='ok':raise FetchError('当前地区未找到可用应用图标')
                                 url=source_url(result.payload.get('icon'))
                                 if not url:raise FetchError('商店未提供受支持的图标地址')
+                                active=writer.execute('SELECT request_mode FROM app_icons WHERE id=%s AND token=%s FOR UPDATE',
+                                                      (row['id'],row['token'])).fetchone()
                                 saved=writer.execute('''UPDATE app_icons SET source_url=%s,source_updated=%s,name=COALESCE(%s,name),
-                                    status='queued',due=LEAST(due,0),token=NULL,lease_until=0 WHERE id=%s AND token=%s AND enabled=1 AND lease_until>%s''',
+                                    status=IF(request_mode='auto','available','queued'),requested=IF(request_mode='auto',0,1),
+                                    due=LEAST(due,0),token=NULL,lease_until=0 WHERE id=%s AND token=%s AND enabled=1 AND lease_until>%s''',
                                     (url,time.time(),result.payload.get('name'),row['id'],row['token'],time.time())).rowcount
                                 if saved:
-                                    prepared.add(row['id']);log.write('metadata','图标地址已保存，等待共享下载')
+                                    if active['request_mode']=='auto':
+                                        completed.add(row['id']);counts['ok']+=1
+                                        log.finish('ok',True,'已补齐商店图标地址')
+                                    else:
+                                        prepared.add(row['id']);log.write('metadata','图标地址已保存，等待共享下载')
                                     if result.payload.get('name'):
                                         writer.execute("UPDATE apps SET name=%s WHERE store=%s AND app_id=%s AND (name IS NULL OR name='' OR name=app_id)",
                                             (result.payload['name'],row['store'],row['app_id']))
                                 else:counts['stale']+=1;completed.add(row['id'])
                             else:
                                 saved=writer.execute('''UPDATE app_icons SET file_path=%s,mime=%s,checked_at=%s,status='ready',due=%s,
+                                    requested=IF(request_mode='periodic',1,0),request_mode=IF(request_mode='periodic','periodic','auto'),
                                     failures=0,last_error=NULL,token=NULL,lease_until=0 WHERE id=%s AND token=%s AND enabled=1 AND lease_until>%s''',
                                     (result['file_path'],result['mime'],result['fetched_at'],result['fetched_at']+row['refresh_hours']*3600,row['id'],row['token'],time.time())).rowcount
                                 log.finish('ok',bool(saved),'同一响应按任务独立回填')

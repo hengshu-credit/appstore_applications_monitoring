@@ -172,13 +172,19 @@ class Database:
         self.rollback() if kind else self.commit()
 
 
-def ensure_listing_market_index(db):
-    if db.execute("SHOW INDEX FROM listings WHERE Key_name='listings_market'").fetchone():
+OBSERVATION_QUEUE_INDEXES = {
+    'observation_kind_due':'kind,enabled,due,id,lease_until',
+    'observation_market_due':'kind,store,country,language,enabled,due,id,lease_until',
+}
+
+
+def ensure_index(db,table,name,columns):
+    if db.execute(f"SHOW INDEX FROM {table} WHERE Key_name=%s",(name,)).fetchone():
         return
     timeout = db.execute('SELECT @@ob_query_timeout value').fetchone()['value']
     try:
         db.execute('SET ob_query_timeout=%s',(max(int(timeout),300000000),))
-        db.execute('CREATE INDEX listings_market ON listings(store,country,language,app_id)')
+        db.execute(f'CREATE INDEX {name} ON {table}({columns})')
     except pymysql.MySQLError as exc:
         if exc.args[0] != 1061:
             raise
@@ -192,7 +198,11 @@ def connect(cfg, *, initialize=False, allow_migration=False):
         if initialize:
             for table, columns in TABLES.items():
                 db.execute(create_table_sql(table, if_not_exists=True))
-            ensure_listing_market_index(db)
+            from .app_icons import upgrade_requests
+            upgrade_requests(db)
+            ensure_index(db,'listings','listings_market','store,country,language,app_id')
+            for name,columns in OBSERVATION_QUEUE_INDEXES.items():
+                ensure_index(db,'observation_targets',name,columns)
             from .intake import index_existing_plans
             from .source_tasks import admitted, consolidate_pending
             index_existing_plans(db)
@@ -243,6 +253,10 @@ TABLES.update(CONTENT_TABLES)
 for _table, _name, _columns in [('apps', 'apps_store_category', 'store,category(64)'), ('collection_logs', 'log_source_time', 'resource,created_at'), ('requests', 'request_observed', 'observed_at'), ('app_icons', 'icon_source_queue', 'requested,enabled,source_url(191),due,lease_until'), ('jobs', 'jobs_retry', 'failures,due,lease_until'), ('keyword_targets', 'target_retry', 'enabled,failures,due,lease_until'), ('observation_targets', 'target_retry', 'enabled,failures,due,lease_until'), ('observation_targets', 'observation_latest', 'kind,latest_success_id,store'), ('app_permission_targets', 'target_retry', 'enabled,failures,due,lease_until'), ('keyword_runs', 'keyword_observed', 'observed_at'), ('observation_runs', 'observation_observed', 'observed_at'), ('app_permission_runs', 'permission_observed', 'observed_at'), ('jobs', 'jobs_market_due', 'store,country,language,due,lease_until'), ('requests', 'requests_app', 'store,app_id,country,language,id')]:
     if _name not in TABLES[_table]:
         TABLES[_table] += ", INDEX " + _name + "(" + _columns + ")"
+
+
+for _name,_columns in OBSERVATION_QUEUE_INDEXES.items():
+    TABLES['observation_targets'] += f', INDEX {_name}({_columns})'
 
 
 COLUMN_TABLES = frozenset(('keyword_ranks','observation_items','app_metrics_daily','events','requests','collection_logs'))

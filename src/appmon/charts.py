@@ -2,16 +2,24 @@
 import json
 import time
 import gzip
+import hashlib
 import math
 from pathlib import Path
 from datetime import datetime, timezone
 from .listing_status import CURRENT_STATE
+
+CHART_DEPTH = {'apple':200,'google':500}
 
 DEFINITIONS = [
     ('top-free','免费榜','top-free'),('top-paid','付费榜','top-paid'),('top-grossing','畅销榜','top-grossing'),
     ('trending','人气飙升榜','top-free'),('new-free','新应用免费榜','top-free'),
     ('new-grossing','新应用畅销榜','top-grossing'),('new-paid','新应用付费榜','top-paid'),
 ]
+
+
+def daily_slot(store,country,collection,now):
+    offset=int.from_bytes(hashlib.sha256(f'{store}/{country}/{collection}'.encode()).digest()[:4],'big')%86400
+    return int(now)//86400*86400+offset
 
 
 def capabilities(store):

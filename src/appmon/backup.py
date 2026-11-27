@@ -160,6 +160,8 @@ def restore(cfg, source):
                 description = db.execute(f'SHOW COLUMNS FROM `{table}`').fetchall()
                 columns = [r['Field'] for r in description]
                 binary_columns = [i for i, r in enumerate(description) if 'blob' in r['Type'].lower() or 'binary' in r['Type'].lower()]
+                if table=='app_icons' and info['columns']==[c for c in columns if c!='request_mode']:
+                    columns=info['columns']  # Pre-policy archives are upgraded after restore.
                 if columns != info['columns']:
                     raise ValueError('表字段不匹配: '+table)
                 sql = f'INSERT INTO `{table}` ('+','.join(f'`{c}`' for c in columns)+') VALUES ('+','.join(['%s']*len(columns))+')'
@@ -202,6 +204,8 @@ def restore(cfg, source):
                         objects.client.upload_fileobj(stream,objects.bucket,objects.key(ref),ExtraArgs=meta)
                     # Validate the original hash after restoring, before releasing the runtime guard.
                     objects.verify(ref)
+            from .app_icons import upgrade_requests
+            upgrade_requests(db,legacy_backup='request_mode' not in manifest['tables']['app_icons']['columns'])
             # New host starts read-only with respect to store requests, until explicitly resumed.
             from .collection_limits import save
             save(db,cfg,{'paused':True})

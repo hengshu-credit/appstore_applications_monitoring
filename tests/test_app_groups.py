@@ -279,9 +279,9 @@ class GroupDashboardTest(OceanBaseTestCase):
         owner=groups.list_groups(self.db)[0]
         self.assertEqual(owner['targets'],1)
         result=groups.collect(self.db,owner['id'],{'kinds':['details','permissions','charts','reviews','keywords'],'keywords':['loan']})
-        self.assertEqual(result['queued'],{'details':1,'permissions':1,'charts':3,'reviews':1,'keywords':1})
+        self.assertEqual(result['queued'],{'details':1,'permissions':1,'charts':6,'reviews':1,'keywords':1})
         groups.collect(self.db,owner['id'],{'kinds':['charts','reviews','keywords'],'keywords':['loan']})
-        self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM observation_targets').fetchone()['n'],4)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM observation_targets').fetchone()['n'],7)
         self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM keyword_targets').fetchone()['n'],1)
 
     def test_group_api_permissions_and_revision_conflicts(self):

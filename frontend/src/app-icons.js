@@ -29,7 +29,7 @@ export function createAppIconManager({ api, getMarket, win = window }) {
         fallback = node.querySelector(".appicon-placeholder"),
         button = node.querySelector("[data-icon-refresh]");
       node.setAttribute("aria-busy", String(!!result?.pending));
-      if (result?.url?.startsWith("/api/icons/")) {
+      if (result?.url?.startsWith("/api/icons/") || result?.url?.startsWith("https://")) {
         if (image.getAttribute("src") !== result.url) {
           image.hidden = true;
           fallback.hidden = false;
@@ -114,7 +114,7 @@ export function createAppIconManager({ api, getMarket, win = window }) {
               if (
                 record &&
                 !record.result?.pending &&
-                (record.result?.status !== "ready" ||
+                (!record.result?.url ||
                   Date.now() - record.checkedAt > 30000)
               )
                 record.dirty = true;
@@ -137,6 +137,10 @@ export function createAppIconManager({ api, getMarket, win = window }) {
       if (!record) {
         record = { data, nodes: new Set(), dirty: true, checkedAt: 0 };
         records.set(key, record);
+      }
+      if (data.source_url && record.data.source_url !== data.source_url) {
+        record.data = data;
+        record.dirty = true;
       }
       record.nodes.add(node);
       apply(record);

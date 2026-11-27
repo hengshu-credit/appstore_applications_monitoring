@@ -697,7 +697,10 @@ def collect(db, identifier, value):
         targets=[]
         if 'reviews' in kinds:targets.extend(('reviews',r['store'],r['app_id'],r['country'],r['language'],'','',100,24) for r in members);counts['reviews']=len(members)
         if 'charts' in kinds:
-            targets.extend(('chart',s,'',c,l,chart,'',200,24) for s,c,l in markets for chart in ('top-free','top-paid','top-grossing'));counts['charts']=len(markets)*3
+            from .charts import capabilities, CHART_DEPTH
+            boards=[('chart',s,'',c,l,spec['id'],'',CHART_DEPTH[s],24) for s,c,l in markets
+                    for spec in capabilities(s) if spec['mode']=='direct']
+            targets.extend(boards);counts['charts']=len(boards)
         if targets:db.executemany('''INSERT INTO observation_targets(kind,store,app_id,country,language,collection,category,depth,refresh_hours,due)
             VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE enabled=1,
             due=IF(observation_targets.lease_until<=UNIX_TIMESTAMP(),LEAST(observation_targets.due,VALUES(due)),observation_targets.due)''',[(*t,PAGE_DUE) for t in targets])

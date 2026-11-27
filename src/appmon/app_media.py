@@ -15,8 +15,6 @@ def remember(db,cfg,job,payload):
     if not media_allowed(db,cfg,job['store'],job['app_id']):return 0
     from .app_icons import remember as icon_remember
     icon_remember(db,job['store'],job['app_id'],job['country'],job['language'],payload.get('icon'),payload.get('name'))
-    db.execute('''UPDATE app_icons SET requested=1 WHERE store=%s AND app_id=%s AND country=%s AND language=%s''',
-               tuple(job[k] for k in ('store','app_id','country','language')))
     count=0
     for field,label in FIELDS.items():
         if field in ('video','preview_video') and not cfg.get('archive_videos',True):continue
@@ -67,8 +65,6 @@ def sync_existing(db,cfg,wait=0):
             db.execute('''INSERT INTO jobs(store,app_id,country,language)
                 SELECT store,app_id,country,language FROM ('''+desired+''') desired
                 ON DUPLICATE KEY UPDATE app_id=jobs.app_id''')
-            db.execute('UPDATE app_icons i JOIN ('+active_apps+''') scope ON scope.store=i.store AND scope.app_id=i.app_id
-                SET i.requested=1 WHERE i.requested=0''')
         count=processed=0;last=None
         while True:
             scope='SELECT DISTINCT store,app_id FROM app_group_members' if incremental else active_apps
@@ -86,7 +82,7 @@ def sync_existing(db,cfg,wait=0):
             SET a.enabled=0,a.token=NULL,a.lease_until=0 WHERE active.asset_id IS NULL AND (a.enabled=1 OR a.token IS NOT NULL)''')
         if cfg.get('media_scope','all')!='all':
             db.execute('UPDATE app_icons i LEFT JOIN ('+eligible+''') scope ON scope.store=i.store AND scope.app_id=i.app_id
-                SET i.requested=0,i.token=NULL,i.lease_until=0 WHERE scope.app_id IS NULL AND (i.requested=1 OR i.token IS NOT NULL)''')
+                SET i.requested=0,i.token=NULL,i.lease_until=0 WHERE scope.app_id IS NULL AND i.request_mode='auto' AND (i.requested=1 OR i.token IS NOT NULL)''')
         touch(db)
         return {'listings':processed,'image_references':count}
 

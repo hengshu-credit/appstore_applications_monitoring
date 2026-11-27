@@ -206,7 +206,7 @@ class ObservationClient(Client):
             if not valid_id("apple", app_id):
                 raise FetchError("Apple chart ID invalid")
             items.append(dict(id=app_id, app_id=app_id, name=row["im:name"]["label"],
-                              developer=path(row, "im:artist", "label"), icon=row["im:image"][-1]["label"],
+                              developer=path(row, "im:artist", "label"), icon=path(row,"im:image",-1,"label") or path(row,"im:image","label"),
                               released=path(row,'im:releaseDate','label')))
         return chart_result(t,items,r.content,"apple-rss-chart")
 

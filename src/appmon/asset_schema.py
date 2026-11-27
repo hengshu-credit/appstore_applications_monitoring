@@ -17,7 +17,7 @@ TABLES={
         requested BOOLEAN NOT NULL DEFAULT FALSE,enabled BOOLEAN NOT NULL DEFAULT TRUE,
         status VARCHAR(16) NOT NULL DEFAULT 'available',refresh_hours DOUBLE NOT NULL DEFAULT 168,
         due DOUBLE NOT NULL DEFAULT 0,lease_until DOUBLE NOT NULL DEFAULT 0,token CHAR(32),
-        failures INT NOT NULL DEFAULT 0,last_error TEXT,
+        failures INT NOT NULL DEFAULT 0,last_error TEXT, request_mode VARCHAR(12) NOT NULL DEFAULT 'auto',
         UNIQUE KEY icon_identity(store,app_id,country,language),INDEX icon_queue(requested,enabled,due,lease_until),
         INDEX icon_source_queue(requested,enabled,source_url(191),due,lease_until)''',
 }

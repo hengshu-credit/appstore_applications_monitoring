@@ -35,6 +35,16 @@ class CollectionDepthTest(unittest.TestCase):
     def target(self,depth=500,**values):
         return dict(kind='reviews',store='google',country='us',language='en',app_id='com.example.app',depth=depth)|values
 
+    def test_apple_daily_chart_keeps_all_200_positions_with_optional_icons(self):
+        client=ObservationClient({},None)
+        rows=[{'id':{'attributes':{'im:id':str(i)}},'im:name':{'label':f'App {i}'}} for i in range(1,201)]
+        feed=SimpleNamespace(status_code=200,json=lambda:{'feed':{'entry':rows}},content=b'fixture')
+        with patch.object(client,'get',return_value=feed) as request:
+            result=client.chart(self.target(200,kind='chart',store='apple',collection='top-paid',category='6015'))
+        self.assertIn('limit=200/genre=6015',request.call_args.args[1])
+        self.assertEqual([r['app_id'] for r in result.items],[str(i) for i in range(1,201)])
+        self.assertTrue(all(r['icon'] is None for r in result.items))
+
     def test_single_review_request_can_take_500(self):
         client=ObservationClient({},None)
         def rpc(t,name,payload):

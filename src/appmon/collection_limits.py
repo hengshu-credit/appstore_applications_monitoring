@@ -8,7 +8,7 @@ NAME = 'request-limits'
 
 
 def settings(db, cfg):
-    defaults = dict(global_interval_seconds=cfg.get('global_interval_seconds', 5),
+    defaults = dict(global_interval_seconds=cfg.get('global_interval_seconds', 1.5),
                     google_interval_seconds=cfg['google_interval_seconds'],
                     apple_interval_seconds=cfg['apple_interval_seconds'],
                     cooldown_seconds=cfg.get('cooldown_seconds', 900),
@@ -34,9 +34,9 @@ def save(db, cfg, value):
         if type(v) not in (int,float) or not math.isfinite(v) or not low <= v <= high:
             raise ValueError(f'{key} 须在 {low}–{high} 秒之间')
     db.execute('''INSERT INTO collection_controls VALUES(%s,%s,%s)
-        ON DUPLICATE KEY UPDATE settings=VALUES(settings),updated_at=VALUES(updated_at)''',
-        (NAME, dump(result), time.time()))
-    return result
+        ON DUPLICATE KEY UPDATE settings=JSON_MERGE_PATCH(collection_controls.settings,VALUES(settings)),updated_at=VALUES(updated_at)''',
+        (NAME, dump(value), time.time()))
+    return settings(db,cfg)
 
 
 def admission(db, cfg, store, ticket=None):

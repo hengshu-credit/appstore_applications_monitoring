@@ -78,8 +78,8 @@ class RpcCoalescingTest(unittest.TestCase):
 
 class IconBatchTest(OceanBaseTestCase):
     def test_two_thousand_receipts_share_one_download(self):
-        self.db.executemany('''INSERT INTO app_icons(store,app_id,country,language,source_url,requested)
-            VALUES('apple',%s,'us','en','https://is1.mzstatic.com/shared.png',1)''',[(str(10000+i),) for i in range(2000)])
+        self.db.executemany('''INSERT INTO app_icons(store,app_id,country,language,source_url,requested,request_mode)
+            VALUES('apple',%s,'us','en','https://is1.mzstatic.com/shared.png',1,'periodic')''',[(str(10000+i),) for i in range(2000)])
         client=self.client()
         result=app_icons.work_icons(self.cfg,self.db,self.cfg['collection_batch_size'],client,max_requests=1)
         self.assertEqual((result['processed'],result['ok'],client.downloads),(2000,2000,1))
@@ -118,7 +118,10 @@ class IconBatchTest(OceanBaseTestCase):
         for i in range(count):
             m=dict(store='apple',app_id=str(1000+i),country='us',language='en')
             if known:app_icons.remember(self.db,**m,url='https://is1.mzstatic.com/shared.png')
-            ids.append(app_icons.request_icon(self.db,self.cfg,m)['id'])
+            identifier=app_icons.request_icon(self.db,self.cfg,m,force=True)['id']
+            from appmon.collection_tasks import edit_task
+            edit_task(self.db,'icons',identifier,{'refresh_hours':168})
+            ids.append(identifier)
         return ids
 
     def client(self,metadata=None):

@@ -219,7 +219,7 @@ def report(db,cfg,store='all',hours=24):
         WHERE resource='top50_intake' AND created_at BETWEEN %s AND %s"""+event_scope+' GROUP BY target_key',event_args).fetchall()
     if top50:
         node('top50','全球榜单 Top50 联动',0,value=sum(int(r['tasks']) for r in top50),unit='已提交任务',
-             note='全国家总榜与分类榜；新榜单前50名自动关联资料、评论、权限、应用名关键词和图片，视频仅保留来源',link='#collection?kind=chart')
+             note='各地区每日总榜与分类榜；启用联动后，前50名关联资料、评论、权限、应用名关键词及素材，已有图标优先复用',link='#collection?kind=chart')
         for row in top50:edge('top50','q:'+row['target_key'],row['target_key'],int(row['tasks']),'次任务提交')
     direct=db.execute("""SELECT kind,LEFT(source,12)='ad-schedule-' periodic,COUNT(*) n FROM collection_source_tasks
         WHERE source NOT IN ('collection-plan','user-ad-plan') AND created_at BETWEEN %s AND %s"""

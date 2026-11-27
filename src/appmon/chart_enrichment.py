@@ -3,13 +3,14 @@ import json
 import hashlib
 import time
 from .db import dump
+from .charts import capabilities, CHART_DEPTH, daily_slot
 from .catalog import CATALOG,APPLE_COUNTRIES
 from .locales import language_for
 from .collection_batch import touch
 
 CONTROL='global-top50'
-COLLECTIONS=('top-free','top-paid','top-grossing')
-DEPTH=50
+FOLLOWUP_DEPTH=50
+DAILY_CONTROL='daily-global-charts'
 
 
 def settings(db):
@@ -25,37 +26,82 @@ def matrix():
         for country in CATALOG['countries']:
             code=country['code']
             if store=='apple' and code not in APPLE_COUNTRIES:continue
-            for collection in COLLECTIONS:
-                for category in categories:
-                    yield (store,code,language_for(store,code),collection,category)
+            for spec in capabilities(store):
+                if spec['mode']!='direct':continue
+                for category in categories if spec['category_supported'] else ('',):
+                    yield (store,code,language_for(store,code),spec['id'],category)
+
+
+def matrix_signature():
+    # The catalog is fixed for the lifetime of a worker. Reconcile once per
+    # catalog/policy version, including after an interrupted installation.
+    return hashlib.sha256(dump([CHART_DEPTH, CATALOG['countries'], CATALOG['categories'],
+                                sorted(APPLE_COUNTRIES), [capabilities(s) for s in CHART_DEPTH],
+                                {s:[language_for(s,c['code']) for c in CATALOG['countries']
+                                    if s!='apple' or c['code'] in APPLE_COUNTRIES] for s in CHART_DEPTH}]).encode()).hexdigest()
+
+
+DAILY_SIGNATURE=matrix_signature()
+
+
+def ensure_daily_charts(db):
+    def installed():
+        row=db.execute('SELECT settings FROM collection_controls WHERE name=%s',(DAILY_CONTROL,)).fetchone()
+        return json.loads(row['settings']) if row else {}
+
+    previous=installed()
+    if previous.get('signature')==DAILY_SIGNATURE:return previous | {'reused':True}
+    with db.named_lock('daily-chart-install',timeout=30):
+        previous=installed()
+        if previous.get('signature')==DAILY_SIGNATURE:return previous | {'reused':True}
+        now=time.time()
+        counts={};batch=[]
+        # Keep same-market Google targets due together for multi-RPC calls.
+        # Stagger first claims across storefronts instead of draining one store first.
+        def write():
+            with db:
+                db.executemany("""INSERT INTO observation_targets(kind,store,app_id,country,language,collection,category,depth,refresh_hours,due)
+                    VALUES('chart',%s,'',%s,%s,%s,%s,%s,24,%s) ON DUPLICATE KEY UPDATE
+                    due=CASE WHEN observation_targets.failures>0 OR observation_targets.lease_until>UNIX_TIMESTAMP() THEN observation_targets.due
+                        WHEN observation_targets.due=0 AND observation_targets.latest_attempt_id IS NULL THEN VALUES(due)
+                        WHEN observation_targets.depth<>VALUES(depth) OR observation_targets.refresh_hours>24
+                            THEN LEAST(observation_targets.due,VALUES(due))
+                        ELSE observation_targets.due END,
+                    depth=VALUES(depth),refresh_hours=LEAST(observation_targets.refresh_hours,VALUES(refresh_hours))""",batch)
+            batch.clear()
+
+        for store,country,language,collection,category in matrix():
+            due=daily_slot(store,country,collection,now)
+            batch.append((store,country,language,collection,category,CHART_DEPTH[store],due if due<=now else due-86400))
+            counts[store]=counts.get(store,0)+1
+            if len(batch)==500:write()
+        if batch:write()
+        value={'signature':DAILY_SIGNATURE,'depth_by_store':CHART_DEPTH,'refresh_hours':24,'chart_targets':counts,
+               'collections_by_store':{s:[c['id'] for c in capabilities(s) if c['mode']=='direct'] for s in CHART_DEPTH},
+               'request_regions':{'google':len(CATALOG['countries']),'apple':len(APPLE_COUNTRIES)},'installed_at':now}
+        with db:
+            db.execute("""INSERT INTO collection_controls VALUES(%s,%s,%s)
+                ON DUPLICATE KEY UPDATE settings=VALUES(settings),updated_at=VALUES(updated_at)""",(DAILY_CONTROL,dump(value),now))
+            from .task_logs import emit
+            for store,count in counts.items():
+                emit(db,'top50_intake','chart','queued','每日全球榜单目标已配置',details={'store':store,'tasks':count})
+            touch(db)
+        return value
 
 
 def start(db):
-    rows=list(matrix());signature=hashlib.sha256(dump(rows).encode()).hexdigest()
-    now=time.time();counts={};batch=[]
-    def write(rows):
-        with db:
-            db.executemany('''INSERT INTO observation_targets(kind,store,app_id,country,language,collection,category,depth,refresh_hours)
-                VALUES('chart',%s,'',%s,%s,%s,%s,50,24) ON DUPLICATE KEY UPDATE
-                enabled=1,depth=GREATEST(observation_targets.depth,VALUES(depth))''',rows)
+    daily=ensure_daily_charts(db)
     with db.named_lock('global-top50-start',timeout=30):
         old=settings(db)
-        if old.get('enabled') and old.get('signature')==signature:return old|{'reused':True}
-        for row in rows:
-            counts[row[0]]=counts.get(row[0],0)+1;batch.append(row)
-            if len(batch)==1000:write(batch);batch=[]
-        if batch:write(batch)
-        value={'enabled':True,'signature':signature,'depth':DEPTH,'collections':list(COLLECTIONS),'category_scope':'all_non_legacy',
-               'chart_targets':counts,'request_regions':{'google':len(CATALOG['countries']),'apple':len(APPLE_COUNTRIES)},
-               'started_at':now,'review_depth':500,'keyword_depth':200,'video_policy':'source_links_only',
+        if old.get('enabled') and old.get('signature')==daily['signature']:return old|{'reused':True}
+        now=time.time()
+        value={**daily,'enabled':True,'followup_depth':FOLLOWUP_DEPTH,'category_scope':'all_non_legacy',
+               'started_at':old.get('started_at',now),'review_depth':500,'keyword_depth':200,'video_policy':'source_links_only',
                'source_gaps':['历史评论受来源窗口限制','关键词先跟踪应用名，不代表完整索引词库','下载和收入等商业数据仍需相应来源权限与额度']}
-        db.execute('''INSERT INTO collection_controls VALUES(%s,%s,%s)
-            ON DUPLICATE KEY UPDATE settings=VALUES(settings),updated_at=VALUES(updated_at)''',(CONTROL,dump(value),now))
-        from .task_logs import emit
-        for store,count in counts.items():
-            emit(db,'top50_intake','chart','queued','全球 Top50 榜单目标已入队',details={'store':store,'tasks':count})
-        touch(db)
-    return value
+        value.pop('reused',None)
+        db.execute("""INSERT INTO collection_controls VALUES(%s,%s,%s)
+            ON DUPLICATE KEY UPDATE settings=VALUES(settings),updated_at=VALUES(updated_at)""",(CONTROL,dump(value),now))
+        return value
 
 
 def activate_once(db,resource,table,ids,started_at):
@@ -89,7 +135,7 @@ def sync(db,cfg,limit=20):
                     current=db.execute('SELECT latest_success_id FROM observation_targets WHERE id=%s AND enabled=1 FOR UPDATE',(target['id'],)).fetchone()
                     if not current or current['latest_success_id']!=target['latest_success_id']:continue
                     rows=db.execute('SELECT item_id,payload FROM observation_items WHERE run_id=%s AND position<=%s ORDER BY position',
-                        (target['latest_success_id'],DEPTH)).fetchall()
+                        (target['latest_success_id'],FOLLOWUP_DEPTH)).fetchall()
                     apps=[(target['store'],r['item_id'],target['country'],target['language']) for r in rows]
                     if apps:
                         now=time.time()
@@ -116,7 +162,6 @@ def sync(db,cfg,limit=20):
                         item=json.loads(row['payload']);s,a,c,l=app
                         if item.get('icon'):
                             remember(db,s,a,c,l,item['icon'],item.get('name'))
-                            db.execute('UPDATE app_icons SET requested=1 WHERE store=%s AND app_id=%s AND country=%s AND language=%s',app)
                         listing=db.execute('SELECT payload FROM listings WHERE store=%s AND app_id=%s AND country=%s AND language=%s',app).fetchone()
                         if listing and listing['payload']:
                             remember_media(db,cfg,dict(zip(('store','app_id','country','language'),app)),json.loads(listing['payload']))
@@ -130,7 +175,7 @@ def sync(db,cfg,limit=20):
                     if apps:
                         app_ids=[app[1] for app in apps];marks=','.join('%s' for _ in app_ids)
                         for resource,table,extra in [('watchlist','watchlist',''),('targets','observation_targets'," AND kind='reviews'"),
-                                                     ('icons','app_icons',''),('permissions','app_permission_targets','')]:
+                                                     ('permissions','app_permission_targets','')]:
                             if resource=='permissions' and target['store']!='google':continue
                             scope='store=%s AND country=%s'+('' if resource=='permissions' else ' AND language=%s')
                             args=[target['store'],target['country']]+([] if resource=='permissions' else [target['language']])+app_ids
@@ -138,7 +183,7 @@ def sync(db,cfg,limit=20):
                             count=activate_once(db,resource,table,ids,plan['started_at'])
                             if count:
                                 from .task_logs import emit
-                                kind={'watchlist':'details','targets':'reviews','icons':'icons','permissions':'permissions'}[resource]
+                                kind={'watchlist':'details','targets':'reviews','permissions':'permissions'}[resource]
                                 emit(db,'top50_intake',kind,'queued','榜内应用资料任务已关联',details={'store':target['store'],'tasks':count})
                     if words:
                         terms=list({w[3] for w in words})
@@ -158,10 +203,18 @@ def sync(db,cfg,limit=20):
 
 def report(db):
     value=settings(db)
+    daily=db.execute('SELECT settings FROM collection_controls WHERE name=%s',(DAILY_CONTROL,)).fetchone()
+    value['daily_charts']=json.loads(daily['settings']) if daily else None
+    if daily:
+        value.update(chart_targets=value['daily_charts']['chart_targets'],depth_by_store=CHART_DEPTH,followup_depth=FOLLOWUP_DEPTH)
     value['followups']=db.execute('SELECT COUNT(*) runs,COALESCE(SUM(app_count),0) app_appearances FROM chart_enrichment_runs').fetchone()
     value['followups']={k:int(v or 0) for k,v in value['followups'].items()}
     value['app_markets']=db.execute('SELECT COUNT(*) n FROM chart_enrichment_apps').fetchone()['n']
-    value['chart_states']=db.execute("SELECT store,enabled,COUNT(*) targets,SUM(latest_success_id IS NOT NULL) observed,SUM(failures>0) errors FROM observation_targets WHERE kind='chart' GROUP BY store,enabled").fetchall()
+    value['chart_states']=db.execute("""SELECT t.store,t.enabled,COUNT(*) targets,SUM(r.id IS NOT NULL) observed,
+        SUM(t.failures>0) errors, SUM(IF(r.observed_at>=%s,1,0)) observed_last_24h,
+        SUM(IF(r.observed_at>=%s,r.returned_count,0)) rank_entries_last_24h FROM observation_targets t
+        LEFT JOIN observation_runs r ON r.id=t.latest_success_id WHERE t.kind='chart' GROUP BY t.store,t.enabled""",
+        (time.time()-86400,)*2).fetchall()
     for row in value['chart_states']:
-        for key in ('targets','observed','errors'):row[key]=int(row[key] or 0)
+        for key in ('targets','observed','errors','observed_last_24h','rank_entries_last_24h'):row[key]=int(row[key] or 0)
     return value

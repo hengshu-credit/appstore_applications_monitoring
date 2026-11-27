@@ -6,7 +6,7 @@ from .collection_batch import PAGE_DUE
 from .intelligence import market, watch, add_observation_target
 from .keywords import add_targets, validate_target
 from .catalog import category_id, BY_ID
-from .charts import capabilities, definition
+from .charts import capabilities, definition, CHART_DEPTH
 from .task_logs import emit, target_state
 from . import ad_sources, source_tasks
 
@@ -143,7 +143,7 @@ def collect(db,value):
         categories=['']+([category] if category and not BY_ID[m['store']][category]['legacy'] else [])
         for cat in dict.fromkeys(categories):
             for spec in capabilities(m['store']):
-                if spec['mode']=='direct' and (not cat or spec['category_supported']):actions.append({'kind':'chart','value':base|{'kind':'chart','collection':spec['id'],'category':cat,'depth':200,'refresh_hours':24}})
+                if spec['mode']=='direct' and (not cat or spec['category_supported']):actions.append({'kind':'chart','value':base|{'kind':'chart','collection':spec['id'],'category':cat,'depth':CHART_DEPTH[m['store']],'refresh_hours':24}})
         words=db.execute('SELECT keyword FROM keyword_targets WHERE store=%s AND country=%s AND language=%s ORDER BY id LIMIT 100',tuple(base.values())).fetchall()
         keyword_total=db.execute('SELECT count(*) n FROM keyword_targets WHERE store=%s AND country=%s AND language=%s',tuple(base.values())).fetchone()['n']
         names=[w['keyword'] for w in words]

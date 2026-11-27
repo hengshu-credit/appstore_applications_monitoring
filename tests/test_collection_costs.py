@@ -10,7 +10,7 @@ import test_request_coalescing as helpers
 class CollectionCostTest(OceanBaseTestCase):
     def icon(self,app_id,country='us',hours=168):
         app_icons.remember(self.db,'apple',app_id,country,'en','https://is1.mzstatic.com/shared.png')
-        self.db.execute("UPDATE app_icons SET requested=1,refresh_hours=%s WHERE app_id=%s AND country=%s",(hours,app_id,country))
+        self.db.execute("UPDATE app_icons SET requested=1,request_mode='periodic',refresh_hours=%s WHERE app_id=%s AND country=%s",(hours,app_id,country))
 
     def test_later_market_reuses_fresh_bytes_without_extending_observation_time(self):
         client=helpers.IconBatchTest.client(self)

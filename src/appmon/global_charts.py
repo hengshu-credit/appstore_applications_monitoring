@@ -89,8 +89,9 @@ def preview(value):
     types=collections(store,value.get('collections','top-free,top-paid,top-grossing'));category=value.get('category','')
     if not isinstance(category,str) or len(category)>64:raise ValueError('分类无效')
     if category and category not in catalog.BY_ID[store] and not(store=='google' and category=='APPLICATION'):raise ValueError('请选择商店官方分类')
-    depth=value.get('depth',100);interval=hours(value.get('refresh_hours',24))
-    if type(depth) is not int or not 1<=depth<=200:raise ValueError('采集深度须为1–200')
+    depth=value.get('depth',charts.CHART_DEPTH[store]);interval=hours(value.get('refresh_hours',24))
+    if type(depth) is not int or not 1<=depth<=500:raise ValueError('采集深度须为1–500')
+    depth=min(depth,charts.CHART_DEPTH[store])
     actions={};unsupported=[]
     for c in selected:
         for kind in types:

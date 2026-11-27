@@ -8,6 +8,20 @@ from test_monitor import OceanBaseTestCase
 
 
 class CollectionLimitsTest(OceanBaseTestCase):
+    def test_daily_defaults_and_persisted_operator_overrides(self):
+        self.assertEqual(self.cfg['collector_concurrency'],2)
+        fresh=limits.settings(self.db,self.cfg)
+        self.assertEqual((fresh['global_interval_seconds'],fresh['apple_interval_seconds'],fresh['google_interval_seconds']),(1.5,2,2.5))
+        # 312 Google boards per market share 20-call batches. Each Apple RSS
+        # board needs an individual request.
+        self.assertGreater(86400/fresh['global_interval_seconds'],23975+250*16)
+        self.assertGreater(86400/fresh['apple_interval_seconds'],23975)
+        limits.save(self.db,self.cfg,{'global_interval_seconds':8,'daily_request_limit':5000})
+        limits.save(self.db,self.cfg,{'paused':True})
+        changed=limits.settings(self.db,self.cfg|{'apple_interval_seconds':4})
+        self.assertEqual((changed['global_interval_seconds'],changed['daily_request_limit'],changed['apple_interval_seconds'],changed['paused']),
+                         (8,5000,4,True))
+
     def test_waiting_request_is_cancelled_when_task_pauses(self):
         from appmon.keywords import add_targets
         from appmon.task_logs import execution

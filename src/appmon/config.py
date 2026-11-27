@@ -23,7 +23,7 @@ def load(path="config.toml"):
         raise ValueError('Invalid raw_response_scope')
     if cfg.get('media_scope','all') not in ('all','groups_and_current_charts'):
         raise ValueError('Invalid media_scope')
-    cfg.setdefault('collector_concurrency',4)
+    cfg.setdefault('collector_concurrency',2)
     cfg.setdefault('collection_priority_mode','balanced')
     if cfg['collection_priority_mode'] not in ('balanced','focus'):raise ValueError('Invalid collection_priority_mode')
     cfg.setdefault('collection_batch_size',2000)
@@ -35,7 +35,7 @@ def load(path="config.toml"):
     cfg.setdefault('apple_lookup_batch_size', 50)
     if type(cfg['apple_lookup_batch_size']) is not int or not 1<=cfg['apple_lookup_batch_size']<=APPLE_DETAIL_MAX:
         raise ValueError(f'apple_lookup_batch_size must be an integer from 1 to {APPLE_DETAIL_MAX}')
-    cfg.setdefault('global_interval_seconds', 5)
+    cfg.setdefault('global_interval_seconds', 1.5)
     cfg.setdefault('cooldown_seconds', 900)
     for key, low, high in [('global_interval_seconds',0.1,3600),('cooldown_seconds',60,86400)]:
         value=cfg[key]

@@ -102,16 +102,16 @@ class GoogleBatchParserTest(unittest.TestCase):
 
     def test_chart_batch_preserves_depth_and_every_item(self):
         payload=FIXTURES['chart']
-        targets=[dict(store='google',country='us',language='en',kind='chart',collection='top-free',category='GAME',depth=n) for n in (100,5)]
+        targets=[dict(store='google',country='us',language='en',kind='chart',collection='top-free',category='GAME',depth=n) for n in (500,5)]
         client=ObservationClient({},None)
         def send(*args,**kwargs):
             calls=json.loads(kwargs['data']['f.req'])[0]
-            self.assertEqual([json.loads(c[1])[0][1][0][1][1] for c in calls],[100,5])
+            self.assertEqual([json.loads(c[1])[0][1][0][1][1] for c in calls],[500,5])
             return response(calls,[payload,payload])
         with patch.object(client,'request',side_effect=send) as http:
             results=client.fetch_observations(targets)
         self.assertEqual(http.call_count,1)
-        self.assertEqual(results[0].items,google_chart(payload)[:100])
+        self.assertEqual(results[0].items,google_chart(payload)[:500])
         self.assertEqual(results[1].items,google_chart(payload)[:5])
 
     def test_reviews_batch_keeps_independent_cursors_and_full_requested_depth(self):

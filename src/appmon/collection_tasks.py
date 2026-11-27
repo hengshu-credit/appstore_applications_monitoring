@@ -176,6 +176,8 @@ def edit_task(db, resource, identifier, value):
                 WHERE store=%s AND app_id=%s AND country=%s AND language=%s''',
                        (time.time()+interval*3600, *[row[k] for k in ('store','app_id','country','language')]))
         elif resource in ('icons','permissions','media'):
+            if resource=='icons':
+                db.execute("UPDATE app_icons SET request_mode='periodic',requested=1 WHERE id=%s",(identifier,))
             db.execute(f'UPDATE {table} SET refresh_hours=%s,due=LEAST(due,%s),token=NULL,lease_until=0 WHERE id=%s',(interval,time.time()+interval*3600,identifier))
         else:
             depth = value.get('depth',row['depth'])
@@ -206,11 +208,12 @@ def _enqueue_selected(db, cfg, resource, table, row, action, due, now):
     if not row or (action=='retry' and not row['failures']):
         return 'skipped'
     if row['lease_until']>now:
+        if resource=='icons' and action=='refresh':
+            db.execute("UPDATE app_icons SET request_mode=IF(request_mode='periodic','periodic','once') WHERE id=%s",key)
         return 'running'
     if resource=='icons':
-        from .storage_policy import media_allowed
-        if not row['requested'] or not media_allowed(db,cfg,row['store'],row['app_id']):
-            return 'out_of_scope'
+        db.execute("""UPDATE app_icons SET requested=1,request_mode=IF(request_mode='periodic','periodic','once'),
+            status='queued' WHERE id=%s""",key)
     if resource=='media':
         from .app_media import active_predicate
         if not db.execute('SELECT 1 FROM app_media_assets a WHERE id=%s AND '+active_predicate(),key).fetchone():
@@ -294,6 +297,8 @@ def control_tasks(db, value, cfg=None):
                 continue
             counts['updated'] += 1
             if action=='interval':
+                if resource=='icons':
+                    db.execute("UPDATE app_icons SET request_mode='periodic',requested=1 WHERE id=%s",(identifier,))
                 db.execute(f'UPDATE {table} SET refresh_hours=%s WHERE id=%s',(interval,identifier))
                 if resource=='watchlist':
                     db.execute('UPDATE jobs SET due=%s,token=NULL,lease_until=0 WHERE store=%s AND app_id=%s AND country=%s AND language=%s',
@@ -353,9 +358,13 @@ def _control_scope(db, query, args, action, interval):
                         (f',t.manual_paused={int(action=="pause")}' if resource=='media' else ''),(resource,action=='resume'))
                 elif action=='interval':
                     if resource=='sources':continue
+                    if resource=='icons':
+                        db.execute(f"UPDATE {join} SET t.request_mode='periodic',t.requested=1",(resource,))
                     db.execute(f'UPDATE {join} SET t.refresh_hours=%s'+('' if resource=='watchlist' else ',t.due=%s,t.token=NULL,t.lease_until=0'),
                                (resource,interval) if resource=='watchlist' else (resource,interval,now+interval*3600))
                 elif resource not in ('watchlist','sources'):
+                    if resource=='icons':
+                        db.execute(f"UPDATE {join} SET t.request_mode=IF(t.request_mode='periodic','periodic','once') WHERE t.enabled=1 AND t.failures>0 AND t.lease_until<=%s",(resource,now))
                     db.execute(f'UPDATE {join} SET t.due=0 WHERE t.enabled=1 AND t.failures>0 AND t.lease_until<=%s',(resource,now))
                 if resource=='watchlist':
                     jobs_join = join+' JOIN jobs j ON j.store=t.store AND j.app_id=t.app_id AND j.country=t.country AND j.language=t.language'

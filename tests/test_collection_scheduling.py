@@ -243,6 +243,20 @@ class CollectionSchedulingTest(OceanBaseTestCase):
         self.db.execute('UPDATE keyword_targets SET enabled=0')
         self.assertEqual(dispatcher.choose(self.db,cfg),'pool')
 
+    def test_daily_chart_turns_yield_to_manual_priority_and_other_routine_work(self):
+        from appmon.intelligence import add_observation_target
+        from appmon.collection_tasks import control_tasks
+        market=dict(store='google',country='us',language='en')
+        add_observation_target(self.db,market|{'kind':'chart'})
+        identifier=add_targets(self.db,[market|{'keyword':'ordinary'}])['ids'][0]
+        cfg=self.cfg|{'collection_priority_mode':'focus'}
+        self.assertEqual([dispatcher.choose(self.db,cfg) for _ in range(7)],['chart']*7)
+        self.assertEqual(dispatcher.choose(self.db,cfg),'keywords')
+        self.db.execute("UPDATE schedules SET next_at=0 WHERE name='dispatch:turn'")
+        for action in ('page_refresh','refresh'):
+            control_tasks(self.db,{'action':action,'tasks':[{'resource':'keywords','id':identifier}]})
+            self.assertEqual(dispatcher.choose(self.db,cfg),'keywords')
+
     def test_request_slots_are_fair_and_a_cooling_store_does_not_block_the_other(self):
         self.db.execute("INSERT INTO schedules VALUES('rate:global',110)")
         with patch('appmon.collection_limits.time.time',return_value=100):
