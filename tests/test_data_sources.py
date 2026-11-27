@@ -14,6 +14,39 @@ class Response:
 
 
 class SourceAccountsTest(OceanBaseTestCase):
+    def test_directory_key_authorizes_and_fetches_metrics_without_web_login(self):
+        from appmon import source_registry
+        source_registry.save(self.db, self.cfg, 'directory',
+                             {'origin': 'https://www.appbrain.com', 'hosts': ['www.appbrain.com']})
+        api = TestClient(create_app(self.cfg))
+        self.login_admin(api)
+        client = requests.Session()
+        def send(method, url, **kwargs):
+            self.assertEqual(method.upper(), 'GET')
+            self.assertFalse(kwargs['allow_redirects'])
+            self.assertEqual(kwargs['params']['apikey'], 'fixture-key')
+            if url == 'https://api.appbrain.com/v2/info/myapps':
+                return Response(value={'apps': []})
+            self.assertEqual(url, 'https://api.appbrain.com/v2/info/getapp')
+            self.assertEqual(kwargs['params']['package'], 'com.example.app')
+            response = Response(value={'package': 'com.example.app', 'estimatedRecentDownloads': 0})
+            response.content = b'app-info'
+            return response
+        with patch.object(data_sources, 'session', return_value=client), patch.object(client, 'request', side_effect=send):
+            response = api.put('/api/data-sources/directory', json={'access_token': 'fixture-key'})
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()['directory']['status'], 'authorized')
+            self.assertNotIn('fixture-key', api.get('/api/data-sources').text)
+            result = data_sources.directory_metrics(self.db, self.cfg, 'google', 'com.example.app')
+            self.assertEqual(result['values_display'], {'monthly_downloads_estimate': '0'})
+        source_registry.save(self.db, self.cfg, 'directory',
+                             {'origin': 'https://custom.example', 'hosts': ['custom.example']})
+        with patch.object(client, 'request') as send:
+            self.assertEqual(data_sources.authorize(self.db, self.cfg, 'directory', force=True)['directory']['status'], 'endpoint_changed')
+            with self.assertRaises(ValueError):
+                data_sources.save(self.db, self.cfg, {'access_token': 'fixture-key'}, 'directory')
+            send.assert_not_called()
+
     def test_admin_can_reload_editable_secrets_without_cookies_or_public_leak(self):
         data_sources.save(self.db,self.cfg,{'email':'edit@example.com','password':'edit-secret','access_token':'edit-token'},'marketdata',authorize_now=False)
         api=TestClient(create_app(self.cfg))

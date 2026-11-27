@@ -1,8 +1,24 @@
 import unittest
+from unittest.mock import Mock
 from appmon.public_sources import community_metrics, web_trends
 
 
 class PublicSourcesTest(unittest.TestCase):
+    def test_directory_key_checks_require_authenticated_json(self):
+        from appmon.directory_source import authorize
+        client = Mock(source_profile={'origin': 'https://www.appbrain.com'})
+        for code, body, expected in [
+            (200, {'apps': []}, 'authorized'), (200, {}, 'source_changed'),
+            (302, None, 'source_changed'), (401, None, 'invalid_token'),
+            (403, None, 'access_denied'), (429, None, 'rate_limited'),
+            (503, None, 'network_error'),
+        ]:
+            with self.subTest(code=code, expected=expected):
+                client.get.return_value.status_code = code
+                client.get.return_value.json.return_value = body
+                self.assertEqual(authorize(client, {'access_token': 'fixture-key'}), expected)
+        client.post.assert_not_called()
+
     def test_directory_uses_observed_form_and_rejects_external_credential_targets(self):
         from appmon.directory_source import login_form,metrics
         html='<form method="post" action="/login"><input type="hidden" name="csrf" value="fixture"><input type="email" name="email"><input type="password" name="password"></form>'

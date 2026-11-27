@@ -17,11 +17,12 @@ const guides = {
     vendor: "AppBrain",
     hosts: ["www.appbrain.com", "appbrain.com"],
     setup:
-      "接入地址填写 https://www.appbrain.com，允许域名填写 www.appbrain.com, developers.appbrain.com, appbrain.com。在“安装指标接入”区域填写 AppBrain 自身的邮箱密码；使用第三方登录的账户需先在官网确认可用的密码登录方式。",
+      "接入地址填写 https://www.appbrain.com，允许域名填写 www.appbrain.com, developers.appbrain.com, appbrain.com。已登录官网后，到开发者控制台的 API 页面创建具有读取权限的 API Key，填入“安装指标接入”。密钥仅发往 api.appbrain.com。授权检查免费，查询其他应用可能消耗 API 额度。",
     scope:
       "提供 Android 安装参考指标；可见指标由来源和账户权限决定，不代表全量下载数据。",
     links: [
       ["官网", "https://www.appbrain.com/"],
+      ["管理 API Key", "https://www.appbrain.com/dev_dashboard#DevPagePlace:page=api"],
       ["注册 / 登录", "https://www.appbrain.com/login"],
     ],
   },

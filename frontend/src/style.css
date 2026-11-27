@@ -309,6 +309,9 @@ p {
   gap: 12px;
   margin: 12px 0;
 }
+.source-account-form > [data-directory-key] {
+  grid-column: 1 / -1;
+}
 .source-account-form > label {
   min-width: 0;
 }

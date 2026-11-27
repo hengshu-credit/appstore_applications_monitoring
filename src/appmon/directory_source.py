@@ -1,7 +1,41 @@
-"""安装指标 email-form adapter. CAPTCHA/SSO screens require user action."""
+"""Installation metrics from the official read API or a configured website."""
 import re
+import time
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlsplit
+
+API_ORIGIN = 'https://api.appbrain.com/v2'
+OFFICIAL_SITES = {'https://www.appbrain.com', 'https://appbrain.com'}
+
+
+def api_request(client, key, endpoint, **params):
+    if client.source_profile['origin'] not in OFFICIAL_SITES:
+        raise ValueError('AppBrain API Key 仅可用于官方接入')
+    response = client.get(f'{API_ORIGIN}/info/{endpoint}', params={'apikey': key, **params},
+                          timeout=(10, 20), allow_redirects=False)
+    errors = {401: 'invalid_token', 403: 'access_denied', 429: 'rate_limited'}
+    if response.status_code != 200:
+        return errors.get(response.status_code, 'network_error' if response.status_code >= 500 else 'source_changed'), response
+    return 'authorized', response
+
+
+def api_metrics(client, key, app_id):
+    from .data_sources import MESSAGES
+    state, response = api_request(client, key, 'getapp', package=app_id)
+    if state != 'authorized':
+        raise ValueError(MESSAGES[state])
+    app = response.json()
+    if not isinstance(app, dict) or app.get('package') != app_id:
+        raise ValueError('安装指标响应未确认请求的应用')
+    fields = {'estimatedDownloads': 'total_installs_estimate',
+              'estimatedRecentDownloads': 'monthly_downloads_estimate'}
+    values = {label: str(app[field]) for field, label in fields.items()
+              if type(app.get(field)) is int and app[field] >= 0}
+    if not values:
+        raise ValueError('安装指标 API 未返回下载估算')
+    return {'source': 'AppBrain API', 'store': 'google', 'app_id': app_id, 'scope': 'worldwide',
+            'country': None, 'observed_at': time.time(), 'values_display': values,
+            'note': '全球下载量为来源估算。'}, response.content
 
 def safe_url(url, hosts):
     p=urlsplit(url)
@@ -49,13 +83,20 @@ def logged_in(response):
 
 
 def authorize(client,saved):
+    if saved.get('access_token'):
+        state, response = api_request(client, saved['access_token'], 'myapps')
+        if state != 'authorized':
+            return state
+        data = response.json()
+        return 'authorized' if isinstance(data, dict) and isinstance(data.get('apps'), list) else 'source_changed'
     origin=client.source_profile['origin'];hosts=client.source_profile['hosts']
     account=client.source_profile.get('account_path','/account')
     if saved.get('cookies') and logged_in(get(client,origin+account)):return 'authorized'
     from urllib.parse import urlencode
     login=get(client,origin+'/login?'+urlencode({'reason':'dashboard','continue':origin+account}))
     if login.status_code==429:return 'rate_limited'
-    if login.status_code in (403,202):return 'action_required'
+    if login.status_code in (403,202):
+        return 'web_login_blocked' if origin in OFFICIAL_SITES else 'action_required'
     if login.status_code!=200:return 'network_error'
     if re.search(r'(?:g-recaptcha|h-captcha|cf-turnstile)',login.text,re.I):return 'action_required'
     target,fields=login_form(login.text,login.url,saved['email'],saved['password'],hosts)
@@ -71,7 +112,6 @@ def authorize(client,saved):
 
 def metrics(html,app_id):
     from .public_sources import PageText
-    import time
     parser=PageText();parser.feed(html);text=' '.join(' '.join(parser.parts).split())
     if app_id not in html:raise ValueError('安装指标页面未确认请求的应用')
     values={}

@@ -10,6 +10,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from .db import dump
 
 from .source_profiles import bind, profile
+from . import directory_source
 PROVIDERS=('community','directory','marketdata')
 def provider_name(provider):
     if provider not in PROVIDERS:raise ValueError('未知数据源')
@@ -17,6 +18,7 @@ def provider_name(provider):
 def cookie_allowed(settings,domain):
     return domain.lstrip('.') in settings['hosts']
 MESSAGES={'not_configured':'未配置账户','saved':'已保存，等待授权','authorized':'授权有效',
+    'web_login_blocked':'AppBrain 拦截了后台登录请求。请在安装指标接入中填写只读 API Key，再保存并检查授权。',
     'api_token_required':'账密已保存；API 采集需填写 Personal Access Token',
     'invalid_token':'API Token 无效或已过期','access_denied':'当前账户无 API 权限或额度不足',
     'invalid_credentials':'登录失败，请检查邮箱和密码','action_required':'需要在来源网站完成邮箱、验证码或二次验证',
@@ -73,17 +75,21 @@ def admin_credentials(db,cfg):
 def save(db,cfg,value,provider="community",authorize_now=True):
     provider_name(provider)
     email=value.get('email');password=value.get('password')
-    token=value.get('access_token','') if provider=='marketdata' else ''
-    token_only=provider=='marketdata' and token and not email and not password
+    token=value.get('access_token','') if provider in ('marketdata','directory') else ''
+    if provider=='directory' and token:
+        email=password=''
+    token_only=bool(token) and not email and not password
     if not token_only and (not isinstance(email,str) or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',email) or len(email)>254):raise ValueError('请输入有效的 来源账户邮箱')
     if not token_only and (not isinstance(password,str) or not 1<=len(password)<=1024):raise ValueError('请输入 来源账户密码')
-    if not isinstance(token,str) or not token.isascii() or len(token)>4096 or any(c.isspace() or ord(c)<32 for c in token):raise ValueError('API Token 格式无效')
+    if not isinstance(token,str) or len(token)>4096 or any(not 33<=ord(c)<=126 for c in token):raise ValueError('API Token 格式无效')
     with db.named_lock('data-source-'+provider):
+        if provider=='directory' and token and profile(cfg,provider,db)['origin'] not in directory_source.OFFICIAL_SITES:
+            raise ValueError('AppBrain API Key 仅可用于官方接入')
         with db.named_lock('data-sources-key'):
             has_secrets=bool(db.execute('SELECT 1 FROM source_accounts LIMIT 1').fetchone())
             encryption=cipher(cfg,create=not has_secrets)
         saved={'email':email,'password':password,'cookies':[]}
-        if provider=='marketdata':saved['access_token']=token
+        if provider=='marketdata' or token:saved['access_token']=token
         secret=encryption.encrypt(dump(saved).encode()).decode()
         db.execute("INSERT INTO source_accounts(provider,secret,status,updated_at) VALUES(%s,%s,'saved',%s) ON DUPLICATE KEY UPDATE secret=VALUES(secret),status='saved',checked_at=NULL,retry_after=0,updated_at=VALUES(updated_at)",(provider,secret,time.time()))
     return authorize(db,cfg,provider) if authorize_now else status(db)
@@ -114,62 +120,61 @@ def authorized_user(response):
 
 def authorize(db,cfg,provider="community",force=False):
     provider_name(provider)
-    try:return _authorize(db,cfg,provider,force=force)
+    try:
+        with db.named_lock('data-source-'+provider):
+            return _authorize_locked(db,cfg,provider,force=force)
     except RuntimeError:
         result=status(db)
         result[provider].update(status='authorizing',message='该来源正在授权，请稍后检查状态')
         return result
 
 
-def _authorize(db,cfg,provider,force=False):
-    provider_name(provider)
-    with db.named_lock('data-source-'+provider):
-        row=db.execute("SELECT * FROM source_accounts WHERE provider=%s",(provider,)).fetchone()
-        if not row:return status(db)
-        if row['status']=='endpoint_changed':return status(db)
-        if row['retry_after']>time.time() and (not force or row['status']=='rate_limited'):return status(db)
-        try:
-            encryption=cipher(cfg);saved=json.loads(encryption.decrypt(row['secret'].encode()))
-        except (InvalidToken,ValueError,OSError):
-            db.execute("UPDATE source_accounts SET status='key_unavailable' WHERE provider=%s",(provider,))
-            return status(db)
-        outcome='network_error';client=session(cfg)
-        try:
-            bind(client,cfg,provider,db)
-            for cookie in saved.get('cookies',[]):
-                if cookie_allowed(client.source_profile,cookie.get('domain','')):
-                    client.cookies.set(cookie['name'],cookie['value'],domain=cookie['domain'],path=cookie.get('path','/'),secure=True)
-            if provider=='marketdata':
-                from .marketdata_source import authorize as marketdata_authorize
-                outcome=marketdata_authorize(db,client,saved)
-            elif provider=='directory':
-                from .directory_source import authorize as directory_authorize
-                outcome=directory_authorize(client,saved)
-            elif saved.get('cookies') and authorized_user(request(client,'GET','/auth/me')):outcome='authorized'
-            else:
-                client.cookies.clear()
-                result=request(client,'POST','/auth/login',data={'email':saved['email'],'password':saved['password'],'redirectTo':'/free-app-datasets'},
-                    headers={'Origin':client.source_profile['origin'],'Referer':client.source_profile['origin']+'/auth/login'})
-                location=urlsplit(result.headers.get('Location','')).path
-                if result.status_code==429:outcome='rate_limited'
-                elif result.status_code in (400,401):outcome='invalid_credentials'
-                elif result.status_code==403 or location.startswith(('/auth/2fa','/auth/verify-email')):outcome='action_required'
-                elif result.status_code in (200,302,303) and authorized_user(request(client,'GET','/auth/me')):outcome='authorized'
-                else:outcome='source_changed'
-            saved['cookies']=[{'name':c.name,'value':c.value,'domain':c.domain,'path':c.path} for c in client.cookies if cookie_allowed(client.source_profile,c.domain)] if outcome=='authorized' else []
-        except requests.RequestException:outcome='network_error'
-        except ValueError:outcome='source_changed'
-        finally:client.close()
-        retry=0 if outcome=='authorized' else time.time()+(3600 if outcome in ('invalid_credentials','action_required') else 300)
-        db.execute("UPDATE source_accounts SET secret=%s,status=%s,checked_at=%s,retry_after=%s WHERE provider=%s",
-            (encryption.encrypt(dump(saved).encode()).decode(),outcome,time.time(),retry,provider))
+def _authorize_locked(db,cfg,provider,force=False):
+    row=db.execute("SELECT * FROM source_accounts WHERE provider=%s",(provider,)).fetchone()
+    if not row:return status(db)
+    if row['status']=='endpoint_changed':return status(db)
+    if row['retry_after']>time.time() and (not force or row['status']=='rate_limited'):return status(db)
+    try:
+        encryption=cipher(cfg);saved=json.loads(encryption.decrypt(row['secret'].encode()))
+    except (InvalidToken,ValueError,OSError):
+        db.execute("UPDATE source_accounts SET status='key_unavailable' WHERE provider=%s",(provider,))
+        return status(db)
+    outcome='network_error';client=session(cfg)
+    try:
+        bind(client,cfg,provider,db)
+        for cookie in saved.get('cookies',[]):
+            if cookie_allowed(client.source_profile,cookie.get('domain','')):
+                client.cookies.set(cookie['name'],cookie['value'],domain=cookie['domain'],path=cookie.get('path','/'),secure=True)
+        if provider=='marketdata':
+            from .marketdata_source import authorize as marketdata_authorize
+            outcome=marketdata_authorize(db,client,saved)
+        elif provider=='directory':
+            outcome=directory_source.authorize(client,saved)
+        elif saved.get('cookies') and authorized_user(request(client,'GET','/auth/me')):outcome='authorized'
+        else:
+            client.cookies.clear()
+            result=request(client,'POST','/auth/login',data={'email':saved['email'],'password':saved['password'],'redirectTo':'/free-app-datasets'},
+                headers={'Origin':client.source_profile['origin'],'Referer':client.source_profile['origin']+'/auth/login'})
+            location=urlsplit(result.headers.get('Location','')).path
+            if result.status_code==429:outcome='rate_limited'
+            elif result.status_code in (400,401):outcome='invalid_credentials'
+            elif result.status_code==403 or location.startswith(('/auth/2fa','/auth/verify-email')):outcome='action_required'
+            elif result.status_code in (200,302,303) and authorized_user(request(client,'GET','/auth/me')):outcome='authorized'
+            else:outcome='source_changed'
+        saved['cookies']=[{'name':c.name,'value':c.value,'domain':c.domain,'path':c.path} for c in client.cookies if cookie_allowed(client.source_profile,c.domain)] if outcome=='authorized' else []
+    except requests.RequestException:outcome='network_error'
+    except ValueError:outcome='source_changed'
+    finally:client.close()
+    retry=0 if outcome=='authorized' else time.time()+(3600 if outcome in ('invalid_credentials','action_required','web_login_blocked') else 300)
+    db.execute("UPDATE source_accounts SET secret=%s,status=%s,checked_at=%s,retry_after=%s WHERE provider=%s",
+        (encryption.encrypt(dump(saved).encode()).decode(),outcome,time.time(),retry,provider))
     return status(db)
 
 
 def account_session(db,cfg,provider="community"):
     with db.named_lock('data-source-'+provider):
         provider_name(provider)
-        state=authorize(db,cfg,provider)[provider]
+        state=_authorize_locked(db,cfg,provider)[provider]
         if state['status']!='authorized':raise ValueError(state['message'])
         row=db.execute("SELECT secret FROM source_accounts WHERE provider=%s",(provider,)).fetchone()
         saved=json.loads(cipher(cfg).decrypt(row['secret'].encode()));client=session(cfg)
@@ -177,6 +182,8 @@ def account_session(db,cfg,provider="community"):
         if provider=='marketdata':
             from .marketdata_source import configure
             configure(client,saved)
+        if provider=='directory':
+            client.directory_key=saved.get('access_token')
         for c in saved['cookies']:client.cookies.set(c['name'],c['value'],domain=c['domain'],path=c['path'],secure=True)
         return client
 
@@ -191,15 +198,18 @@ def dataset_catalog(db,cfg):
 
 
 def directory_metrics(db,cfg,store,app_id):
-    from . import directory_source
     import hashlib
     if store!='google':raise ValueError('安装指标当前适配器仅支持Android应用')
     client=account_session(db,cfg,'directory') if status(db)['directory']['configured'] else bind(session(cfg),cfg,'directory',db)
     with client:
-        response=directory_source.get(client,client.source_profile['origin']+'/app/'+app_id)
-        if response.status_code!=200:raise ValueError('安装指标页面不可读取，请检查授权或在来源网站完成人工验证')
-        result=directory_source.metrics(response.text,app_id)
-        result['raw_sha256']=hashlib.sha256(response.content).hexdigest()
+        if getattr(client,'directory_key',None):
+            result,content=directory_source.api_metrics(client,client.directory_key,app_id)
+        else:
+            response=directory_source.get(client,client.source_profile['origin']+'/app/'+app_id)
+            if response.status_code!=200:raise ValueError('安装指标页面不可读取，请检查授权或在来源网站完成人工验证')
+            result=directory_source.metrics(response.text,app_id)
+            content=response.content
+        result['raw_sha256']=hashlib.sha256(content).hexdigest()
     output=Path(cfg['data_dir'])/'public-sources';output.mkdir(parents=True,exist_ok=True)
     (output/('directory-google-'+app_id+'.json')).write_text(dump(result),encoding='utf-8')
     return result

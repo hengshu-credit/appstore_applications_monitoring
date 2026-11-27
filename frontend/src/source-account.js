@@ -19,15 +19,16 @@ export function bindSecretFields(root) {
   }
 }
 
-export function accountSummary(state = {}) {
+export function accountSummary(state = {}, directoryApi = false) {
   if (!state.configured) return "未保存凭据 · 填写后点击保存";
   const messages = {
     saved: "等待授权检查",
     authorized: "授权有效",
     authorizing: "正在授权，请稍后检查",
     invalid_credentials: "授权失败，请检查邮箱和密码后重新保存",
-    action_required:
-      "授权未完成：需在来源网站完成邮箱、验证码或二次验证；完成后回到这里重新检查授权。网页登录状态不会自动同步，若仍需验证，当前接入方式无法自动完成登录",
+    action_required: directoryApi
+      ? "授权未完成：后台登录需要验证。可在下方填写 AppBrain 只读 API Key 后保存。"
+      : "授权未完成：需在来源网站完成邮箱、验证码或二次验证；完成后回到这里重新检查授权。网页登录状态不会自动同步，若仍需验证，当前接入方式无法自动完成登录",
     api_token_required:
       "API 未授权，请填写 Personal Access Token；仅邮箱密码不能启用 API 采集",
     endpoint_changed: "地址已变更，请确认地址并重新保存凭据后授权",
@@ -46,6 +47,7 @@ export function bindSourceAccount({
   provider,
   api,
   onUpdate = () => {},
+  summary = accountSummary,
 }) {
   const form = root.querySelector(`#${prefix}-account`);
   const status = root.querySelector(`#${prefix}-state`);
@@ -63,7 +65,7 @@ export function bindSourceAccount({
   const update = (data) => {
     if (!form.isConnected) return;
     configured = data[provider].configured;
-    status.textContent = accountSummary(data[provider]);
+    status.textContent = summary(data[provider]);
     onUpdate(data);
     refreshButtons();
   };
@@ -87,7 +89,7 @@ export function bindSourceAccount({
         status.textContent = "正在保存凭据…";
         submit.textContent = "正在保存…";
         const values = Object.fromEntries(
-          fields.map((input) => [
+          fields.filter((input) => !input.disabled).map((input) => [
             input.name,
             input.name === "email" ? input.value.trim() : input.value,
           ]),

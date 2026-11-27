@@ -41,6 +41,11 @@ export function createDataSourcePage({
       };
     const help = (id) =>
       `<div data-source-guide="${id}"><strong>${esc(sourceTitle(connection(id)))}</strong>${sourceGuide(esc, connection(id))}</div>`;
+    const officialDirectory = () =>
+      ["https://www.appbrain.com", "https://appbrain.com"].includes(connection("directory").origin?.replace(/\/+$/, ""));
+    const summary = (id, state) => accountSummary(state, id === "directory" && officialDirectory());
+    const directoryFields = () =>
+      `<div data-directory-key>${secretField(esc, "access_token", "AppBrain 只读 API Key", officialDirectory() ? credentials.directory?.access_token : "")}</div><label>账户邮箱<input name="email" type="email" required autocomplete="off" value="${esc(directory.email || "")}" placeholder="${directory.configured ? "已保存，更换时填写" : "AppBrain 登录邮箱"}"></label>${secretField(esc, "password", "密码", credentials.directory?.password, true)}`;
     const sourceTable = () =>
       table(
         [
@@ -59,7 +64,7 @@ export function createDataSourcePage({
           esc(source.fields),
           sourceGuide(esc, source, true),
           ["community", "directory", "marketdata"].includes(source.id)
-            ? esc(accountSummary(data[source.id] || source.account))
+            ? esc(summary(source.id, data[source.id] || source.account))
             : source.account?.configured
               ? "凭据已保存"
               : source.editable_token ? "待配置授权" : "无需账户 / 未配置",
@@ -69,6 +74,7 @@ export function createDataSourcePage({
         ]),
       );
     const metricsLabels = {
+      total_installs_estimate: "累计下载估算（全球）",
       total_installs: "来源累计安装（全球）",
       installs: "累计安装档位下限",
       installs_reported: "商店累计安装观察",
@@ -80,7 +86,7 @@ export function createDataSourcePage({
     };
     if (
       !mount(
-        `${panel("数据源配置", `<p class="sub">官方商店公开接口无需账号。第三方来源先核对接入地址，再在对应区域填写该网站的账户或 Token；这里填写的不是观星平台登录账号。点击“配置地址”只修改接入地址；账户和密码请在对应接入区域填写并保存。第三方网页登录不会自动配置本系统。</p><div id="source-config-list">${sourceTable()}</div><p class="sub">配置保存在后台并实时回显。批量设置在新批次生效；修改接入地址后须重新保存账户凭据。</p>`)}${panel("首轮 24 小时容量", `<div id="initial-capacity">正在核算全库容量…</div>`)}${panel("公开批量数据包", `<div id="bulk-source-imports">正在读取本地数据包…</div>`)}${panel("公开指标接入", `${help("community")}<p id="provider-state" role="status">${esc(accountSummary(state))}${state.checked_at ? " · " + new Date(state.checked_at * 1000).toLocaleString() : ""}</p><form id="provider-account" class="source-account-form"><label>账户邮箱<input type="email" name="email" required autocomplete="off" value="${esc(state.email || "")}" placeholder="${state.configured ? "已保存，更换账户时填写" : "AppGoblin 登录邮箱"}"></label>${secretField(esc, "password", "密码", credentials.community?.password, true)}<div class="source-account-actions"><button type="submit">保存并检查授权</button><button type="button" id="provider-authorize" class="secondary" ${state.configured ? "" : "disabled"}>重新检查授权</button><button type="button" id="provider-datasets" class="secondary">读取免费数据目录</button></div></form><p class="sub">密码加密保存，默认隐藏；点击输入框右侧小眼睛查看。填写后点击保存，页面会分别显示保存结果和授权结果。邮箱验证等步骤需在 AppGoblin 完成，再回此页面重新检查；网页登录状态不会自动同步。</p><div id="provider-result"></div>`)}${panel("安装指标接入", `${help("directory")}<p id="directory-state" role="status">${esc(accountSummary(directory))}</p><form id="directory-account" class="source-account-form"><label>账户邮箱<input name="email" type="email" required autocomplete="off" value="${esc(directory.email || "")}" placeholder="${directory.configured ? "已保存，更换时填写" : "AppBrain 登录邮箱"}"></label>${secretField(esc, "password", "密码", credentials.directory?.password, true)}<div class="source-account-actions"><button type="submit">保存并检查授权</button><button type="button" id="directory-authorize" class="secondary" ${directory.configured ? "" : "disabled"}>重新检查授权</button></div></form><p class="sub">填写 AppBrain 自身的邮箱密码后点击保存；密码可通过右侧小眼睛查看。官网单点登录或验证码不会把浏览器会话同步到本系统；若持续要求验证，当前自动登录方式无法完成授权。</p>`)}${panel(
+        `${panel("数据源配置", `<p class="sub">官方商店公开接口无需账号。第三方来源先核对接入地址，再在对应区域填写该网站的账户或 Token；这里填写的不是观星平台登录账号。点击“配置地址”只修改接入地址；账户和密码请在对应接入区域填写并保存。第三方网页登录不会自动配置本系统。</p><div id="source-config-list">${sourceTable()}</div><p class="sub">配置保存在后台并实时回显。批量设置在新批次生效；修改接入地址后须重新保存账户凭据。</p>`)}${panel("首轮 24 小时容量", `<div id="initial-capacity">正在核算全库容量…</div>`)}${panel("公开批量数据包", `<div id="bulk-source-imports">正在读取本地数据包…</div>`)}${panel("公开指标接入", `${help("community")}<p id="provider-state" role="status">${esc(accountSummary(state))}${state.checked_at ? " · " + new Date(state.checked_at * 1000).toLocaleString() : ""}</p><form id="provider-account" class="source-account-form"><label>账户邮箱<input type="email" name="email" required autocomplete="off" value="${esc(state.email || "")}" placeholder="${state.configured ? "已保存，更换账户时填写" : "AppGoblin 登录邮箱"}"></label>${secretField(esc, "password", "密码", credentials.community?.password, true)}<div class="source-account-actions"><button type="submit">保存并检查授权</button><button type="button" id="provider-authorize" class="secondary" ${state.configured ? "" : "disabled"}>重新检查授权</button><button type="button" id="provider-datasets" class="secondary">读取免费数据目录</button></div></form><p class="sub">密码加密保存，默认隐藏；点击输入框右侧小眼睛查看。填写后点击保存，页面会分别显示保存结果和授权结果。邮箱验证等步骤需在 AppGoblin 完成，再回此页面重新检查；网页登录状态不会自动同步。</p><div id="provider-result"></div>`)}${panel("安装指标接入", `${help("directory")}<p id="directory-state" role="status">${esc(summary("directory", directory))}</p><form id="directory-account" class="source-account-form">${directoryFields()}<div class="source-account-actions"><button type="submit">保存并检查授权</button><button type="button" id="directory-authorize" class="secondary" ${directory.configured ? "" : "disabled"}>重新检查授权</button></div></form><p class="sub">后台使用独立凭据检查授权。<span data-directory-key>填写 API Key 后点击“保存并检查授权”。清空 Key 可改用邮箱和密码。</span></p>`)}${panel(
           "获取应用公开指标",
           `${filterBar({
             id: "source-app-query", appScope: "store",
@@ -134,6 +140,18 @@ export function createDataSourcePage({
     )
       return;
     const root = $("#provider-account").closest("main");
+    const directoryForm = root.querySelector("#directory-account");
+    const syncDirectoryFields = () => {
+      const official = officialDirectory();
+      const { access_token: key, email, password } = directoryForm.elements;
+      for (const block of root.querySelectorAll("[data-directory-key]"))
+        block.hidden = !official;
+      key.disabled = !official;
+      email.disabled = password.disabled = official && Boolean(key.value);
+      email.required = password.required = !email.disabled;
+    };
+    syncDirectoryFields();
+    directoryForm.addEventListener("input", syncDirectoryFields);
     const syncAccounts = (result) => {
       for (const id of ["community", "directory", "marketdata"]) {
         if (!result[id]) continue;
@@ -244,7 +262,7 @@ export function createDataSourcePage({
             : account.dataset.sourceAccount;
         const form = root.querySelector(`#${prefix}-account`);
         form.scrollIntoView({ block: "center", behavior: "smooth" });
-        form.elements.email.focus({ preventScroll: true });
+        form.querySelector("input:not(:disabled)")?.focus({ preventScroll: true });
         return;
       }
       const button = event.target.closest("[data-source-edit]");
@@ -296,6 +314,10 @@ export function createDataSourcePage({
             const current = connection(block.dataset.sourceGuide);
             block.innerHTML = `<strong>${esc(sourceTitle(current))}</strong>${sourceGuide(esc, current)}`;
           }
+          if (saved.id === "directory" && saved.origin !== source.origin) {
+            for (const input of directoryForm.querySelectorAll("input")) input.value = "";
+            syncDirectoryFields();
+          }
           if (saved.account && accountUpdates[saved.id])
             accountUpdates[saved.id]({ [saved.id]: saved.account });
           dialog.close();
@@ -321,6 +343,7 @@ export function createDataSourcePage({
         provider,
         api,
         onUpdate: syncAccounts,
+        summary: (state) => summary(provider, state),
       });
     }
     const run = async (button, work) => {

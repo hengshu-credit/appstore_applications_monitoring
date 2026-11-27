@@ -71,8 +71,12 @@ test("source configuration prefills saved values and persists batch changes and 
     }
     if (method === "PUT") {
       calls.push({ path, value, method });
+      if (path === "/data-sources/directory?authorize_now=false")
+        return { directory: { configured: true, status: "saved" } };
       return { ...row, ...value };
     }
+    if (path === "/data-sources/directory/authorize")
+      return { directory: { configured: true, status: "authorized" } };
     if (path === "/data-sources/credentials")
       return { community: { password: "saved-password" } };
     if (path === "/data-sources")
@@ -82,8 +86,8 @@ test("source configuration prefills saved values and persists batch changes and 
           email: "saved@example.org",
           message: "已保存",
         },
-        directory: { configured: false },
-        connections: [row],
+        directory: { configured: true, status: "action_required" },
+        connections: [row, { id: "directory", origin: "https://www.appbrain.com" }],
         catalog: [],
       };
     if (path === "/data-sources/baseline-imports")
@@ -165,6 +169,20 @@ test("source configuration prefills saved values and persists batch changes and 
         .textContent,
       /100/,
     );
+    const directory = window.document.querySelector("#directory-account");
+    const directoryStatus = window.document.querySelector("#directory-state");
+    assert.match(directoryStatus.textContent, /API Key/);
+    const { access_token: key, email, password } = directory.elements;
+    assert.equal(key.type, "password");
+    key.value = "fixture-key";
+    key.dispatchEvent(new window.Event("input", { bubbles: true }));
+    assert.ok(email.disabled && password.disabled);
+    await directory.onsubmit({ preventDefault() {} });
+    assert.deepEqual(calls.at(-1).value, { access_token: "fixture-key" });
+    assert.match(directoryStatus.textContent, /授权有效/);
+    key.value = "";
+    key.dispatchEvent(new window.Event("input", { bubbles: true }));
+    assert.ok(email.required && password.required);
   } finally {
     await window.happyDOM.close();
   }
