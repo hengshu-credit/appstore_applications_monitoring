@@ -14,6 +14,17 @@ def language_for(store,country,value='auto'):
     return value
 
 
+def validate_market(value):
+    from .catalog import APPLE_COUNTRIES
+    store = value.get("store")
+    country = str(value.get("country","")).lower()
+    if store not in ("apple","google") or not re.fullmatch(r"[a-z]{2}",country):
+        raise ValueError("store must be google/apple and country must be a two-letter code")
+    if store=="apple" and country not in APPLE_COUNTRIES:
+        raise ValueError("该地区未列入 Apple 官方 App Store 市场；请选择其他地区，不会自动切换至美国")
+    return dict(store=store,country=country,language=language_for(store,country,value.get("language","auto")))
+
+
 def stores(value):
     if value in ('',None,'all'):return ['google','apple']
     result=list(dict.fromkeys(value.split(',')))

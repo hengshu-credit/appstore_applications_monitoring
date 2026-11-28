@@ -173,9 +173,10 @@ class KeywordClient(Client):
 
     def complete_google_searches(self, targets, payloads, initial_raw):
         from .google_rpc import rpc_many
-        from .pagination import PageWindow
+        from .pagination import PageWindow, RawPages
+        archive=RawPages()
         states=[PageWindow(t['depth'],'app_id') for t in targets]
-        raw_pages=[[raw.decode('utf-8')] for raw in initial_raw]
+        raw_pages=[[raw] for raw in initial_raw]
         results=[None]*len(targets)
         for i,payload in enumerate(payloads):
             if isinstance(payload,FetchError):
@@ -215,14 +216,14 @@ class KeywordClient(Client):
                             parsed.append({'app_id':path(row,12,0),'name':name})
                         rows=ordered_apps('google',parsed)
                     states[i].add(rows,cursor)
-                    raw_pages[i].append(raw.decode('utf-8'))
-                    self.report('page',f"关键词批次目标 {i+1}：已取得 {len(states[i].items)}/{targets[i]['depth']} 条")
+                    raw_pages[i].append(raw)
                 except (FetchError,ValueError,TypeError,KeyError,IndexError) as error:
                     results[i]=error if isinstance(error,FetchError) else FetchError('Google search continuation schema changed')
+            self.report('page',f"关键词续采响应已处理，本页涉及 {len(active)} 个目标")
         for i,state in enumerate(states):
             if results[i] is None:
                 paginated=state.pages>1
-                raw=json.dumps(raw_pages[i],ensure_ascii=False).encode() if paginated else initial_raw[i]
+                raw=archive.pack(raw_pages[i]) if paginated else initial_raw[i]
                 results[i]=SearchResult(state.items,raw,SOURCES['google'],
                     coverage='paginated_search' if paginated else 'first_response',
                     parser_version='serp-v2' if paginated else PARSER_VERSION,pagination=state.summary())

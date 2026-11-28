@@ -10,6 +10,7 @@ from .db import add_apps, claim, dump, enqueue, key, reserve
 from .ingest import disk_check, sync_seed, valid_id
 from .stores import Client, FetchError
 from .catalog import listing_category
+from .content_store import load_many, marker, put, reference
 from .listing_status import state_key
 
 log = logging.getLogger(__name__)
@@ -32,7 +33,6 @@ def save_result(db, cfg, job, result=None, error=None, now=None):
         if current is None:
             db.rollback()
             return False  # A replacement worker owns the lease; discard stale results.
-        previous = db.execute("SELECT * FROM listings WHERE store=%s AND app_id=%s AND country=%s AND language=%s", k).fetchone()
         events = []
         if error is not None:
             failures = current["failures"] + 1
@@ -43,9 +43,12 @@ def save_result(db, cfg, job, result=None, error=None, now=None):
             failures, error_text = 0, None
             outcome = result.outcome
             due = now + cfg["refresh_hours"] * 3600
+            previous = db.execute("""SELECT state,last_success,misses,digest,CAST(payload AS BINARY) payload FROM listings
+                WHERE store=%s AND app_id=%s AND country=%s AND language=%s""",k).fetchone()
             last_success = previous["last_success"] if previous else None
             previous_state = state_key(previous['state']) if previous else None
-            payload = previous["payload"] if previous else None
+            payload = previous["payload"].decode("utf8") if previous and previous["payload"] is not None else None
+            stored = marker(payload)
             digest = previous["digest"] if previous else None
             if outcome == "ok":
                 from .growth import record
@@ -54,11 +57,14 @@ def save_result(db, cfg, job, result=None, error=None, now=None):
                 remember(db,job['store'],job['app_id'],job['country'],job['language'],result.payload.get('icon'),result.payload.get('name'))
                 if cfg.get('media_scope')=='groups_and_current_charts':
                     from .app_media import remember as remember_media
-                    remember_media(db,cfg,job,result.payload)
+                    remember_media(db,cfg,job,result.payload,icon_recorded=True)
                 new_payload = dump(result.payload)
-                new_digest = hashlib.sha256(new_payload.encode()).hexdigest()
-                from .content_store import put, reference
-                stored_payload = put(db, new_payload, project=True)
+                encoded = new_payload.encode('utf8')
+                new_digest = hashlib.sha256(encoded).hexdigest()
+                if stored and stored['sha256']==new_digest:
+                    stored_payload = reference(new_digest,len(encoded),result.payload)
+                else:
+                    stored_payload = put(db,new_payload,project=True)
                 state, misses, last_success = "available", 0, now
                 if not previous or previous["digest"] is None:
                     events.append(("first_verified", {}))
@@ -66,19 +72,19 @@ def save_result(db, cfg, job, result=None, error=None, now=None):
                     events.append(("reappeared", {}))
                 if digest != new_digest:
                     if payload:
-                        old = json.loads(payload)
+                        original = load_many(db.connection,{stored['sha256']:stored['bytes']})[stored['sha256']] if stored else payload
+                        old = json.loads(original)
                         changes = {f: {"old": old.get(f), "new": result.payload.get(f)}
                                    for f in old.keys() | result.payload.keys() if old.get(f) != result.payload.get(f)}
                         events.append(("metadata_changed", changes))
                     db.execute("""INSERT INTO snapshots(store,app_id,country,language,observed_at,digest,raw_path,payload)
-                                VALUES(%s,%s,%s,%s,%s,%s,%s,%s)""", (*k, now, new_digest, raw_path, reference(new_digest, len(new_payload.encode('utf8')))))
+                                VALUES(%s,%s,%s,%s,%s,%s,%s,%s)""", (*k, now, new_digest, raw_path, reference(new_digest,len(encoded))))
                 payload, digest = stored_payload, new_digest
                 db.execute("UPDATE apps SET name=%s,category=%s WHERE store=%s AND app_id=%s",
                            (result.payload.get("name"), listing_category(job["store"], result.payload), job["store"], job["app_id"]))
             elif outcome == "missing":
-                # Buffered reads returned the full body; preserve compact storage.
-                if payload is not None:
-                    from .content_store import put
+                # Preserve existing compact references and upgrade inline legacy bodies.
+                if payload is not None and not stored:
                     payload = put(db, payload, project=True)
                 misses = (previous["misses"] if previous else 0) + 1
                 state = "region_unavailable"
@@ -164,6 +170,8 @@ def discover(cfg, db, client=None, max_sources=None, managed=False):
 
 
 def daemon(cfg, db):
+    from .batch_limits import BatchWindow
+    cfg=cfg | {'_batch_window':BatchWindow()}
     from .dispatcher import dispatch_once
     from .pipelines import configured
     from .task_logs import execution, emit

@@ -205,6 +205,7 @@ class WorkbenchTest(OceanBaseTestCase):
         work_plans(self.db)
         self.assertEqual(self.db.execute('SELECT enabled FROM watchlist').fetchone()['enabled'],0)
         self.assertEqual(self.db.execute('SELECT count(*) n FROM observation_targets').fetchone()['n'],2)
+        self.assertEqual(self.db.execute("SELECT depth FROM observation_targets WHERE kind='chart'").fetchone()['depth'],500)
         self.assertEqual(self.db.execute('SELECT count(*) n FROM keyword_targets').fetchone()['n'],1)
         self.assertEqual(self.db.execute('SELECT status FROM collection_plans WHERE id=%s',(saved['id'],)).fetchone()['status'],'complete')
 

@@ -23,16 +23,57 @@ class CollectionBatchTest(OceanBaseTestCase):
         data = {'resultCount':len(ids),'results':[dict(trackId=int(i),wrapperType='software',trackName='App '+i) for i in reversed(ids)]}
         return SimpleNamespace(status_code=200,content=json.dumps(data).encode(),json=lambda:data)
 
-    def test_105_apps_use_three_http_calls_and_preserve_each_identity(self):
+    def test_105_apps_use_one_http_call_and_preserve_each_identity(self):
         self.seed()
         client=Client(self.cfg,self.db)
         with patch.object(client,'get',side_effect=lambda store,url,params,headers:self.response(params['id'].split(','))) as send:
             self.assertEqual(work(self.cfg,self.db,105,client)['ok'],105)
-        self.assertEqual([len(c.args[2]['id'].split(',')) for c in send.call_args_list],[50,50,5])
+        self.assertEqual([len(c.args[2]['id'].split(',')) for c in send.call_args_list],[105])
         rows=self.db.execute('SELECT app_id,payload FROM listings').fetchall()
         self.assertEqual(len(rows),105)
         self.assertTrue(all(json.loads(r['payload'])['name']=='App '+r['app_id'] for r in rows))
         self.assertEqual(self.db.execute('SELECT count(*) n FROM jobs WHERE token IS NOT NULL').fetchone()['n'],0)
+
+    def test_larger_lookup_keeps_all_fields_and_reuses_unchanged_content(self):
+        from appmon import monitor
+        from appmon.content_store import put,load_many
+        self.seed(105)
+        def read(store,url,params,headers):return self.response(params['id'].split(','))
+        cfg=self.cfg | {'apple_lookup_batch_size':50}
+        client=Client(cfg,self.db)
+        try:
+            with patch.object(client,'get',side_effect=read) as old:
+                self.assertEqual(work(cfg,self.db,105,client)['ok'],105)
+            self.assertEqual([len(c.args[2]['id'].split(',')) for c in old.call_args_list],[50,50,5])
+        finally:client.session.close()
+        before=self.db.execute('SELECT app_id,payload,digest,state FROM listings ORDER BY app_id').fetchall()
+        self.db.execute('UPDATE jobs SET due=0')
+        client=Client(self.cfg,self.db)
+        try:
+            with patch.object(client,'get',side_effect=read) as current,patch.object(monitor,'put',wraps=put) as write_body,patch.object(
+                    monitor,'load_many',wraps=load_many) as read_body,patch.object(monitor,'raw_save',wraps=monitor.raw_save) as raw:
+                self.assertEqual(work(self.cfg,self.db,105,client)['ok'],105)
+            current.assert_called_once();raw.assert_called_once();write_body.assert_not_called();read_body.assert_not_called()
+        finally:client.session.close()
+        self.assertEqual(self.db.execute('SELECT app_id,payload,digest,state FROM listings ORDER BY app_id').fetchall(),before)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM snapshots').fetchone()['n'],105)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM requests').fetchone()['n'],210)
+
+    def test_raw_object_shared_only_with_eligible_members_in_the_same_response(self):
+        from appmon import app_groups,monitor
+        self.seed(4)
+        group=app_groups.create(self.db,{'name':'raw-scope'})
+        app_groups.add_members(self.db,group['id'],{'members':[dict(store='apple',app_id=str(i),country='gb',language='en') for i in (1000,1002)]})
+        cfg=self.cfg|{'raw_response_scope':'groups'}
+        client=Client(cfg,self.db)
+        try:
+            with patch.object(client,'get',side_effect=lambda store,url,p,headers:self.response(p['id'].split(','))) as remote,patch.object(monitor,'raw_save',wraps=monitor.raw_save) as archive:
+                self.assertEqual(work(cfg,self.db,4,client)['ok'],4)
+            remote.assert_called_once();archive.assert_called_once()
+        finally:client.session.close()
+        rows=self.db.execute("SELECT app_id,raw_path FROM snapshots WHERE country='us' ORDER BY app_id").fetchall()
+        self.assertEqual([r['app_id'] for r in rows if r['raw_path']],['1000','1002'])
+        self.assertEqual(rows[0]['raw_path'],rows[2]['raw_path'])
 
     def test_partial_response_retries_single_missing_without_false_delisting(self):
         self.seed(3);client=Client(self.cfg,self.db)
@@ -59,6 +100,29 @@ class CollectionBatchTest(OceanBaseTestCase):
         self.assertEqual(len(keys),len(set(keys)))
         self.assertNotIn(('1000','us'),keys)
         self.assertTrue(all(len({j['country'] for j in b})==1 and len(b)<=50 for b in batches))
+
+    def test_large_detail_save_only_renews_uncommitted_live_leases(self):
+        from appmon.detail_batches import renew_pending_leases
+        self.seed(5)
+        jobs=claim_details(self.db,['us'],'en',600,5,now=100)
+        self.assertTrue(all(j['lease_until']==700 for j in jobs))
+        self.db.execute("UPDATE jobs SET token=NULL,lease_until=0 WHERE app_id='1000'")
+        self.db.execute("UPDATE jobs SET token='replacement',lease_until=900 WHERE app_id='1002'")
+        self.db.execute("UPDATE jobs SET lease_until=300 WHERE app_id='1003'")
+        renew_pending_leases(self.db,jobs[1:],400,600)
+        rows=self.db.execute('SELECT lease_until FROM jobs ORDER BY app_id').fetchall()
+        self.assertEqual([r['lease_until'] for r in rows],[0,1000,900,300,1000])
+
+    def test_detail_claim_applies_learned_limit_only_to_its_storefront(self):
+        from appmon.batch_limits import BatchWindow,window_key
+        self.seed(12);enqueue(self.db,['gb'],'en')
+        window=BatchWindow()
+        window.too_large(window_key({'country':'us','language':'en'},('apple-lookup',)),8)
+        us=claim_details(self.db,['us'],'en',600,12,batch_window=window)
+        gb=claim_details(self.db,['gb'],'en',600,12,batch_window=window)
+        self.assertEqual((len(us),len(gb)),(4,12))
+        self.assertTrue(all(j['country']=='us' for j in us))
+        self.assertTrue(all(j['country']=='gb' for j in gb))
 
     def test_watch_batch_pause_invalidates_only_its_result_and_keeps_intervals(self):
         for i,hours in [(1000,6),(1001,48)]:

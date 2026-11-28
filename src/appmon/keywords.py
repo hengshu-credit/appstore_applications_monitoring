@@ -2,7 +2,6 @@
 import json
 import logging
 import math
-import re
 import time
 import unicodedata
 import uuid
@@ -13,34 +12,26 @@ from .ingest import disk_check
 from .keyword_stores import APPLE_MARKETS, PARSER_VERSION, SOURCES, KeywordClient, ordered_apps
 from .monitor import raw_save
 from .stores import FetchError
-from .catalog import APPLE_COUNTRIES
-from .locales import language_for
+from .locales import validate_market
 
 log = logging.getLogger(__name__)
 
 
 def validate_target(value):
-    store = value.get("store")
-    country = str(value.get("country", "")).lower()
-    language = language_for(store,country,value.get("language", "auto"))
+    market = validate_market(value)
     keyword = value.get("keyword")
     if not isinstance(keyword, str):
         raise ValueError("keyword must be text")
     keyword = " ".join(unicodedata.normalize("NFKC", keyword).split())
     if not keyword or len(keyword) > 255 or any(unicodedata.category(c).startswith("C") for c in keyword):
         raise ValueError("keyword must contain 1-255 visible characters")
-    if store not in SOURCES or not re.fullmatch(r"[a-z]{2}", country):
-        raise ValueError("store must be google/apple and country must be a two-letter code")
-    if store == "apple" and country not in APPLE_COUNTRIES:
-        raise ValueError("该地区未列入 Apple 官方 App Store 市场；请选择其他地区，不会自动切换至美国")
     depth = value.get("depth", 50)
     hours = value.get("refresh_hours", 24)
     if type(depth) is not int or not 1 <= depth <= 200:
         raise ValueError("depth must be an integer from 1 to 200")
     if isinstance(hours, bool) or not isinstance(hours, (int, float)) or not math.isfinite(hours) or hours <= 0:
         raise ValueError("refresh_hours must be a finite positive number")
-    return dict(store=store, country=country, language=language, keyword=keyword,
-                depth=depth, refresh_hours=hours)
+    return market | dict(keyword=keyword,depth=depth,refresh_hours=hours)
 
 
 def add_targets(db, values, merge_existing=False, *, initial_due=0):
@@ -113,9 +104,9 @@ def save_search(db, cfg, target, result=None, error=None, now=None):
         if not error:
             add_apps(db, [(target["store"], a["app_id"], a["name"], None) for a in apps],
                      f"keyword:{target['id']}", now)
-            from .app_icons import remember
-            for app in apps:
-                if app.get('icon'):remember(db,target['store'],app['app_id'],target['country'],target['language'],app['icon'],app.get('name'))
+            from .app_icons import remember_many
+            remember_many(db,[((target['store'],app['app_id'],target['country'],target['language']),
+                               app.get('name'),app.get('icon')) for app in apps])
             if apps:
                 db.executemany("INSERT INTO keyword_ranks(run_id,app_id,position,name) VALUES(%s,%s,%s,%s)",
                                [(run_id, a["app_id"], n, a["name"]) for n, a in enumerate(apps, 1)])

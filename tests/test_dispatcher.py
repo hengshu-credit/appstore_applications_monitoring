@@ -57,13 +57,13 @@ class DispatcherTest(OceanBaseTestCase):
         self.assertEqual(report(self.db,a,True)['tasks'][0]['ref'],report(self.db,b,True)['tasks'][0]['ref'])
 
     def test_one_dispatch_drains_one_full_market_batch_only(self):
-        add_targets(self.db,[dict(store='google',country='us',language='en',keyword=f'word {i}') for i in range(45)])
+        add_targets(self.db,[dict(store='google',country='us',language='en',keyword=f'word {i}') for i in range(75)])
         def send(client,*args,**kwargs):
             calls=json.loads(kwargs['data']['f.req'])[0]
             return response(calls,[FIXTURES['search']]*len(calls))
         with patch.object(Client,'request',autospec=True,side_effect=send) as http:
             result=dispatcher.dispatch_once(self.db,self.cfg,'fixture')
-        self.assertEqual((result['lane'],result['processed'],http.call_count),('keywords',20,1))
+        self.assertEqual((result['lane'],result['processed'],http.call_count),('keywords',50,1))
         self.assertEqual(self.db.execute('SELECT count(*) n FROM keyword_targets WHERE due=0').fetchone()['n'],25)
 
     def test_permission_batch_and_center_controls_preserve_each_target(self):

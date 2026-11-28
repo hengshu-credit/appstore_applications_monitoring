@@ -39,6 +39,11 @@ def claim(db,cfg,limit,client,*,due_by=None):
         condition="(i.source_url IS NULL OR i.source_url='' OR (i.id=%s AND i.source_url<=>%s)) AND i.store=%s AND i.country=%s AND i.language=%s AND (i.id=%s OR "+retry_condition('i.')+")"
         args=[first['id'],first['source_url'],first['store'],first['country'],first['language'],first['id'],NETWORK_ERRORS]
         capacity=min(limit,cfg.get('apple_lookup_batch_size',50) if first['store']=='apple' else cfg.get('google_rpc_batch_size',20))
+        window=getattr(client,'batch_window',None)
+        if window is not None:
+            from .batch_limits import window_key
+            method='apple-lookup' if first['store']=='apple' else 'Ws7gDc'
+            capacity=window.limit(window_key(first,(method,)),capacity)
         if not can_batch(first) or not callable(getattr(client,'fetch_many',None)):capacity=1
     ids=[first['id']]
     if capacity>1:

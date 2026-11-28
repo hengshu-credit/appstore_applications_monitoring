@@ -14,11 +14,16 @@ def safe_message(value):
     return message[:4000]
 
 
-def emit(db, resource, identifier, event, message, level='info', execution_id=None, details=None):
+INSERT_LOG = """INSERT INTO collection_logs(resource,target_key,execution_id,created_at,level,event,message,details)
+    VALUES(%s,%s,%s,%s,%s,%s,%s,%s)"""
+
+
+def emit(db, resource, identifier, event, message, level='info', execution_id=None, details=None, *, events=None):
     # No transaction wrapper here: callers may emit atomically with a state change.
-    db.execute('''INSERT INTO collection_logs(resource,target_key,execution_id,created_at,level,event,message,details)
-        VALUES(%s,%s,%s,%s,%s,%s,%s,%s)''',
-               (resource,str(identifier),execution_id,time.time(),level,event,clean(message,4000),json.dumps(sanitize(details),ensure_ascii=False) if details else None))
+    row=(resource,str(identifier),execution_id,time.time(),level,event,clean(message,4000),
+         json.dumps(sanitize(details),ensure_ascii=False) if details else None)
+    if events is None:db.execute(INSERT_LOG,row)
+    else:events.append(row)
 
 
 def start_batch(logs,messages, *, transaction=True):
@@ -28,8 +33,7 @@ def start_batch(logs,messages, *, transaction=True):
     values=[(log.resource,str(log.identifier),log.id,time.time(),'info','started',clean(message,4000),None)
             for log,message in zip(logs,messages)]
     with logs[0].db if transaction else nullcontext():
-        logs[0].db.executemany('''INSERT INTO collection_logs(resource,target_key,execution_id,created_at,level,event,message,details)
-            VALUES(%s,%s,%s,%s,%s,%s,%s,%s)''',values)
+        logs[0].db.executemany(INSERT_LOG,values)
 
 
 class Execution:
@@ -37,10 +41,10 @@ class Execution:
         self.db,self.resource,self.identifier = db,resource,identifier
         self.id,self.started = uuid.uuid4().hex,time.monotonic()
 
-    def write(self,event,message,level='info',details=None):
-        emit(self.db,self.resource,self.identifier,event,message,level,self.id,details)
+    def write(self,event,message,level='info',details=None,*,events=None):
+        emit(self.db,self.resource,self.identifier,event,message,level,self.id,details,events=events)
 
-    def finish(self,outcome,accepted=True,detail='',error=None):
+    def finish(self,outcome,accepted=True,detail='',error=None,*,events=None):
         elapsed = time.monotonic()-self.started
         state = 'stale' if not accepted else outcome
         labels = {'ok':'采集成功，数据已保存','missing':'本次地区查询未发现应用','error':'采集失败，保留上次有效数据','stale':'租约已失效，本次结果未写入'}
@@ -48,7 +52,7 @@ class Execution:
             detail=(detail+'；' if detail else '')+'原因：'+safe_message(error)
         self.write(state,f'{labels.get(state,state)}；耗时 {elapsed:.2f} 秒'+(f'；{detail}' if detail else ''),
                    'error' if state=='error' else 'warning' if state in ('stale','missing') else 'info',
-                   diagnostics(error,duration_seconds=round(elapsed,2)) if error else None)
+                   diagnostics(error,duration_seconds=round(elapsed,2)) if error else None,events=events)
 
 
 class BatchProgress:
@@ -66,9 +70,13 @@ class BatchProgress:
             if self.last_wait is not None and now-self.last_wait<self.wait_interval:return
             self.last_wait=now
         if not self.logs:return
-        with self.logs[0].db:
-            for log in self.logs:
-                log.write(event,message,details={'wait_checks':self.wait_checks} if event=='rate_wait' else None)
+        db=self.logs[0].db
+        stamp=time.time()
+        details=json.dumps(sanitize({'wait_checks':self.wait_checks}),ensure_ascii=False) if event=='rate_wait' else None
+        safe=clean(message,4000)
+        with db:
+            db.executemany(INSERT_LOG,
+                [(log.resource,str(log.identifier),log.id,stamp,'info',event,safe,details) for log in self.logs])
 
 
 @contextmanager

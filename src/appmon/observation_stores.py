@@ -91,6 +91,35 @@ def apple_reviews(data):
     return output
 
 
+def apple_review_has_next(feed,rows,target,page):
+    def check_identity(url, *, self_link=False):
+        if not isinstance(url,str):return
+        parts=urlsplit(url).path.lower().strip('/').split('/')
+        if parts[1:3]!=['rss','customerreviews']:return
+        if parts[0]!=target['country'] or 'id='+target['app_id'] not in parts:
+            raise FetchError('Apple review feed belongs to a different app or storefront')
+        if self_link and any(p.startswith('page=') and p!='page='+str(page) for p in parts):
+            raise FetchError('Apple returned a different review page')
+
+    check_identity(path(feed,'id','label'))
+    more=False
+    links=feed.get('link')
+    if links is None:return bool(rows)
+    if isinstance(links,dict):links=[links]
+    if not isinstance(links,list):raise FetchError('Apple review navigation invalid')
+    for link in links:
+        attrs=link.get('attributes') if isinstance(link,dict) else None
+        if not isinstance(attrs,dict):raise FetchError('Apple review link invalid')
+        if attrs.get('rel')=='self':check_identity(attrs.get('href'),self_link=True)
+        if attrs.get('rel')=='next':
+            href=attrs.get('href')
+            if not isinstance(href,str):raise FetchError('Apple review next link invalid')
+            # Apple emits the next relation with an empty href on the last
+            # page, including valid storefronts with zero reviews.
+            if href.strip():more=True
+    return more
+
+
 def chart_result(target, items, raw, source):
     depth=target['depth'];items=items[:depth]
     end='depth_reached' if len(items)>=depth else 'source_limit'
@@ -140,7 +169,8 @@ class ObservationClient(Client):
 
     def review_batches(self, targets):
         from .google_rpc import rpc_many
-        from .pagination import PageWindow
+        from .pagination import PageWindow, RawPages
+        archive=RawPages()
         results=[None]*len(targets)
         states=[PageWindow(t['depth']) for t in targets]
         raw_pages=[[] for _ in targets]
@@ -162,16 +192,16 @@ class ObservationClient(Client):
                 state,t=states[i],targets[i]
                 try:
                     items,token=google_reviews(payload)
-                    raw_pages[i].append(raw.decode('utf-8'))
+                    raw_pages[i].append(raw)
                     done=state.add(items,token)
-                    self.report('page',f"评论批次目标 {i+1}：已取得 {len(state.items)}/{t['depth']} 条")
                     if done:
-                        results[i]=ObservationResult(state.items,json.dumps(raw_pages[i],ensure_ascii=False).encode(),
+                        results[i]=ObservationResult(state.items,archive.pack(raw_pages[i]),
                                                      'google-public-reviews','recent_reviews_bounded',pagination=state.summary())
                 except FetchError as error:
                     results[i]=error
                 except (ValueError,TypeError,KeyError,IndexError):
                     results[i]=FetchError('Google review batch item invalid; retry separately',60)
+            self.report('page',f"评论响应已处理，本页涉及 {len(active)} 个目标")
         return results
 
     def chart(self, t):
@@ -220,10 +250,7 @@ class ObservationClient(Client):
                 if r.status_code!=200:
                     raise FetchError('Apple review feed unavailable')
                 data=r.json();rows=apple_reviews(data)
-                links=data['feed'].get('link')
-                if isinstance(links,dict):links=[links]
-                # Prefer source navigation over guessing from the number of rows.
-                more=any(link.get('attributes',{}).get('rel')=='next' for link in links) if isinstance(links,list) else bool(rows)
+                more=apple_review_has_next(data['feed'],rows,t,page)
                 token=str(page+1) if more else None
             else:
                 request=[None,None,[2,2,[min(500,t['depth']-len(state.items)),None,state.cursor],None,[]],[t['app_id'],7]]

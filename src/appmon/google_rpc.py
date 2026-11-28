@@ -3,12 +3,19 @@ import json
 import time
 import requests
 from importlib.resources import files
+from functools import lru_cache
+from .batch_transport import read_sized
 from .stores import FetchError
-from .batch_limits import GOOGLE_RPC_MAX,GOOGLE_RESPONSE_MAX_BYTES,GOOGLE_RESPONSE_SECONDS
+from .batch_limits import GOOGLE_RPC_MAX,GOOGLE_RESPONSE_MAX_BYTES,GOOGLE_RESPONSE_SECONDS,window_key
+
+
+@lru_cache(maxsize=3)
+def _template_text(name):
+    return files('appmon').joinpath('google_'+name+'_request.json').read_text(encoding='utf-8')
 
 
 def template(name):
-    return json.loads(files('appmon').joinpath('google_'+name+'_request.json').read_text(encoding='utf-8'))
+    return json.loads(_template_text(name))
 
 
 def parse_frames(text, rpc_ids):
@@ -69,7 +76,7 @@ def response_body(response):
         if callable(getattr(response,'close',None)):response.close()
 
 
-def send_rpc(client, market, calls, capacity=20,split_depth=0):
+def send_rpc(client, market, calls, capacity=20):
     unique, indices, lookup = [], [], {}
     for rpc, payload in calls:
         key = (rpc,json.dumps(payload,separators=(',',':'),sort_keys=True))
@@ -79,26 +86,19 @@ def send_rpc(client, market, calls, capacity=20,split_depth=0):
         indices.append(lookup[key])
     if not unique or len(unique)>capacity:
         raise ValueError('Too many distinct RPC calls')
-    try:
+    def read(part):
         response=client.request('google','POST','https://play.google.com/_/PlayStoreUi/data/batchexecute',
-            params={'rpcids':','.join(dict.fromkeys(rpc for rpc,_ in unique)),
+            params={'rpcids':','.join(dict.fromkeys(rpc for rpc,_ in part)),
                     'hl':market['language'],'gl':market['country'],'rt':'c'},
-            data={'f.req':json.dumps([[[rpc,json.dumps(payload),None,str(i)] for i,(rpc,payload) in enumerate(unique)]])},stream=True)
+            data={'f.req':json.dumps([[[rpc,json.dumps(payload),None,str(i)] for i,(rpc,payload) in enumerate(part)]])},stream=True)
         if response.status_code!=200:
             if callable(getattr(response,'close',None)):response.close()
             raise FetchError('Google batch endpoint unavailable')
         text,raw=response_body(response)
-    except FetchError as exc:
-        if (str(exc) not in ('HTTP 413','HTTP 414') and not exc.details.get('batch_budget')) or len(unique)<2 or split_depth>=4:raise
-        middle=len(unique)//2
-        def portion(part):
-            try:return send_rpc(client,market,part,capacity,split_depth+1)
-            except FetchError as failure:return [failure]*len(part),b''
-        left,raw_left=portion(unique[:middle])
-        right,raw_right=portion(unique[middle:])
-        results=left+right
-        return [results[index] for index in indices],raw_left+b'\n'+raw_right
-    results = parse_frames(text,[rpc for rpc,_ in unique])
+        return parse_frames(text,[rpc for rpc,_ in part]),raw
+
+    protocol=window_key(market,(rpc for rpc,_ in unique))
+    results,raw=read_sized(unique,capacity,protocol,client.batch_window,read,max_splits=4)
     return [results[index] for index in indices],raw
 
 

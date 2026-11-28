@@ -138,6 +138,29 @@ class GoogleBatchParserTest(unittest.TestCase):
 
 
 class GoogleBatchWorkerTest(OceanBaseTestCase):
+    def test_two_due_apple_destinations_share_exact_feed_and_preserve_separate_histories(self):
+        base=dict(kind='chart',store='apple',country='us',category='',collection='top-paid',depth=200)
+        targets=[add_observation_target(self.db,base|{'language':lang,'refresh_hours':hours})['id']
+                 for lang,hours in [('en',6),('es',12)]]
+        for changes in ({'country':'gb'},{'depth':50},{'collection':'top-free'}):
+            add_observation_target(self.db,base|{'language':'fr'}|changes)
+        client=ObservationClient(self.cfg,self.db)
+        rows=[{'id':{'attributes':{'im:id':str(i+1)}},'im:name':{'label':str(i+1)}} for i in range(200)]
+        body=json.dumps({'feed':{'entry':rows}}).encode()
+        reply=SimpleNamespace(status_code=200,content=body,json=lambda:json.loads(body))
+        with patch.object(client,'get',return_value=reply) as remote:
+            result=work_observations(self.cfg,self.db,2,client)
+        client.session.close()
+        self.assertEqual(result['ok'],2);remote.assert_called_once()
+        runs=self.db.execute('SELECT id,target_id,returned_count,raw_path FROM observation_runs ORDER BY target_id').fetchall()
+        self.assertEqual([r['target_id'] for r in runs],targets)
+        self.assertEqual([r['returned_count'] for r in runs],[200,200])
+        self.assertEqual(runs[0]['raw_path'],runs[1]['raw_path'])
+        for run in runs:
+            items=self.db.execute('SELECT item_id FROM observation_items WHERE run_id=%s ORDER BY position',(run['id'],)).fetchall()
+            self.assertEqual([i['item_id'] for i in items],[str(i+1) for i in range(200)])
+        self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM observation_targets WHERE latest_success_id IS NULL').fetchone()['n'],3)
+
     def test_chart_worker_keeps_every_requested_item_and_target_interval(self):
         for collection,depth,interval in [('top-free',100,6),('top-paid',5,48)]:
             add_observation_target(self.db,dict(kind='chart',store='google',country='us',language='en',category='GAME',
@@ -167,7 +190,7 @@ class GoogleBatchWorkerTest(OceanBaseTestCase):
         batch.assert_not_called();self.assertEqual((get.call_count,result['ok']),(1,1))
         self.assertEqual(self.db.execute('SELECT count(*) n FROM keyword_targets WHERE latest_success_id IS NOT NULL AND failures=0').fetchone()['n'],2)
 
-    def test_21_google_details_take_two_requests_and_do_not_change_schedule(self):
+    def test_21_google_details_take_one_request_and_do_not_change_schedule(self):
         add_apps(self.db,[('google',f'com.example.app{i}',None,None) for i in range(21)],'test');enqueue(self.db,['us'],'en')
         reference=dataset(fixture_html('detail','ds:5'),'ds:5')
         client=Client(self.cfg,self.db)
@@ -176,11 +199,10 @@ class GoogleBatchWorkerTest(OceanBaseTestCase):
             for call in calls:
                 value=json.loads(json.dumps(reference));value[1][2][77][0]=json.loads(call[1])[-1][0][0];payloads.append(value)
             return response(calls,payloads)
-        # The final singleton follows the unchanged HTML parser.
         html=fixture_html('detail','ds:5')
         with patch.object(client,'request',side_effect=batch) as http,patch.object(client,'get',return_value=SimpleNamespace(status_code=200,text=html,url='https://play.google.com',content=html.encode())) as get:
             result=work(self.cfg,self.db,21,client)
-        self.assertEqual(result['ok'],21);self.assertEqual(http.call_count+get.call_count,2)
+        self.assertEqual(result['ok'],21);self.assertEqual(http.call_count+get.call_count,1)
         self.assertEqual(self.db.execute('SELECT count(*) n FROM listings').fetchone()['n'],21)
         self.assertEqual(self.db.execute('SELECT count(*) n FROM jobs WHERE due>%s',(time.time()+23*3600,)).fetchone()['n'],21)
 
@@ -191,7 +213,7 @@ class GoogleBatchWorkerTest(OceanBaseTestCase):
             calls=json.loads(kwargs['data']['f.req'])[0];return response(calls,[payload]*len(calls))
         with patch.object(client,'request',side_effect=send) as http,patch.object(client,'get',return_value=SimpleNamespace(status_code=200,text=html,url='https://play.google.com',content=html.encode())) as get:
             result=work_keywords(self.cfg,self.db,21,client)
-        self.assertEqual((result['ok'],http.call_count+get.call_count),(21,2))
+        self.assertEqual((result['ok'],http.call_count+get.call_count),(21,1))
         self.assertEqual(self.db.execute('SELECT count(*) n FROM keyword_ranks').fetchone()['n'],21*10)
         self.assertEqual(self.db.execute('SELECT count(*) n FROM keyword_targets WHERE refresh_hours=6 AND depth=10 AND due>%s',(time.time()+5*3600,)).fetchone()['n'],21)
 

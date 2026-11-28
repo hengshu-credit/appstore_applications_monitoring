@@ -1,7 +1,7 @@
 import json,unittest
 from types import SimpleNamespace
 from unittest.mock import patch
-from appmon.stores import Client,FetchError
+from appmon.stores import Client,FetchError,CollectionDeferred
 from appmon.google_rpc import rpc_many
 
 
@@ -26,8 +26,13 @@ class LargeBatchTest(unittest.TestCase):
         with patch.object(client,'request',side_effect=request):
             results,_=rpc_many(client,{'country':'us','language':'en'},[('rpc',[i]) for i in range(100)])
         self.assertEqual(sizes,[100,50,50]);self.assertEqual(results,[[i] for i in range(100)])
+        sizes.clear()
+        with patch.object(client,'request',side_effect=request):
+            results,_=rpc_many(client,{'country':'us','language':'en'},[('rpc',[i]) for i in range(100)])
+        self.assertEqual(sizes,[50,50])
+        self.assertEqual(results,[[i] for i in range(100)])
         with patch.object(client,'request',side_effect=FetchError('HTTP 429')) as limited:
-            with self.assertRaises(FetchError):rpc_many(client,{'country':'us','language':'en'},[('rpc',[i]) for i in range(100)])
+            with self.assertRaises(FetchError):rpc_many(client,{'country':'us','language':'en'},[('other',[i]) for i in range(100)])
         limited.assert_called_once();client.session.close()
 
     def test_three_thousand_out_of_order_results_fit_one_response_and_budget_split_retains_all(self):
@@ -56,3 +61,33 @@ class LargeBatchTest(unittest.TestCase):
         with patch.object(client,'request',side_effect=request):values,_=rpc_many(client,{'country':'us','language':'en'},[('rpc',[i]) for i in range(4)])
         self.assertEqual(values[:2],[[0],[1]])
         self.assertTrue(all(isinstance(r,FetchError) and r.retry_after==900 for r in values[2:]));client.session.close()
+
+    def test_size_rejection_then_cooldown_leaves_unattempted_apple_ids_pending(self):
+        client=Client({'apple_lookup_batch_size':12},None)
+        seen=[]
+        def lookup(store,url,params,headers):
+            ids=params['id'].split(',');seen.append(ids)
+            if len(ids)>3:raise FetchError('HTTP 414')
+            if '4' in ids:raise FetchError('HTTP 429',900)
+            data=[dict(trackId=int(i),wrapperType='software',trackName='name'+i) for i in ids]
+            return SimpleNamespace(status_code=200,content=b'raw',json=lambda:{'results':data,'resultCount':len(ids)})
+        jobs=[dict(store='apple',country='us',language='en',app_id=str(i)) for i in range(1,13)]
+        try:
+            with patch.object(client,'get',side_effect=lookup):
+                values=client.fetch_many(jobs)
+            self.assertEqual([len(ids) for ids in seen],[12,6,3,3])
+            self.assertEqual([r.payload['name'] for r in values[:3]],['name1','name2','name3'])
+            self.assertTrue(all(type(r) is FetchError and str(r)=='HTTP 429' for r in values[3:6]))
+            self.assertTrue(all(isinstance(r,CollectionDeferred) and r.retry_after==900 for r in values[6:]))
+        finally:client.session.close()
+
+    def test_learned_limit_expires_without_raising_the_configured_ceiling(self):
+        from appmon.batch_limits import BatchWindow
+        hint=BatchWindow()
+        with patch('appmon.batch_limits.time.monotonic',return_value=100):
+            hint.too_large(('Ws7gDc',),100)
+            self.assertEqual(hint.limit(('Ws7gDc',),100),50)
+            self.assertEqual(hint.limit(('Ws7gDc',),10),10)
+            self.assertEqual(hint.limit(('vyAe2',),100),100)
+        with patch('appmon.batch_limits.time.monotonic',return_value=3701):
+            self.assertEqual(hint.limit(('Ws7gDc',),100),100)

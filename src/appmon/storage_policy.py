@@ -23,8 +23,26 @@ def media_predicate(alias='i'):
                 AND t.store={alias}.store AND o.item_id={alias}.app_id AND o.position<=50))'''
 
 
+def detail_batch_scope(db,cfg,jobs):
+    """Resolve retention once for this same-store commit, including on retries."""
+    scoped_media=cfg.get('media_scope','all')=='groups_and_current_charts'
+    if cfg.get('raw_response_scope','all')=='all' and not scoped_media:return cfg
+    store=jobs[0]['store']
+    ids=tuple(job['app_id'] for job in jobs)
+    groups={r['app_id'] for r in db.execute("""SELECT DISTINCT app_id FROM app_group_members
+        WHERE store=%s AND app_id IN %s""",(store,ids)).fetchall()}
+    media=groups.copy()
+    remaining=tuple(identifier for identifier in ids if identifier not in groups)
+    if scoped_media and remaining:
+        media.update(r['item_id'] for r in db.execute("""SELECT DISTINCT o.item_id
+            FROM observation_items o JOIN observation_targets t ON t.latest_success_id=o.run_id
+            WHERE t.store=%s AND t.kind='chart' AND o.item_id IN %s AND o.position<=50""",(store,remaining)).fetchall())
+    return cfg | {'_detail_groups':groups,'_detail_media':media}
+
+
 def media_allowed(db,cfg,store,app_id):
     if cfg.get('media_scope','all')=='all':return True
+    if '_detail_media' in cfg:return app_id in cfg['_detail_media']
     return bool(db.execute('SELECT 1 FROM (SELECT %s store,%s app_id) i WHERE '+media_predicate(),(store,app_id)).fetchone())
 
 
@@ -32,12 +50,19 @@ def archive_raw(db,cfg,store,app_ids,raw):
     if not raw:return ''
     ids=list(dict.fromkeys(str(v) for v in app_ids if v))
     allowed=cfg.get('raw_response_scope','all')=='all'
-    if not allowed and ids:
+    if not allowed and '_detail_groups' in cfg:
+        allowed=not cfg['_detail_groups'].isdisjoint(ids)
+    elif not allowed and ids:
         allowed=bool(db.execute('SELECT 1 FROM app_group_members WHERE store=%s AND app_id IN ('+
             ','.join('%s' for _ in ids)+') LIMIT 1',(store,*ids)).fetchone())
     if not allowed:return ''
     from .monitor import raw_save
-    return raw_save(cfg,raw)
+    refs=cfg.get('_batch_raw_refs')
+    if refs is None:return raw_save(cfg,raw)
+    # Eligibility belongs to the logical target. Only immutable object writes
+    # are shared, for the lifetime of this fetched batch (including DB retries).
+    if raw not in refs:refs[raw]=raw_save(cfg,raw)
+    return refs[raw]
 
 
 def storage_guard(db,cfg):

@@ -11,10 +11,11 @@ FIELDS={'screenshots':'应用截图','ipad_screenshots':'iPad 截图','appletv_s
         'header_image':'宣传图','video_image':'视频封面','video':'视频','preview_video':'预览视频'}
 
 
-def remember(db,cfg,job,payload):
+def remember(db,cfg,job,payload,*,icon_recorded=False):
     if not media_allowed(db,cfg,job['store'],job['app_id']):return 0
-    from .app_icons import remember as icon_remember
-    icon_remember(db,job['store'],job['app_id'],job['country'],job['language'],payload.get('icon'),payload.get('name'))
+    if not icon_recorded:
+        from .app_icons import remember as icon_remember
+        icon_remember(db,job['store'],job['app_id'],job['country'],job['language'],payload.get('icon'),payload.get('name'))
     count=0
     for field,label in FIELDS.items():
         if field in ('video','preview_video') and not cfg.get('archive_videos',True):continue

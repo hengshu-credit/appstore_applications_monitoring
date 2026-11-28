@@ -18,7 +18,7 @@ def load(path="config.toml"):
         raise ValueError("countries must contain two-letter storefront codes")
     if not re.fullmatch(r"[a-z]{2}(?:[-_][A-Za-z]{2})?", cfg["language"]):
         raise ValueError("Invalid language")
-    cfg.setdefault('google_rpc_batch_size', 20)
+    cfg.setdefault('google_rpc_batch_size', 50)
     if cfg.get('raw_response_scope','all') not in ('all','groups'):
         raise ValueError('Invalid raw_response_scope')
     if cfg.get('media_scope','all') not in ('all','groups_and_current_charts'):
@@ -32,7 +32,7 @@ def load(path="config.toml"):
             raise ValueError(f'{key} must be an integer from {low} to {high}')
     if type(cfg['google_rpc_batch_size']) is not int or not 1<=cfg['google_rpc_batch_size']<=GOOGLE_RPC_MAX:
         raise ValueError(f'google_rpc_batch_size must be an integer from 1 to {GOOGLE_RPC_MAX}')
-    cfg.setdefault('apple_lookup_batch_size', 50)
+    cfg.setdefault('apple_lookup_batch_size', 200)
     if type(cfg['apple_lookup_batch_size']) is not int or not 1<=cfg['apple_lookup_batch_size']<=APPLE_DETAIL_MAX:
         raise ValueError(f'apple_lookup_batch_size must be an integer from 1 to {APPLE_DETAIL_MAX}')
     cfg.setdefault('global_interval_seconds', 1.5)

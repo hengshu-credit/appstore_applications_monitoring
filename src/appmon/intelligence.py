@@ -10,18 +10,19 @@ from .collection_batch import pending_due_on_insert, target_settings_update
 from .db import add_apps, dump
 from . import listing_status
 from .ingest import valid_id, disk_check
-from .keywords import validate_target, observation, comparable, app_coverage
+from .keywords import observation, comparable, app_coverage
+from .locales import validate_market
 from .monitor import raw_save, save_result
 from .stores import Client, FetchError
 from .catalog import BY_ID
 
 
 def market(value, require_app=True):
-    v = validate_target(dict(value, keyword="validation"))
+    v = validate_market(value)
     app_id = str(value.get("app_id", ""))
     if require_app and not valid_id(v["store"], app_id):
         raise ValueError("Invalid app ID for this store")
-    return {k: v[k] for k in ("store", "country", "language")} | {"app_id": app_id}
+    return v | {"app_id":app_id}
 
 
 def hours(value):

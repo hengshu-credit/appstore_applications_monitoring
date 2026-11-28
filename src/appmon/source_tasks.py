@@ -5,7 +5,7 @@ import time
 import uuid
 from .db import dump
 from .intelligence import market, text
-from .task_logs import emit, safe_message
+from .task_logs import emit, safe_message, INSERT_LOG
 from .collection_batch import touch, write_batch
 from . import ad_sources, ad_channels, intake
 from .stores import CollectionDeferred
@@ -207,8 +207,9 @@ def work(db,cfg,*,due_by=None):
                     rows=db.claim(f'''SELECT id,language,failures,JSON_EXTRACT(payload,'$.limit') requested_limit
                         FROM collection_source_tasks WHERE {admitted()} AND batch_key=%s AND enabled=1 AND due<=%s
                         AND lease_until<=%s AND failures<3 ORDER BY due,id LIMIT %s FOR UPDATE SKIP LOCKED''',(first['batch_key'],now,now,cfg.get('collection_batch_size',2000))).fetchall()
-                for row in rows:
-                    db.execute('UPDATE collection_source_tasks SET token=%s,lease_until=%s WHERE id=%s',(token,now+max(600,cfg.get('lease_seconds',600)),row['id']))
+                if not rows:return {'processed':0}
+                db.execute('UPDATE collection_source_tasks SET token=%s,lease_until=%s WHERE id IN %s',
+                           (token,now+max(600,cfg.get('lease_seconds',600)),tuple(r['id'] for r in rows)))
                 touch(db)
     except RuntimeError as exc:
         if str(exc)=='Another process is already importing this dataset':return {'processed':0}
@@ -216,7 +217,9 @@ def work(db,cfg,*,due_by=None):
     kind=first['kind']; payload=json.loads(first['payload'])
     record_dispatch(db,kind,first['store'],len(rows))
     with db:
-        for row in rows:emit(db,'sources',row['id'],'started',f'消费者已领取；合并 {len(rows)} 个兼容任务')
+        events=[]
+        for row in rows:emit(db,'sources',row['id'],'started',f'消费者已领取；合并 {len(rows)} 个兼容任务',events=events)
+        db.executemany(INSERT_LOG,events)
     error=None; data=None
     try:
         if kind in ad_sources.KINDS:
@@ -231,18 +234,16 @@ def work(db,cfg,*,due_by=None):
         elif kind=='aso_popularity':
             delay=collection_limits.admission(db,cfg,'apple')
             if delay is None or delay>0:
-                for row in rows:
-                    db.execute('UPDATE collection_source_tasks SET token=NULL,lease_until=0,due=%s WHERE id=%s AND token=%s',
-                               (time.time()+(delay if delay is not None else 30),row['id'],token))
+                db.execute('UPDATE collection_source_tasks SET token=NULL,lease_until=0,due=%s WHERE id IN %s AND token=%s',
+                           (time.time()+(delay if delay is not None else 30),tuple(r['id'] for r in rows),token))
                 touch(db)
                 return {'processed':0}
             payload['limit']=max(int(row['requested_limit']) for row in rows)
             data=apple_popularity.request_data(cfg,db,payload)
     except CollectionDeferred as exc:
         with db:
-            for row in rows:
-                db.execute('UPDATE collection_source_tasks SET token=NULL,lease_until=0,due=%s WHERE id=%s AND token=%s',
-                           (time.time()+max(1, exc.retry_after), row['id'], token))
+            db.execute('UPDATE collection_source_tasks SET token=NULL,lease_until=0,due=%s WHERE id IN %s AND token=%s',
+                       (time.time()+max(1,exc.retry_after),tuple(r['id'] for r in rows),token))
             touch(db)
         return {'processed':0}
     except Exception as exc:

@@ -194,6 +194,24 @@ class CollectionSchedulingTest(OceanBaseTestCase):
             self.assertEqual(len({r['token'] for r in rows}),1)
         finally:holder.rollback();holder.close()
 
+    def test_locking_a_page_preserves_exact_compound_identities_and_sql_budget(self):
+        self.db.executemany("INSERT INTO jobs(store,app_id,country,language,due) VALUES(%s,%s,%s,'en',%s)",
+            [(store,str(i),country,0 if (store=='apple')==(country=='us') else 10)
+             for store in ('apple','google') for country in ('us','gb') for i in range(1000,1100)])
+        other=connect(self.cfg,initialize=False)
+        try:
+            self.db.begin()
+            with patch.object(self.db,'execute',wraps=self.db.execute) as query:
+                rows=self.db.claim('SELECT * FROM jobs WHERE due<=10 ORDER BY due LIMIT 200 FOR UPDATE SKIP LOCKED').fetchall()
+            self.assertLessEqual(query.call_count,10)
+            self.assertEqual(len(rows),200)
+            self.assertEqual({(r['store'],r['country']) for r in rows},{('apple','us'),('google','gb')})
+            with other:
+                remaining=other.execute('SELECT * FROM jobs FOR UPDATE SKIP LOCKED').fetchall()
+                self.assertEqual(len(remaining),200)
+                self.assertEqual({(r['store'],r['country']) for r in remaining},{('apple','gb'),('google','us')})
+        finally:self.db.rollback();other.close()
+
     def test_queue_index_upgrade_is_idempotent_and_preserves_jobs(self):
         add_apps(self.db,[('apple','1000',None,None)],'fixture');enqueue(self.db,['us'],'en')
         before=self.db.execute('SELECT * FROM jobs').fetchall()

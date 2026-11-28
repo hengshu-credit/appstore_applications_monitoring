@@ -21,9 +21,9 @@ global_interval_seconds = 1.5
 cooldown_seconds = 900
 batch_size = 200
 # Same-country/language Apple detail IDs per HTTP lookup (1 disables batching).
-apple_lookup_batch_size = 50
+apple_lookup_batch_size = 200
 # Same-market Google detail/search/chart/review calls per HTTP request.
-google_rpc_batch_size = 20
+google_rpc_batch_size = 50
 # Each console/keywords service runs two consumers sharing the DB-coordinated limits.
 collector_concurrency = 2
 # Give nine of ten dispatch opportunities to focused/detail/chart/keyword lanes.

@@ -104,6 +104,28 @@ class CollectionDepthTest(unittest.TestCase):
         self.assertEqual(len(results[0].items),50)
         self.assertIsInstance(results[1],FetchError)
 
+    def test_apple_empty_next_href_finishes_empty_and_nonempty_feeds(self):
+        client=ObservationClient({},None)
+        review={'id':{'label':'r1'},'im:rating':{'label':'4'},'content':{'label':'good'},'title':{'label':'ok'}}
+        target=self.target(500,store='apple',app_id='123')
+        for entries in ([],[review]):
+            feed={'id':{'label':'storefront feed'},'link':[{'attributes':{'rel':'next','href':''}}]}
+            if entries:feed['entry']=entries
+            reply=SimpleNamespace(status_code=200,text=json.dumps({'feed':feed}),json=lambda:{'feed':feed})
+            with self.subTest(count=len(entries)),patch.object(client,'get',return_value=reply) as remote:
+                result=client.reviews(target)
+                remote.assert_called_once()
+                self.assertEqual(result.pagination,dict(requested=500,collected=len(entries),pages=1,end='source_exhausted'))
+                self.assertEqual([r['id'] for r in result.items],['r1'] if entries else [])
+        feed['id']={'label':'https://itunes.apple.com/gb/rss/customerreviews/page=1/id=123/json'}
+        with patch.object(client,'get',return_value=reply),self.assertRaisesRegex(FetchError,'different app or storefront'):
+            client.reviews(target)
+        feed['id']={'label':'https://itunes.apple.com/us/rss/customerreviews/page=1/id=123/json'}
+        feed['link'][0]['attributes'].pop('href')
+        with patch.object(client,'get',return_value=reply),self.assertRaisesRegex(FetchError,'next link'):
+            client.reviews(target)
+        client.session.close()
+
     def test_apple_short_pages_follow_navigation_and_source_limit_is_explicit(self):
         client=ObservationClient({},None);pages=[]
         def get(store,url):

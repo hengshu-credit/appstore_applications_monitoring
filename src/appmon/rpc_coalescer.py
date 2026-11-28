@@ -2,9 +2,22 @@
 import threading
 import time
 import weakref
+from dataclasses import dataclass
 from concurrent.futures import Future
 from .db import dump
+from .batch_limits import window_key
 from .stores import FetchError
+
+
+@dataclass(eq=False)
+class Submission:
+    scope: tuple
+    capacity: int
+    client: object
+    market: dict
+    calls: list
+    keys: frozenset
+    future: Future
 
 
 class RpcCoalescer:
@@ -25,13 +38,18 @@ class RpcCoalescer:
         # stay isolated, as do session headers/cookies and transport settings.
         session = client.session
         scope = (market['country'], market['language'],
-                 dump(dict(session.headers)), dump(session.cookies.get_dict()),
-                 dump(session.proxies), client.cfg.get('timeout_seconds'),
-                 min(self.capacity,client.cfg.get(self.capacity_key,self.capacity)))
+                 dump(dict(session.headers)), tuple(sorted((c.domain,c.path,c.name,c.value,c.secure,c.expires)
+                                                         for c in session.cookies)),
+                 dump(session.proxies),dump(session.params),session.verify,session.cert,session.trust_env,id(session.auth),
+                 client.cfg.get('timeout_seconds'),client.cfg.get('tls_maximum_version'))
+        capacity = min(self.capacity,client.cfg.get(self.capacity_key,self.capacity))
+        methods = ('apple-lookup',) if self.store=='apple' else (rpc for rpc,_ in calls)
+        capacity = client.batch_window.limit(window_key(market,methods),capacity)
+        keys = frozenset((rpc,dump(payload)) for rpc,payload in calls)
         future = Future()
         with self.condition:
             if self.closed: raise FetchError('RPC consumer stopped',60)
-            self.pending.append((scope, client, dict(market), calls, future))
+            self.pending.append(Submission(scope,capacity,client,dict(market),calls,keys,future))
             self.condition.notify()
         return future.result()
 
@@ -47,27 +65,31 @@ class RpcCoalescer:
                 self.condition.wait()
             if not self.pending: return []
             deadline = time.monotonic() + self.wait_seconds
-            while not self.closed and time.monotonic() < deadline:
-                scope = self.pending[0][0]
-                if len({(rpc,dump(payload)) for e in self.pending if e[0]==scope for rpc,payload in e[3]}) >= scope[-1]: break
-                self.condition.wait(deadline-time.monotonic())
-            first = self.pending.pop(0)
-            group, unique = [first], {(rpc,dump(payload)) for rpc,payload in first[3]}
-            for entry in list(self.pending):
-                if entry[0] != first[0]: continue
-                keys = {(rpc,dump(payload)) for rpc,payload in entry[3]}
-                if len(unique | keys) <= first[0][-1]:
-                    group.append(entry);unique.update(keys);self.pending.remove(entry)
-            return group
+            while True:
+                first = self.pending[0]
+                group,unique,ceiling = [first], set(first.keys), first.capacity
+                for entry in self.pending[1:]:
+                    if entry.scope != first.scope:
+                        continue
+                    common = min(ceiling,entry.capacity)
+                    if len(unique | entry.keys) <= common:
+                        group.append(entry)
+                        unique.update(entry.keys)
+                        ceiling = common
+                remaining = deadline-time.monotonic()
+                if self.closed or len(unique)>=ceiling or remaining<=0:
+                    for entry in group:self.pending.remove(entry)
+                    return group
+                self.condition.wait(remaining)
 
     def _run(self):
         while True:
             group = self._take()
             if not group: return
-            leader = group[0][1]
+            leader = group[0].client
             old_lane = getattr(leader,'lineage_lane',None)
             old_guard = leader.request_guard
-            guards = [entry[1].request_guard for entry in group if entry[1].request_guard]
+            guards = [entry.client.request_guard for entry in group if entry.client.request_guard]
             try:
                 def guard():
                     for check in guards: check()
@@ -75,20 +97,21 @@ class RpcCoalescer:
                 leader.lineage_lane = self.lineage_lane
                 # Record logical tasks once per leased batch, not once per page.
                 from .task_logs import emit
-                for _,client,market,_,_ in group:
+                for entry in group:
+                    client=entry.client
                     token = getattr(client,'lineage_batch_key',None)
                     if token and self.seen.get(client) != token:
                         emit(client.db,'dispatch_mixed',old_lane if client is leader else getattr(client,'lineage_lane','direct'),
                              'claimed','加入同市场联合批次',details={'store':self.store,'tasks':client.lineage_tasks})
                         self.seen[client] = token
-                calls = [call for entry in group for call in entry[3]]
-                values, raw = self._send(leader,group[0][2],calls)
+                calls = [call for entry in group for call in entry.calls]
+                values, raw = self._send(leader,group[0].market,calls)
                 offset=0;answers=[]
                 for entry in group:
-                    size=len(entry[3]);answers.append((entry[4],(values[offset:offset+size],raw)));offset+=size
+                    size=len(entry.calls);answers.append((entry.future,(values[offset:offset+size],raw)));offset+=size
             except Exception as exc:
                 error = exc if isinstance(exc,FetchError) else FetchError('合并请求失败：'+type(exc).__name__,60)
-                answers=[(entry[4],error) for entry in group]
+                answers=[(entry.future,error) for entry in group]
             finally:
                 leader.request_guard=old_guard
                 leader.lineage_lane=old_lane

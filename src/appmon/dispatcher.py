@@ -7,7 +7,7 @@ import time
 from .collection_limits import blocked
 from .db import connect
 from .collection_batch import PAGE_DUE, IMMEDIATE_DUE_MAX
-from .batch_limits import APPLE_DETAIL_MAX,GOOGLE_RPC_MAX
+from .batch_limits import APPLE_DETAIL_MAX,GOOGLE_RPC_MAX,BatchWindow
 
 log = logging.getLogger(__name__)
 LANES = ('details', 'keywords', 'chart', 'reviews', 'featured', 'permissions', 'icons', 'screenshots', 'pool', 'sources')
@@ -157,7 +157,7 @@ def worker(cfg, role='collector'):
     coalescer=RpcCoalescer(GOOGLE_RPC_MAX)
     lookup=LookupCoalescer(APPLE_DETAIL_MAX)
     stop=Event()
-    runtime=cfg | {'_rpc_coalescer':coalescer,'_lookup_coalescer':lookup}
+    runtime=cfg | {'_batch_window':BatchWindow(),'_rpc_coalescer':coalescer,'_lookup_coalescer':lookup}
     threads=[Thread(target=_worker_loop,args=(runtime,role,stop),name=f'{role}-{i+1}',daemon=True)
              for i in range(cfg.get('collector_concurrency',2))]
     try:

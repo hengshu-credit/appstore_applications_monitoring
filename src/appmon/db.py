@@ -321,7 +321,7 @@ def key(job):
     return tuple(job[k] for k in ('store', 'app_id', 'country', 'language'))
 
 
-def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=False, now=None, google_limit=20, apple_limit=50, *, due_by=None):
+def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=False, now=None, google_limit=20, apple_limit=50, *, due_by=None, batch_window=None):
     """Claim only the jobs served by the next HTTP request, in a short transaction."""
     from .collection_batch import can_batch, retry_condition, NETWORK_ERRORS, batch_due_limit
     now = time.time() if now is None else now
@@ -362,6 +362,10 @@ def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=Fa
             return []
         jobs = [first]
         batch_limit=min(limit,apple_limit if first['store']=='apple' else google_limit)
+        if batch_window is not None:
+            from .batch_limits import window_key
+            method='apple-lookup' if first['store']=='apple' else 'Ws7gDc'
+            batch_limit=batch_window.limit(window_key(first,(method,)),batch_limit)
         if can_batch(first) and batch_limit>1:
             extras=[' AND j.failures>0',' AND j.failures=0'] if retry else [' AND j.failures=0 AND j.due>0',' AND j.due<=0'] if mode=='scheduled' else ['']
             if watchlist:
@@ -380,6 +384,7 @@ def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=Fa
                    (token,now+lease_seconds,first['store'],first['country'],first['language'],*[job['app_id'] for job in jobs]))
         for job in jobs:
             job['token'] = token
+            job['lease_until'] = now+lease_seconds
     from .collection_lineage import record_dispatch
     record_dispatch(db,'details' if watchlist else 'pool',first['store'],len(jobs))
     return jobs

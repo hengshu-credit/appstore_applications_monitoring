@@ -13,7 +13,7 @@ from urllib.parse import parse_qs, unquote_plus, urlsplit
 import requests
 
 from . import collection_limits
-from .batch_limits import APPLE_DETAIL_MAX
+from .batch_limits import APPLE_DETAIL_MAX, BatchWindow, window_key
 
 
 class FetchError(Exception):
@@ -100,6 +100,7 @@ class Client:
         if cfg.get("tls_maximum_version") == "1.2":
             self.session.mount("https://", TLS12Adapter())
         self.session.headers["User-Agent"] = "Mozilla/5.0 (compatible; AppPoolMonitor/0.1)"
+        self.batch_window = cfg.get('_batch_window') or BatchWindow()
         self.progress = None
         self.request_guard = None
         self.rpc_coalescer = cfg.get('_rpc_coalescer')
@@ -229,18 +230,20 @@ class Client:
             raise ValueError(f'A detail batch must contain at most {APPLE_DETAIL_MAX} jobs in one market')
         if jobs[0]['store'] != 'apple':
             raise ValueError('This store does not support multi-ID detail lookup')
-        ids = [j['app_id'] for j in jobs]
-        if len(set(ids)) != len(ids):
+        if len({j['app_id'] for j in jobs}) != len(jobs):
             raise ValueError('Duplicate batch IDs')
+        from .batch_transport import read_sized
+        def read(part):
+            return self._apple_lookup(part),b''
+        return read_sized(jobs,min(APPLE_DETAIL_MAX,self.cfg.get('apple_lookup_batch_size',50)),
+                          window_key(jobs[0],('apple-lookup',)),self.batch_window,read,max_splits=8)[0]
+
+    def _apple_lookup(self,jobs):
+        ids = [j['app_id'] for j in jobs]
         language = jobs[0].get('language','en')
-        try:
-            r = self.get('apple', 'https://itunes.apple.com/lookup',
-                         {'id':','.join(ids),'country':jobs[0]['country'],'entity':'software','lang':language,'limit':200},
-                         headers={'Accept-Language':language})
-        except FetchError as exc:
-            if str(exc) not in ('HTTP 413','HTTP 414') or len(jobs)<2:raise
-            middle=len(jobs)//2
-            return self.fetch_apple_many(jobs[:middle])+self.fetch_apple_many(jobs[middle:])
+        r = self.get('apple', 'https://itunes.apple.com/lookup',
+                     {'id':','.join(ids),'country':jobs[0]['country'],'entity':'software','lang':language,'limit':200},
+                     headers={'Accept-Language':language})
         if r.status_code != 200:
             raise FetchError('Apple lookup endpoint unavailable')
         try:

@@ -34,15 +34,17 @@ class RpcCoalescingTest(unittest.TestCase):
             broker.close()
             for client in clients:client.session.close()
 
-    def run_calls(self, specs):
-        broker=RpcCoalescer(wait_seconds=0.1);sent=[];clients=[]
+    def run_calls(self, specs, capacities=None):
+        broker=RpcCoalescer(capacity=max(capacities) if capacities else 20,wait_seconds=0.1);sent=[];clients=[]
         def send(client,store,method,url,**kwargs):
             calls=json.loads(kwargs['data']['f.req'])[0];sent.append((kwargs['params'],calls))
             frames=[['wrb.fr',rpc,json.dumps([json.loads(payload)]),None,None,None,index] for rpc,payload,_,index in reversed(calls)]
             raw=json.dumps(frames).encode()
             return SimpleNamespace(status_code=200,text=raw.decode(),content=raw)
         try:
-            for _ in specs:clients.append(Client({'timeout_seconds':30,'_rpc_coalescer':broker},None))
+            for i in range(len(specs)):
+                clients.append(Client({'timeout_seconds':30,'_rpc_coalescer':broker,
+                                       'google_rpc_batch_size':capacities[i] if capacities else 20},None))
             barrier=threading.Barrier(len(specs))
             def run(i):
                 market,calls=specs[i];barrier.wait();return rpc_many(clients[i],market,calls)[0]
@@ -67,6 +69,15 @@ class RpcCoalescingTest(unittest.TestCase):
         self.assertEqual([len(v) for v in results],[15,10])
         sent,_=self.run_calls([(m,[('rpc',[1])]),(m|{'language':'es'},[('rpc',[1])]),(m|{'country':'gb'},[('rpc',[1])])])
         self.assertEqual(len(sent),3)
+
+    def test_partially_filled_lanes_with_different_ceilings_can_share_one_request(self):
+        m=dict(store='google',country='us',language='en')
+        specs=[(m,[('Ws7gDc',[i]) for i in range(15)]),(m,[('xdSrCf',[i]) for i in range(20)])]
+        sent,results=self.run_calls(specs,[3000,50])
+        self.assertEqual([len(c) for _,c in sent],[35])
+        self.assertEqual(results,[[[p] for _,p in calls] for _,calls in specs])
+        sent,_=self.run_calls(specs,[3000,25])
+        self.assertEqual(sorted(len(c) for _,c in sent),[15,20])
 
     def test_protocol_capacity_is_not_exceeded(self):
         m=dict(store='google',country='us',language='en')

@@ -1,4 +1,5 @@
 """Collect unique records until the requested depth or a real source boundary."""
+import json
 from .stores import FetchError
 
 
@@ -44,3 +45,15 @@ def completion_note(result):
     reason={'depth_reached':'达到目标数量','source_exhausted':'来源未提供下一页',
             'source_limit':'达到来源窗口上限，非历史全量'}.get(info['end'],'来源返回范围')
     return f"取得 {info['collected']}/{info['requested']} 条；{info['pages']} 次请求；{reason}"
+
+
+class RawPages:
+    """Encode each distinct set of physical response pages once per batch."""
+    def __init__(self):
+        self.encoded = {}
+
+    def pack(self, pages):
+        key = tuple(pages)
+        if key not in self.encoded:
+            self.encoded[key] = json.dumps([p.decode('utf-8') for p in pages],ensure_ascii=False).encode()
+        return self.encoded[key]

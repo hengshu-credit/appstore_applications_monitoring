@@ -12,6 +12,32 @@ class Rows:
     def fetchall(self): return self.rows
 
 
+def _lock_identities(db,base,args,alias,keys,identities):
+    # For a single-market details batch this becomes equality on the store,
+    # country and language plus one IN on app_id. Preserve exact tuples for
+    # mixed compound keys so no other identity is locked.
+    predicate = []
+    params = list(args)
+    varying = []
+    for pos,key in enumerate(keys):
+        values = {identity[pos] for identity in identities}
+        if len(values)==1:
+            predicate.append(f'{alias}.{key}=%s')
+            params.append(identities[0][pos])
+        else:
+            varying.append(pos)
+    if varying:
+        cols = [f'{alias}.{keys[pos]}' for pos in varying]
+        if len(cols)==1:
+            predicate.append(cols[0]+' IN %s')
+            params.append(tuple(identity[varying[0]] for identity in identities))
+        else:
+            predicate.append('('+','.join(cols)+') IN %s')
+            params.append(tuple(tuple(identity[pos] for pos in varying) for identity in identities))
+    locked = db.execute(base+' AND '+' AND '.join(predicate)+' FOR UPDATE SKIP LOCKED',params).fetchall()
+    return {tuple(r[k] for k in keys):r for r in locked}
+
+
 def select(db, sql, args=(), *, candidate_hint=None):
     match = re.fullmatch(r'(.*)\s+ORDER BY\s+(.+?)\s+LIMIT\s+(%s|\d+)\s+FOR UPDATE SKIP LOCKED\s*', sql.strip(), re.I | re.S)
     if not match:
@@ -31,7 +57,11 @@ def select(db, sql, args=(), *, candidate_hint=None):
     # before LIMIT prevents covering-index scans on a multi-million-row queue.
     hint=('/*+ '+candidate_hint+' */ ') if candidate_hint else ''
     candidates_base='SELECT '+hint+','.join(order_columns)+' '+base[source.start():]
-    after, selected = None, []
+    # Retry indexes accelerate discovery, but make poor locking plans after all
+    # primary key values are known. Keep hints on candidate scans only.
+    lock_base = re.sub(rf'(\bFROM\s+{table}\b(?:\s+{alias}\b)?\s+)FORCE INDEX\s*\(\w+\)',
+                       r'\1FORCE INDEX (PRIMARY)',base,count=1,flags=re.I)
+    after, selected, seen = None, [], set()
     while len(selected) < count:
         suffix, params = '', list(args)
         if after is not None:
@@ -39,11 +69,16 @@ def select(db, sql, args=(), *, candidate_hint=None):
             params.extend(after)
         candidates = db.execute(candidates_base+suffix+' ORDER BY '+','.join(order_columns)+' LIMIT 64',params).fetchall()
         if not candidates: break
-        for row in candidates:
-            predicate = ' AND '+' AND '.join(alias+'.'+k+'=%s' for k in keys)
-            current = db.execute(base+predicate+' FOR UPDATE SKIP LOCKED',(*args,*[row[k] for k in keys])).fetchone()
-            if current is not None:
-                selected.append(current)
-                if len(selected) == count: break
+        # Lock at most the remaining capacity. LIMIT on a locking scan would
+        # discard locked candidates before SKIP LOCKED can advance past them.
+        offset = 0
+        while offset < len(candidates) and len(selected) < count:
+            batch = candidates[offset:offset+count-len(selected)]
+            offset += len(batch)
+            identities = [pk for r in batch if (pk:=tuple(r[k] for k in keys)) not in seen]
+            if not identities:continue
+            by_id = _lock_identities(db,lock_base,args,alias,keys,identities)
+            selected.extend(by_id[identity] for identity in identities if identity in by_id)
+            seen.update(by_id)
         after = tuple(candidates[-1][c.split('.')[-1]] for c in order_columns)
     return Rows(selected)
