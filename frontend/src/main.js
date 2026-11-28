@@ -361,8 +361,8 @@ function evidence(report) {
 function jsonBlock(value) {
   return `<pre>${esc(JSON.stringify(value, null, 2))}</pre>`;
 }
-function metric(label, value, caption) {
-  return `<div class="metric"><div class="caption">${label}</div><div class="value">${num(value)}</div><div class="smallprint">${caption}</div></div>`;
+function metric(label, value, caption, formatValue = num) {
+  return `<div class="metric"><div class="caption">${label}</div><div class="value">${formatValue(value)}</div><div class="smallprint">${caption}</div></div>`;
 }
 function mount(html, rev, hint) {
   if (rev != null && rev !== revision) return false;

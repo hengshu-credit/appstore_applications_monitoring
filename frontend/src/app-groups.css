@@ -786,10 +786,8 @@
   display: none;
 }
 .member-detail-dialog > .picker-heading,
-.member-detail-dialog > .group-tabs,
-.member-detail-dialog > label,
-.member-detail-dialog > button,
-.member-detail-dialog > a {
+.member-detail-dialog > .member-toolbar,
+.member-detail-dialog > label {
   flex: none;
 }
 .member-detail-dialog > #group-member-content {
@@ -799,12 +797,52 @@
   scrollbar-gutter: stable;
   padding-right: 6px;
 }
-.member-detail-dialog .group-tabs {
-  position: static;
-  margin: 8px 0;
+.member-toolbar,
+.member-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
-.member-detail-dialog > #group-member-refresh,
-.member-detail-dialog > a {
-  align-self: flex-start;
-  margin: 6px 0;
+.member-toolbar {
+  margin: 8px 0 14px;
+}
+.member-actions {
+  margin-inline-start: auto;
+}
+.member-toolbar .group-tabs {
+  position: static;
+  margin: 0;
+  padding: 0;
+}
+.member-toolbar .group-tabs button {
+  flex: none;
+  min-width: 0;
+}
+.member-summary {
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.member-summary .metric {
+  padding: 10px 14px;
+}
+.member-summary .metric .value {
+  margin: 2px 0;
+  line-height: 1.2;
+}
+@media (max-width: 600px) {
+  .member-toolbar button,
+  .member-toolbar .button {
+    padding-inline: 8px;
+  }
+}
+@media (max-height: 620px) {
+  .member-detail-dialog[open] {
+    display: block;
+    overflow: auto;
+  }
+  .member-detail-dialog > #group-member-content {
+    scrollbar-gutter: auto;
+    padding-right: 0;
+  }
 }

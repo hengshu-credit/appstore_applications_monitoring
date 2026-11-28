@@ -942,7 +942,12 @@ export function createGroupWorkspace(ctx) {
       });
     }
     const sections = {
-      overview: `<div class="cards">${panel("分组状态", `<strong>${esc(listingStates[r.classification || r.listing?.state] || "未知")}</strong><p class="sub">${esc(sources[r.classification_source || "unknown"])}</p>`)}${metric("评分", p.rating, "商店最近一次观察")}${metric("评分数", p.ratings, "累计公开评分数量")}${metric("权限声明项", r.permission?.permission_count, permissionNames[r.permission_state])}</div><dl class="detail-facts">${[
+      overview: `<div class="cards member-summary">
+        ${metric("应用状态", listingStates[r.classification || r.listing?.state] || "未知", sources[r.classification_source] || sources.unknown, esc)}
+        ${metric("评分", p.rating, "商店最近一次观察")}
+        ${metric("评分数", p.ratings, "累计公开评分数量")}
+        ${metric("权限声明项", r.permission?.permission_count, permissionNames[r.permission_state])}
+      </div><dl class="detail-facts">${[
         ["商店实测", listingStates[r.listing?.state] || "未知"],
         ["应用 ID", m.app_id],
         ["国家 / 语言", m.country.toUpperCase() + " / " + m.language],
@@ -1132,7 +1137,8 @@ export function createGroupWorkspace(ctx) {
           ]),
       )}</details>`;
     el.classList.add("member-detail-dialog");
-    el.innerHTML = `<form method="dialog" class="picker-heading"><div><h2>${esc(m.name || m.app_id)}</h2><p class="sub">${storeName(m.store)} · ${esc(m.country.toUpperCase())} / ${esc(m.language)} · 近 ${days} 天</p></div><button class="secondary" aria-label="关闭">关闭</button></form><div class="group-tabs">${[
+    el.innerHTML = `<form method="dialog" class="picker-heading"><div><h2>${esc(m.name || m.app_id)}</h2><p class="sub">${storeName(m.store)} · ${esc(m.country.toUpperCase())} / ${esc(m.language)} · 近 ${days} 天</p></div><button class="secondary" aria-label="关闭">关闭</button></form>
+      <div class="member-toolbar"><div class="group-tabs">${[
       ["overview", "资料与状态"],
       ["permissions", "权限"],
       ["rankings", "关键词 / 榜单"],
@@ -1141,9 +1147,14 @@ export function createGroupWorkspace(ctx) {
       ["reviews", "评论"],
     ]
       .map(([v, n]) => `<button data-member-tab="${v}">${n}</button>`)
-      .join(
-        "",
-      )}</div>${(r.markets || []).length > 1 ? `<label>切换本组内的应用市场<select id="group-member-market">${r.markets.map((v) => `<option value="${v.id}" ${v.id === memberId ? "selected" : ""}>${esc(countryName(v.country))} / ${esc(v.language)} · ${esc(listingStates[v.state] || "未知")}</option>`).join("")}</select></label>` : ""}${can("groups", "write") && can("collection", "write") ? '<button id="group-member-refresh" class="secondary">复核当前应用的详情 / 权限</button>' : ""}<div id="group-member-content"></div>${can("apps") ? `<a class="button secondary" href="#app/${encodeURIComponent(m.store)}/${encodeURIComponent(m.app_id)}?country=${encodeURIComponent(m.country)}&language=${encodeURIComponent(m.language)}">打开完整应用详情</a>` : ""}`;
+      .join("")}</div>
+        <div class="member-actions">
+          ${can("groups", "write") && can("collection", "write") ? '<button id="group-member-refresh" class="secondary">复核详情与权限</button>' : ""}
+          ${can("apps") ? `<a class="button secondary" href="#app/${encodeURIComponent(m.store)}/${encodeURIComponent(m.app_id)}?country=${encodeURIComponent(m.country)}&language=${encodeURIComponent(m.language)}">打开完整应用详情</a>` : ""}
+        </div>
+      </div>
+      ${(r.markets || []).length > 1 ? `<label>切换本组内的应用市场<select id="group-member-market">${r.markets.map((v) => `<option value="${v.id}" ${v.id === memberId ? "selected" : ""}>${esc(countryName(v.country))} / ${esc(v.language)} · ${esc(listingStates[v.state] || "未知")}</option>`).join("")}</select></label>` : ""}
+      <div id="group-member-content"></div>`;
     el.querySelector("#group-member-market")?.addEventListener(
       "change",
       (event) =>
