@@ -1,6 +1,6 @@
 import { storeLogo } from "./icons.js";
 
-export const listingStates = { available: "在架", unverified: "未知", region_unavailable: "地区不可用" };
+export const listingStates = { available: "在架", unverified: "未知", region_unavailable: "下架" };
 
 let sequence = 0;
 export function createAppDetailTable(ctx) {

@@ -583,7 +583,7 @@ def dashboard(db, cfg, identifier, store='all', country='', state='', q='', days
         scope_targets=sum(not country or r['country']==country for r in all_rows),
         money=fact_summaries(db,identifier,days,store,country),items=page,total=len(rows),offset=offset,limit=limit,has_more=offset+limit<len(rows),
         collection=dict(paused=settings(db,cfg)['paused'],cooldown_seconds=max(0,int((rate or 0)-time.time()))),
-        observed_at=time.time(),days=days,scope='按当前分组成员回看观察。应用按商店去重；状态按国家/语言观察目标统计。首次验证不等于新发布；地区不可用不等于全球下架。关键词和榜单只显示有效采样命中；空值表示尚无有效数据。')
+        observed_at=time.time(),days=days,scope='按当前分组成员回看观察。应用按商店去重；状态按国家/语言观察目标统计。首次验证不等于新发布。下架仅指对应商店的当前国家/语言目标。关键词和榜单只显示有效采样命中；空值表示尚无有效数据。')
 
 
 def member_detail(db, identifier, member_id, days=30, cfg=None):

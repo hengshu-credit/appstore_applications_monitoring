@@ -1,3 +1,4 @@
+import { listingStates } from "./app-detail-table.js";
 import { pagination, bindPagination } from "./pagination.js";
 import { filterBar } from "./filter-bar.js";
 import { createCollectionCenter } from "./collection-center.js";
@@ -73,7 +74,7 @@ export function createResearchPages(ctx) {
   const eventNames = {
     first_verified: "首次验证",
     metadata_changed: "资料变化",
-    region_unavailable: "地区不可用",
+    region_unavailable: listingStates.region_unavailable,
     reappeared: "重新出现",
   };
   const fieldNames = {
@@ -163,7 +164,7 @@ export function createResearchPages(ctx) {
       days.set(row.day, (days.get(row.day) || 0) + Number(row.count));
     if (
       !mount(
-        `<div class="cards">${metric("观察事件", total, "当前市场与筛选区间")}${metric("资料变化", changed, "包含版本、素材、价格等字段")}${metric("地区不可用", data.summary.find((r) => r.kind === "region_unavailable")?.count || 0, "保留多次确认口径")}${metric("人工注记", data.annotations.length, "手工记录，不冒充采集事件")}</div>${panel(
+        `<div class="cards">${metric("观察事件", total, "当前市场与筛选区间")}${metric("资料变化", changed, "包含版本、素材、价格等字段")}${metric(eventNames.region_unavailable, data.summary.find((r) => r.kind === "region_unavailable")?.count || 0, "所选市场内记录的下架事件")}${metric("人工注记", data.annotations.length, "手工记录，不冒充采集事件")}</div>${panel(
           "事件筛选",
           `${filterBar({
             id: "event-filter",

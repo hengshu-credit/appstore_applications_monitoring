@@ -208,7 +208,7 @@ test("group overview separates unchecked targets and clears hidden list filters"
     );
     assert.equal(
       cards
-        .find((e) => e.textContent.startsWith("地区不可用"))
+        .find((e) => e.textContent.startsWith("下架"))
         .querySelector("strong").textContent,
       "0",
     );
@@ -301,7 +301,7 @@ test("country charts show observed status proportions and keep imported referenc
       [0, 400, 700],
     );
     assert.match(card.getAttribute("aria-label"), /在架 4/);
-    assert.match(card.getAttribute("aria-label"), /未知 3，地区不可用 3/);
+    assert.match(card.getAttribute("aria-label"), /未知 3，下架 3/);
     assert.ok(!card.textContent.includes("99"));
     assert.deepEqual(
       [...hint.querySelectorAll(".country-hint-row small")].map(

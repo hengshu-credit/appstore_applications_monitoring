@@ -23,7 +23,7 @@ export function createAvailabilityPage(ctx) {
   const names = {
     first_verified: "首次验证",
     reappeared: "重新出现",
-    region_unavailable: "地区不可用",
+    region_unavailable: listingStates.region_unavailable,
   };
   let watchedFilters = { store: "all", country: "", group_name: "", q: "" },
     watchedOffset = 0,
@@ -106,7 +106,7 @@ export function createAvailabilityPage(ctx) {
           )
           .join(
             "",
-          )}</div>${panel("观察范围与新鲜度", `${filterBar({ id: "availability-period", submit: "查看", values: { days }, fields: [{ name: "days", label: "趋势区间", type: "select", options: [7, 30, 90, 365].map((n) => [n, `最近${n}天`]) }], actions: '<a class="button secondary" href="#collection">管理采集与复核</a>' })}<p class="sub">${esc(r.scope)}</p><p>统计时间 ${stamp(r.observed_at)} · 最近48小时有效观察 ${num(r.counts.reduce((s, c) => s + Number(c.fresh), 0))} / 共 ${num(r.counts.reduce((s, c) => s + c.count, 0))} 个市场目标。商店明确查不到即标记地区不可用，查询失败显示未知。</p>`)}<div class="grid2">${Object.entries(
+          )}</div>${panel("观察范围与新鲜度", `${filterBar({ id: "availability-period", submit: "查看", values: { days }, fields: [{ name: "days", label: "趋势区间", type: "select", options: [7, 30, 90, 365].map((n) => [n, `最近${n}天`]) }], actions: '<a class="button secondary" href="#collection">管理采集与复核</a>' })}<p class="sub">${esc(r.scope)}</p><p>统计时间 ${stamp(r.observed_at)} · 最近48小时有效观察 ${num(r.counts.reduce((s, c) => s + Number(c.fresh), 0))} / 共 ${num(r.counts.reduce((s, c) => s + c.count, 0))} 个市场目标。商店明确查不到即标记为该市场下架，查询失败显示未知。</p>`)}<div class="grid2">${Object.entries(
           listingStates,
         )
           .map(([state, label]) =>
@@ -129,7 +129,7 @@ export function createAvailabilityPage(ctx) {
           )
           .join(
             "",
-          )}${panel("区间采集结果", bars(r.attempts.map((a) => ({ label: { ok: "成功访问", missing: "地区不可用", error: "采集失败" }[a.outcome] || a.outcome, count: a.count }))))}</div>${panel(
+          )}${panel("区间采集结果", bars(r.attempts.map((a) => ({ label: { ok: "成功访问", missing: listingStates.region_unavailable, error: "采集失败" }[a.outcome] || a.outcome, count: a.count }))))}</div>${panel(
           "查询失败的应用",
           `<p class="sub">最近最多${r.limit}条。按失败次数排序，错误原因保留供排查。</p>${table(
             ["应用", "当前状态", "失败次数", "上次取得详情", "采集错误"],
@@ -150,7 +150,7 @@ export function createAvailabilityPage(ctx) {
           )}`,
         )}${panel(
           "状态事件",
-          `<p class="sub">最近最多${r.limit}条。首次验证是衡枢·观星观察起点；重新出现和地区不可用均保留历史证据。</p>${table(
+          `<p class="sub">最近最多${r.limit}条。首次验证是衡枢·观星观察起点；重新出现和下架均保留历史证据。</p>${table(
             ["应用", "事件", "观察时间"],
             r.events.map((e) => [
               appLink(

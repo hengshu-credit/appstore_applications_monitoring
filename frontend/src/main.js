@@ -184,7 +184,7 @@ const kindLabel = (v) =>
   ({
     first_verified: "首次验证",
     metadata_changed: "资料变更",
-    region_unavailable: "地区不可用",
+    region_unavailable: listingStates.region_unavailable,
     reappeared: "重新出现",
     keyword_move: "关键词排名变化",
     chart_move: "榜单排名变化",
@@ -1633,7 +1633,7 @@ async function alertPage(rev) {
           "kind",
           [
             ["metadata_changed", "元数据变化"],
-            ["region_unavailable", "地区不可用"],
+            ["region_unavailable", kindLabel("region_unavailable")],
             ["reappeared", "重新出现"],
             ["keyword_move", "关键词位次变化"],
             ["chart_move", "榜单位次变化"],

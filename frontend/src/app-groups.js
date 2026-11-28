@@ -46,7 +46,7 @@ export function createGroupWorkspace(ctx) {
   const eventNames = {
     first_verified: "首次验证在架",
     reappeared: "重新出现",
-    region_unavailable: "确认地区不可用",
+    region_unavailable: "确认下架",
   };
   const detailTaskNames = {
     not_scheduled: "尚未配置",
@@ -593,7 +593,7 @@ export function createGroupWorkspace(ctx) {
             `<select data-edit-status aria-label="分组状态">${options(
               [
                 ["available", "在架"],
-                ["region_unavailable", "地区不可用"],
+                ["region_unavailable", listingStates.region_unavailable],
               ],
               row.status_override || "",
               "自动判定",
@@ -777,7 +777,7 @@ export function createGroupWorkspace(ctx) {
         .join("")}</div>
       <div id="group-tab-content">${
         tab === "overview"
-          ? `<div class="cards group-kpis">${badge("分组应用", s.apps, `${num(s.targets)} 个国家 / 语言目标`)}${badge("覆盖国家", s.countries, "当前商店与国家范围")}${badge("在架", counts.available || 0, "按当前分组判定")}${badge("未知", counts.unverified || 0, "最近查询失败或暂无可用依据")}${badge("地区不可用", (counts.region_unavailable || 0) + (counts.suspected_missing || 0), "当前国家的分组判定")}</div>
+          ? `<div class="cards group-kpis">${badge("分组应用", s.apps, `${num(s.targets)} 个国家 / 语言目标`)}${badge("覆盖国家", s.countries, "当前商店与国家范围")}${badge("在架", counts.available || 0, "按当前分组判定")}${badge("未知", counts.unverified || 0, "最近查询失败或暂无可用依据")}${badge(listingStates.region_unavailable, (counts.region_unavailable || 0) + (counts.suspected_missing || 0), "当前国家的分组判定")}</div>
           <div class="group-health"><span>48 小时内取得详情：${num(s.fresh)} / ${num(s.targets)}</span><span>采集异常：${num(s.errors)}</span><span>${data.collection.paused ? "采集已全局暂停" : data.collection.cooldown_seconds ? `距离下次可请求：${data.collection.cooldown_seconds} 秒` : "采集开关已启用"}</span><span>看板更新：${stamp(data.observed_at)}</span></div>
           ${panel(
             "各国家应用分布",
@@ -786,7 +786,7 @@ export function createGroupWorkspace(ctx) {
               .map(countryCard)
               .join("")}</div>`,
           )}
-        <div class="cards">${badge("首次验证在架", ev.first_verified || 0, "所选期间去重应用×国家，不等于新发布")}${badge("重新出现", ev.reappeared || 0, "有历史证据的恢复可用")}${badge("确认地区不可用", ev.region_unavailable || 0, "商店首次明确查不到时记录")}${badge("新增关注目标", s.new_members, `近 ${filters.days} 天加入，不等于新上架`)}</div>
+        <div class="cards">${badge("首次验证在架", ev.first_verified || 0, "所选期间去重应用×国家，不等于新发布")}${badge("重新出现", ev.reappeared || 0, "有历史证据的恢复可用")}${badge(eventNames.region_unavailable, ev.region_unavailable || 0, "商店首次明确查不到时记录")}${badge("新增关注目标", s.new_members, `近 ${filters.days} 天加入，不等于新上架`)}</div>
         <div class="grid2">${Object.entries(eventNames)
           .map(([kind, label]) =>
             panel(

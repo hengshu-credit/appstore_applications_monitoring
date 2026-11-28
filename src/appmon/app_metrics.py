@@ -86,7 +86,7 @@ def report(db, value):
             'snapshots': snapshots, 'review_distribution': reviews, 'review_daily': review_daily,
             'coverage_daily': coverage_daily,
             'availability': [{'at': r['at'], 'value': {'ok': 1, 'missing': 0}.get(r['outcome']),
-                              'note': {'ok': '当前市场可访问', 'missing': '商店明确未返回该应用，地区不可用'}.get(r['outcome'], '请求失败，状态未知')} for r in reversed(availability)],
+                              'note': {'ok': '当前市场可访问', 'missing': '商店明确未返回该应用，当前市场下架'}.get(r['outcome'], '请求失败，状态未知')} for r in reversed(availability)],
             'signals': signals, 'truncated': truncated,
             'downloads': {'available': False, 'reason': '日下载量需接入开发者授权报表或有来源的第三方估算；Google 安装下限不能换算日下载量。'},
             'scope': '当前市场启用目标最多各200个，每个目标区间内最近300次尝试。覆盖数仅计最新成功且未过期的命中词；未采集不计为0。连续两次同口径缺失且返回深度足够才提示异常，不代表官方处罚。'}
