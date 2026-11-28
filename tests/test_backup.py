@@ -16,7 +16,8 @@ class BackupTest(OceanBaseTestCase):
         backup(self.cfg,current,Path(__file__).parents[1]/'config.toml')
         with zipfile.ZipFile(current) as original, zipfile.ZipFile(legacy,'w') as out:
             manifest=verify(original)
-            newer_tables={'ad_tracking_schedules','collection_request_aliases','collection_plan_keys'}
+            newer_tables={'ad_tracking_schedules','collection_request_aliases','collection_plan_keys',
+                         'collection_task_windows','collection_latest_submissions','collection_expired_receipts'}
             for table in newer_tables:
                 del manifest['tables'][table]
                 del manifest['files'][f'tables/{table}.jsonl']

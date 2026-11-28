@@ -1085,8 +1085,15 @@ export function createDiscoveryPages(ctx) {
       const poll = async () => {
         if (rev !== currentRevision()) return;
         try {
-          const state = await api(`/discovery/keywords/tasks/${task.id}`);
+          const query = task.source && task.request_id
+            ? "?" + new URLSearchParams({ source: task.source, request_id: task.request_id })
+            : "";
+          const state = await api(`/discovery/keywords/tasks/${task.id}${query}`);
           if (rev !== currentRevision()) return;
+          if (state.status === "expired") {
+            toast(`任务 #${task.id} 的这次提交已过期，最新请求沿用原队列位置`);
+            return;
+          }
           if (state.status === "done") {
             await done(state.result);
             return;

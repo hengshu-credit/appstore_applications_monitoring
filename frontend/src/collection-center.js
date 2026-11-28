@@ -164,6 +164,13 @@ export function createCollectionCenter(ctx) {
     dialog.showModal();
     return dialog;
   }
+  function validityField(minutes) {
+    return field("排队有效期（分钟）", "validity_minutes", minutes ?? "", "number", 'min="0" max="525600" step="1"') +
+      '<p class="sub full">留空关闭，0 表示到下一轮自动过期。填写分钟数可提前结束等待，下一轮到期优先采集。同一目标的新请求沿用原队列位置。</p>';
+  }
+  function validityValue(value) {
+    return value == null || String(value).trim() === "" ? null : Number(value);
+  }
   async function edit(row) {
     const editRevision = currentRevision();
     if (row.resource === "sources") {
@@ -181,13 +188,19 @@ export function createCollectionCenter(ctx) {
     }
     editor(
       "编辑采集任务",
-      `<p class="sub">${esc(taskKinds[row.kind])} · ${esc(row.label)} · ${esc(row.country.toUpperCase())} / ${esc(row.language)}</p><form id="edit-task-form" class="form-grid">${field("刷新周期（小时）", "refresh_hours", row.refresh_hours, "number", 'min="0.25" max="8760" step="0.25" required')}${row.resource === "watchlist" ? field("监控分组", "group_name", row.group_name, "text", "required") : ["icons", "permissions", "media"].includes(row.resource) ? "" : field("采集结果上限", "depth", row.depth, "number", `min="1" max="${row.resource === "keywords" ? 200 : 500}" required`)}<p class="sub full">保留已有历史及启用状态。需要切换应用或市场时，请新建独立任务。</p><div class="full form-actions"><button type="submit">保存设置</button></div></form>`,
+      `<p class="sub">${esc(taskKinds[row.kind])} · ${esc(row.label)} · ${esc(row.country.toUpperCase())} / ${esc(row.language)}</p><form id="edit-task-form" class="form-grid">${field("刷新周期（小时）", "refresh_hours", row.refresh_hours, "number", 'min="0.25" max="8760" step="0.25" required')}${row.resource === "watchlist" ? field("监控分组", "group_name", row.group_name, "text", "required") : ["icons", "permissions", "media"].includes(row.resource) ? "" : field("采集结果上限", "depth", row.depth, "number", `min="1" max="${row.resource === "keywords" ? 200 : 500}" required`)}${row.supports_validity === false ? "" : validityField(row.validity_minutes)}<p class="sub full">保留已有历史及启用状态。需要切换应用或市场时，请新建独立任务。</p><div class="full form-actions"><button type="submit">保存设置</button></div></form>`,
     );
     bindForm("#edit-task-form", async (v) => {
-      await api(
+      const validity = validityValue(v.validity_minutes);
+      const validityChanged = validity !== (row.validity_minutes ?? null);
+      const settingsChanged = Number(v.refresh_hours) !== Number(row.refresh_hours) ||
+        (row.resource === "watchlist" && v.group_name !== row.group_name) ||
+        (v.depth != null && Number(v.depth) !== row.depth);
+      if (settingsChanged) await api(
         `/research/collection/tasks/${row.resource}/${row.id}`,
         {
           refresh_hours: Number(v.refresh_hours),
+          ...(validityChanged ? { validity_minutes: validity } : {}),
           ...(row.resource === "watchlist"
             ? { group_name: v.group_name }
             : ["icons", "permissions", "media"].includes(row.resource)
@@ -196,6 +209,9 @@ export function createCollectionCenter(ctx) {
         },
         "PUT",
       );
+      else if (validityChanged) await api("/research/collection/tasks/batch", {
+        action: "validity", tasks: [{ resource: row.resource, id: row.id }], validity_minutes: validity,
+      });
       closeEditor();
       toast("采集设置已更新");
       if (editRevision === currentRevision()) await refresh();
@@ -208,7 +224,7 @@ export function createCollectionCenter(ctx) {
       kind = preset?.kind || "details";
     return `<div class="collection-create-heading"><div><h2>新建采集计划</h2><p class="sub">当前市场：${storeLogo(m.store)} ${m.store === "apple" ? "App Store" : "Google Play"} · ${esc(selectors.countryName(m.country))} · ${esc(m.language)}。可在页面右上角切换。</p></div><button type="button" class="secondary" id="back-to-tasks">返回任务列表</button></div><form id="plan-form" class="form-grid">
       ${field("计划名称", "name", "应用研究计划", "text", "required")}${field("监控分组", "group_name", "重点应用", "text", "required")}${field("刷新周期（小时）", "refresh_hours", 24, "number", 'min="0.25" max="8760" step="0.25" required')}
-      <fieldset class="full task-types"><legend>选择需要采集的数据</legend>${Object.entries(
+      ${validityField(0)}<fieldset class="full task-types"><legend>选择需要采集的数据</legend>${Object.entries(
         Object.fromEntries(
           Object.entries(taskKinds).filter(
             ([k]) =>
@@ -283,6 +299,7 @@ export function createCollectionCenter(ctx) {
         name: v.name,
         group_name: v.group_name,
         refresh_hours: Number(v.refresh_hours),
+        validity_minutes: validityValue(v.validity_minutes),
         app_ids:
           flags.details || flags.reviews || flags.icons
             ? v.app_ids.split(/\s+/).filter(Boolean)
@@ -481,7 +498,7 @@ export function createCollectionCenter(ctx) {
                   { name: "country", label: "国家 / 地区", type: "country" },
                   { name: "language", label: "请求语言", type: "language" },
                 ],
-              })}<div class="task-bulk"><span id="selected-count">已选 0 项</span><button type="button" class="secondary small" data-batch="refresh">立即采集</button><button type="button" class="secondary small" data-batch="pause">暂停</button><button type="button" class="secondary small" data-batch="resume">恢复</button><button type="button" class="secondary small" data-batch="interval">修改周期</button><button type="button" class="secondary small" id="retry-failed-tasks">重试筛选内失败任务</button><button type="button" class="secondary small" id="select-filtered-tasks">全选筛选结果（跨页）</button><button type="button" class="secondary small" id="select-every-task">全选配置任务（所有商店）</button><button type="button" class="secondary small" id="clear-task-selection">取消选择</button></div><div id="bulk-operation-status" role="status"></div>${table(
+              })}<div class="task-bulk"><span id="selected-count">已选 0 项</span><button type="button" class="secondary small" data-batch="refresh">立即采集</button><button type="button" class="secondary small" data-batch="pause">暂停</button><button type="button" class="secondary small" data-batch="resume">恢复</button><button type="button" class="secondary small" data-batch="interval">修改周期</button><button type="button" class="secondary small" data-batch="validity">设置有效期</button><button type="button" class="secondary small" id="retry-failed-tasks">重试筛选内失败任务</button><button type="button" class="secondary small" id="select-filtered-tasks">全选筛选结果（跨页）</button><button type="button" class="secondary small" id="select-every-task">全选配置任务（所有商店）</button><button type="button" class="secondary small" id="clear-task-selection">取消选择</button></div><div id="bulk-operation-status" role="status"></div>${table(
                 [
                   '<input type="checkbox" id="select-all-tasks" aria-label="选择当前页全部任务">',
                   "目标",
@@ -532,7 +549,7 @@ export function createCollectionCenter(ctx) {
                     : "—",
                   t.resource === "sources"
                     ? t.refresh_hours ? `每 ${num(t.refresh_hours)} 小时 · 本轮` : "一次性"
-                    : `${t.refresh_hours} 小时`,
+                    : `${t.refresh_hours} 小时${t.validity_minutes == null ? "" : t.validity_minutes === 0 ? " · 下轮过期" : " · 有效 " + num(t.validity_minutes) + " 分钟"}`,
                   t.depth
                     ? num(t.depth) + " 条"
                     : t.kind === "permissions"
@@ -788,13 +805,14 @@ export function createCollectionCenter(ctx) {
             );
             if (!dialog.isConnected) return;
             const content = document.createElement("div");
-            content.innerHTML = `<p>已采集 ${num(result.finished)} / ${num(result.total)} · 失败 ${num(result.errors)}</p>${table(
+            content.innerHTML = `<p>已结束 ${num(result.finished)} / ${num(result.total)} · 已过期 ${num(result.expired ?? 0)} · 失败 ${num(result.errors)}</p>${table(
               ["类型", "目标", "状态", "最近结果"],
               result.tasks.map((t) => [
                 esc(taskKinds[t.kind]),
                 esc(t.label),
                 esc(
                   {
+                    expired: "已过期",
                     configuring: "配置中",
                     complete: "完成",
                     failed: "失败",
@@ -943,6 +961,15 @@ export function createCollectionCenter(ctx) {
       $("#" + id).onclick = () => selectScope(scope);
     }
     async function control(action, rows, scope = "selected", extra = {}) {
+      if (action === "validity" && extra.validity_minutes === undefined) {
+        editor("设置周期任务有效期", '<form id="batch-validity-form" class="form-grid">' +
+          validityField(rows.length === 1 ? rows[0].validity_minutes ?? 0 : 0) + '<button type="submit">保存有效期</button></form>');
+        bindForm("#batch-validity-form", async (v) => {
+          await control(action, rows, scope, { validity_minutes: validityValue(v.validity_minutes) });
+          closeEditor();
+        });
+        return;
+      }
       if (action === "interval" && extra.refresh_hours === undefined) {
         const scopeLabel =
           scope === "all"
@@ -965,7 +992,7 @@ export function createCollectionCenter(ctx) {
       if (
         scope !== "selected" &&
         !window.confirm(
-          `确认${{ pause: "暂停", resume: "恢复", retry: "重试其中失败的", interval: "修改周期：" }[action]}${scope === "all" ? "所有商店的全部配置任务（不含全池）" : `当前筛选结果的 ${tasks.total} 个任务`}？执行时匹配的配置任务覆盖所有分页。全池应用详情可在全池卡片单独控制。`,
+          `确认${{ pause: "暂停", resume: "恢复", retry: "重试其中失败的", interval: "修改周期：", validity: "设置有效期：" }[action]}${scope === "all" ? "所有商店的全部配置任务（不含全池）" : `当前筛选结果的 ${tasks.total} 个任务`}？执行时匹配的配置任务覆盖所有分页。全池应用详情可在全池卡片单独控制。`,
         )
       )
         return;

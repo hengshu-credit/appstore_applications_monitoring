@@ -1175,6 +1175,16 @@ test("category cards drill into state and batch interval preserves scope", async
     await tick();
     assert.equal(bodies[1].action, "retry");
     assert.equal(bodies[1].scope, "filtered");
+    window.document.querySelector("#select-filtered-tasks").click();
+    window.document.querySelector('[data-batch="validity"]').click();
+    const validity = window.document.querySelector("#batch-validity-form");
+    validity.elements.validity_minutes.value = "0";
+    validity.requestSubmit();
+    await tick();
+    assert.equal(bodies[2].action, "validity");
+    assert.equal(bodies[2].scope, "filtered");
+    assert.equal(bodies[2].validity_minutes, 0);
+    assert.equal(bodies[2].filters.kind, "keywords");
     assert.equal(
       window.document.querySelector('[name="daily_request_limit"]').value,
       "0",

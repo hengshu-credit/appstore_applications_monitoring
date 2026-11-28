@@ -146,13 +146,16 @@ def track(db,value):
     for row in rows:
         t=validate_target(row|{'depth':value.get('depth',100),'refresh_hours':value.get('refresh_hours',24)})
         prepared[tuple(t[k] for k in ('store','country','language','keyword'))]=t
-    created=[];existing=0
+    created=[];existing=0;submitted=[]
     with db:
         for identity,t in sorted(prepared.items()):
             result=db.execute('''INSERT INTO keyword_targets(store,country,language,keyword,depth,refresh_hours,due)
                 VALUES(%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id),due='''+pending_due_on_insert('keyword_targets'),(*identity,t['depth'],t['refresh_hours'],PAGE_DUE))
+            submitted.append(result.lastrowid)
             if result.rowcount==1:created.append(result.lastrowid)
             else:existing+=1
+        from .task_windows import page_submitted
+        page_submitted(db,'keywords',submitted)
     return {'targets':len(created),'ids':created,'existing':existing,'unique_targets':len(prepared),'selected_sources':len(rows)}
 
 

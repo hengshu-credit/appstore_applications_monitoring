@@ -7,7 +7,7 @@ from .db import dump
 from .intelligence import market, text
 from .task_logs import emit, safe_message, INSERT_LOG
 from .collection_batch import touch, write_batch
-from . import ad_sources, ad_channels, intake
+from . import ad_sources, ad_channels, intake, task_windows
 from .stores import CollectionDeferred
 
 KINDS = {'aso_popularity':'ASO 关键词热度', 'aso_import':'ASO 热度导入', 'aso_report':'ASO 报告入库', **ad_sources.KINDS}
@@ -66,8 +66,8 @@ def batch_key(kind, payload):
 
 
 def enqueue(db, kind, value, source='aso', request_id=None, *, submitted_by=None, due=0, submitted_at=None):
+    at=time.time() if submitted_at is None else submitted_at
     payload = normalize(kind,value)
-    explicit_request_id = request_id is not None
     source = text(source,64); request_id = text(uuid.uuid4().hex if request_id is None else request_id,120)
     if kind in ad_sources.KINDS:
         if type(submitted_by) is not int or submitted_by <= 0:
@@ -86,36 +86,52 @@ def enqueue(db, kind, value, source='aso', request_id=None, *, submitted_by=None
         if alias:
             if alias['fingerprint'] != request_hash:
                 raise ValueError('同一来源请求编号不能对应不同任务')
-            return receipt(db,alias['task_id']) | {'reused':True,'source':source,'request_id':request_id}
+            return receipt(db,alias['task_id'],source,request_id) | {'reused':True,'source':source,'request_id':request_id}
         old = db.execute('SELECT id,kind,payload FROM collection_source_tasks WHERE source=%s AND request_id=%s',(source,request_id)).fetchone()
         if old:
             if old['kind']!=kind or json.loads(old['payload'])!=payload:
                 raise ValueError('同一来源请求编号不能对应不同任务')
-            return receipt(db,old['id']) | {'reused':True}
+            return receipt(db,old['id'],source,request_id) | {'reused':True}
         current = active_task(db,kind,payload,fingerprint)
         if not current and submitted_at is not None:
             # Another plan may have finished the work while this one was expanding.
             current = matching_task(db,kind,payload,fingerprint,'due IS NULL AND success_at>=%s',(submitted_at,))
         if current:
             identifier = current['id']
-            if explicit_request_id or (source != current['source'] and not db.execute(
-                    "SELECT 1 FROM collection_request_aliases WHERE resource='sources' AND source=%s AND task_id=%s LIMIT 1",
-                    (source,identifier)).fetchone()):
-                intake.record_alias(db,'sources',source,request_id,identifier,request_hash)
-            if current['due'] is not None and current['enabled'] and not current['failures'] and current['lease_until'] <= time.time() and due < current['due']:
-                db.execute('UPDATE collection_source_tasks SET due=%s WHERE id=%s',(due,identifier))
-                touch(db)
-            result = receipt(db,identifier) | {'reused':True}
-            return result | {'source':source,'request_id':request_id} if explicit_request_id else result
+            intake.record_alias(db,'sources',source,request_id,identifier,request_hash)
+            if current['due'] is not None and not current['token'] and not current['failures'] and not has_progress(current):
+                accepted=task_windows.latest(db,'sources',identifier,at,source,request_id,
+                    fallback={'request_source':current['source'],'request_id':current['request_id'],
+                              'submitted_at':current['created_at'],'pending':True})
+                if accepted:
+                    # Origin keys remain durable; retain the original payload digest
+                    # for retries if a globally shared ad source changes market.
+                    if current['payload']!=dump(payload) and not intake.find_alias(db,'sources',current['source'],current['request_id']):
+                        intake.record_alias(db,'sources',current['source'],current['request_id'],identifier,
+                                            intake.digest([kind,json.loads(current['payload'])]))
+                    old_due=current['due']
+                    slot=old_due if (old_due< -1 and due< -1) or (due>=0 and old_due<=at) else min(old_due,due)
+                    if source.startswith('ad-schedule-') and due==0:
+                        slot=task_windows.promoted_slot(slot)
+                    db.execute("""UPDATE collection_source_tasks SET payload=%s,store=%s,country=%s,language=%s,app_id=%s,due=%s
+                        WHERE id=%s""",(dump(payload),payload['store'],payload['country'],payload['language'],payload.get('app_id',''),slot,identifier))
+                    touch(db)
+            result = receipt(db,identifier,source,request_id) | {'reused':True}
+            return result | {'source':source,'request_id':request_id}
         label = str(payload.get('filename') or payload.get('genre') or KINDS[kind])[:255]
         db.execute("""INSERT INTO collection_source_tasks(store,app_id,country,language,kind,label,payload,batch_key,source,request_id,created_at,due)
             VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (payload['store'],payload.get('app_id',''),payload['country'],payload['language'],kind,label,dump(payload),fingerprint,source,request_id,time.time(),due))
         identifier=db.cursor.lastrowid
+        task_windows.latest(db,'sources',identifier,at,source,request_id)
         emit(db,'sources',identifier,'queued','采集任务已入队：'+KINDS[kind],
              details={'submitted_by':submitted_by} if submitted_by is not None else None)
         touch(db)
     return receipt(db,identifier) | {'reused':False}
+
+
+def has_progress(row):
+    return bool(row['result'] and 'progress' in json.loads(row['result']))
 
 
 def active_task(db, kind, payload, fingerprint):
@@ -126,7 +142,7 @@ def matching_task(db, kind, payload, fingerprint, state, params=()):
     # Compatible Apple popularity requests may differ in output language or depth.
     exact = '' if kind in ad_sources.KINDS else ' AND payload=%s'
     args = (fingerprint,*params) if not exact else (fingerprint,*params,dump(payload))
-    return db.execute(f"""SELECT id,source,enabled,failures,lease_until,due FROM collection_source_tasks
+    return db.execute(f"""SELECT id,source,request_id,created_at,enabled,failures,lease_until,token,result,payload,due FROM collection_source_tasks
         WHERE batch_key=%s AND {state} AND {admitted()}{exact}
         ORDER BY id LIMIT 1 FOR UPDATE""",args).fetchone()
 
@@ -146,13 +162,23 @@ def consolidate_pending(db):
                 payload = json.loads(row['payload'])
                 key = row['batch_key'] if row['kind'] in ad_sources.KINDS else dump(payload)
                 keeper = seen.setdefault(key,row)
-                if keeper is row:continue
+                if keeper is row or row['token'] or row['lease_until']>time.time():continue
                 db.execute("""UPDATE collection_request_aliases SET task_id=%s
                     WHERE resource='sources' AND task_id=%s""",(keeper['id'],row['id']))
                 intake.record_alias(db,'sources',row['source'],row['request_id'],keeper['id'],
                                     intake.digest([row['kind'],payload]),row['id'])
-                if not keeper['failures'] and not row['failures'] and row['enabled']:
-                    db.execute('UPDATE collection_source_tasks SET due=LEAST(due,%s) WHERE id=%s',(row['due'],keeper['id']))
+                if not keeper['token'] and not keeper['failures'] and not has_progress(keeper) and not row['failures'] and row['enabled']:
+                    origin=dict(request_source=keeper['source'],request_id=keeper['request_id'],
+                                submitted_at=keeper['created_at'],pending=True)
+                    if task_windows.latest(db,'sources',keeper['id'],row['created_at'],row['source'],row['request_id'],fallback=origin):
+                        if keeper['payload']!=row['payload'] and not intake.find_alias(db,'sources',keeper['source'],keeper['request_id']):
+                            intake.record_alias(db,'sources',keeper['source'],keeper['request_id'],keeper['id'],
+                                                intake.digest([row['kind'],json.loads(keeper['payload'])]))
+                        db.execute('''UPDATE collection_source_tasks SET payload=%s,country=%s,language=%s WHERE id=%s''',
+                                   (row['payload'],row['country'],row['language'],keeper['id']))
+                    if keeper['due']>=-1 and row['due']<keeper['due']:
+                        keeper['due']=row['due']
+                        db.execute('UPDATE collection_source_tasks SET due=%s WHERE id=%s',(row['due'],keeper['id']))
                 if row['success_at'] is None:
                     db.execute('DELETE FROM collection_source_tasks WHERE id=%s',(row['id'],))
                 else:
@@ -168,16 +194,19 @@ def request_task(db,source,request_id):
                       (source,request_id)).fetchone()
 
 
-def receipt(db, identifier):
+def receipt(db, identifier, source=None, request_id=None):
     row = db.execute(f'''SELECT id,kind,source,request_id,enabled,due,lease_until,failures,last_error,result,created_at,success_at,
         {admitted()} AS admitted
         FROM collection_source_tasks WHERE id=%s''',(identifier,)).fetchone()
     if not row:
         current = intake.resolve_id(db,'sources',identifier)
-        if current != identifier:return receipt(db,current)
+        if current != identifier:return receipt(db,current,source,request_id)
         raise ValueError('任务不存在')
     status = ('done' if row['due'] is None else 'stopped' if not row['admitted'] else 'paused' if not row['enabled'] else
               'running' if row['lease_until']>time.time() else 'error' if row['failures'] else 'pending')
+    if source is not None and task_windows.is_expired(db,'sources',identifier,source,request_id):
+        status='expired'
+        row.update(result=None,success_at=None,last_error=None)
     return row | {'resource':'sources','status':status,'result':json.loads(row['result']) if row['result'] else None}
 
 
@@ -208,6 +237,7 @@ def work(db,cfg,*,due_by=None):
                         FROM collection_source_tasks WHERE {admitted()} AND batch_key=%s AND enabled=1 AND due<=%s
                         AND lease_until<=%s AND failures<3 ORDER BY due,id LIMIT %s FOR UPDATE SKIP LOCKED''',(first['batch_key'],now,now,cfg.get('collection_batch_size',2000))).fetchall()
                 if not rows:return {'processed':0}
+                task_windows.end_pending(db,'sources',[r['id'] for r in rows])
                 db.execute('UPDATE collection_source_tasks SET token=%s,lease_until=%s WHERE id IN %s',
                            (token,now+max(600,cfg.get('lease_seconds',600)),tuple(r['id'] for r in rows)))
                 touch(db)

@@ -37,7 +37,7 @@ def text(value, limit=120):
     return value.strip()
 
 
-def watch(db, value, merge_existing=False, *, initial_due=0):
+def watch(db, value, merge_existing=False, *, initial_due=0, record_page=True):
     m = market(value)
     group = text(value.get("group_name", "重点应用"))
     interval = hours(value.get("refresh_hours", 24))
@@ -50,10 +50,15 @@ def watch(db, value, merge_existing=False, *, initial_due=0):
         db.execute('''INSERT INTO jobs(store,app_id,country,language,due) VALUES(%s,%s,%s,%s,%s)
             ON DUPLICATE KEY UPDATE due='''+pending_due_on_insert('jobs'),
                    (m["store"], m["app_id"], m["country"], m["language"], initial_due))
+        if initial_due<0 and record_page:
+            from .task_windows import page_submitted
+            key=tuple(m[k] for k in ('store','app_id','country','language'))
+            identifier=db.execute('SELECT id FROM watchlist WHERE store=%s AND app_id=%s AND country=%s AND language=%s',key).fetchone()['id']
+            page_submitted(db,'watchlist',[identifier])
     return m | {"group_name": group, "refresh_hours": interval}
 
 
-def add_observation_target(db, value, preserve_existing=False, merge_existing=False, *, initial_due=0):
+def add_observation_target(db, value, preserve_existing=False, merge_existing=False, *, initial_due=0, record_page=True):
     kind = value.get("kind")
     if kind not in ("chart", "reviews", "featured"):
         raise ValueError("kind must be chart, reviews or featured")
@@ -91,6 +96,9 @@ def add_observation_target(db, value, preserve_existing=False, merge_existing=Fa
                    (*identity, depth, interval, initial_due))
         row = db.execute('''SELECT id FROM observation_targets WHERE kind=%s AND store=%s AND app_id=%s
             AND country=%s AND language=%s AND collection=%s AND category=%s''', identity).fetchone()
+        if initial_due<0 and record_page:
+            from .task_windows import page_submitted
+            page_submitted(db,'targets',[row['id']])
     return row
 
 
@@ -104,6 +112,8 @@ def claim_observation(db, lease_seconds, now=None, target_id=None, refresh=False
         row = db.claim('SELECT * FROM observation_targets WHERE '+where+' ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED',args).fetchone()
         if not row:
             return None
+        from .task_windows import before_claim
+        if not before_claim(db,'targets',[row],now):return None
         row["token"] = uuid.uuid4().hex
         db.execute("UPDATE observation_targets SET token=%s,lease_until=%s WHERE id=%s",
                    (row["token"], now + lease_seconds, row["id"]))

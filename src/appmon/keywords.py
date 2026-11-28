@@ -34,7 +34,7 @@ def validate_target(value):
     return market | dict(keyword=keyword,depth=depth,refresh_hours=hours)
 
 
-def add_targets(db, values, merge_existing=False, *, initial_due=0):
+def add_targets(db, values, merge_existing=False, *, initial_due=0, record_page=True):
     targets = [validate_target(value) for value in values]
     ids = []
     with db:
@@ -48,6 +48,9 @@ def add_targets(db, values, merge_existing=False, *, initial_due=0):
                 WHERE store=%s AND country=%s AND language=%s AND keyword=%s''',
                              tuple(target[k] for k in ("store", "country", "language", "keyword"))).fetchone()
             ids.append(row["id"])
+        if initial_due<0 and record_page:
+            from .task_windows import page_submitted
+            page_submitted(db,'keywords',ids)
     return {"targets": len(ids), "ids": ids}
 
 
@@ -67,6 +70,8 @@ def claim_target(db, lease_seconds, now=None, target_id=None, refresh=False):
             ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED''', args).fetchone()
         if row is None:
             return None
+        from .task_windows import before_claim
+        if not before_claim(db,'keywords',[row],now):return None
         row["token"] = uuid.uuid4().hex
         db.execute("UPDATE keyword_targets SET token=%s,lease_until=%s WHERE id=%s",
                    (row["token"], now + lease_seconds, row["id"]))

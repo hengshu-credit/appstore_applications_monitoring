@@ -5,7 +5,7 @@ from .collection_limits import blocked
 from .ingest import disk_check
 from .stores import FetchError,CollectionDeferred
 from .task_logs import Execution, BatchProgress,start_batch,INSERT_LOG
-from .collection_batch import can_batch, retry_condition, NETWORK_ERRORS, persist_batch, batch_due_limit
+from .collection_batch import can_batch, retry_condition, NETWORK_ERRORS, persist_batch, batch_due_limit, RECOVERY_DUE_MAX
 
 
 def claim_targets(db, table, lease_seconds, size, kind=None, *, on_claim=None, due_by=None, batch_window=None):
@@ -25,7 +25,7 @@ def claim_targets(db, table, lease_seconds, size, kind=None, *, on_claim=None, d
         first=None
         if mode!='fresh':
             first=db.claim(f'''SELECT {columns} FROM {table} WHERE enabled=1 AND due<=%s AND lease_until<=%s
-                {extra} ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED''',(min(-1,due_by),now,*extra_args)).fetchone()
+                {extra} ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED''',(min(RECOVERY_DUE_MAX,due_by),now,*extra_args)).fetchone()
             if first:
                 mode='fresh';retry=False
         if retry:
@@ -69,6 +69,10 @@ def claim_targets(db, table, lease_seconds, size, kind=None, *, on_claim=None, d
                 ORDER BY due,id LIMIT %s FOR UPDATE SKIP LOCKED""",
                 (first['kind'],first['country'],first['app_id'],first['collection'],first['category'],first['depth'],
                  batch_due_limit(first['due'],now),now,first['id'],NETWORK_ERRORS,size-1)).fetchall()
+        from .task_windows import before_claim
+        resource={'observation_targets':'targets','keyword_targets':'keywords','app_permission_targets':'permissions'}[table]
+        rows=before_claim(db,resource,rows,time.time())
+        if not rows:return []
         token=uuid.uuid4().hex
         db.execute(f'UPDATE {table} SET token=%s,lease_until=%s WHERE id IN ('+','.join('%s' for _ in rows)+')',
                    (token,now+lease_seconds,*[r['id'] for r in rows]))

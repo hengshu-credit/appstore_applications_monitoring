@@ -485,9 +485,9 @@ def create_app(cfg):
         return enqueue(db,'aso_report',value,request_id=value.get('request_id'),due=PAGE_DUE)
 
     @api.get('/discovery/keywords/tasks/{identifier}')
-    def source_task_result(identifier:int,db=DB):
+    def source_task_result(identifier:int,source:str|None=None,request_id:str|None=None,db=DB):
         from .source_tasks import receipt
-        return receipt(db,identifier)
+        return receipt(db,identifier,source,request_id)
 
     @api.get('/research/collection/source-tasks/{identifier}')
     def collection_source_result(identifier:int,db=DB):

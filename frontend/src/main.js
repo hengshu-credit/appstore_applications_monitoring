@@ -822,6 +822,7 @@ async function appDetail(store, id, rev = ++revision, previousProgress = null) {
   };
   const progressState = {
     running: "采集中",
+    expired: "本轮已过期",
     complete: "本轮采集完成",
     partial_failure: "本轮部分任务失败",
     failed: "配置失败",
@@ -846,7 +847,7 @@ async function appDetail(store, id, rev = ++revision, previousProgress = null) {
       );
     }
     const state = progressState[report.state] || report.state;
-    $(".callout", progress).textContent = `${state} · ${report.finished}/${report.total} 项已完成 · ${report.errors} 项失败`;
+    $(".callout", progress).textContent = `${state} · ${report.finished}/${report.total} 项已结束 · ${report.expired ?? 0} 项已过期 · ${report.errors} 项失败`;
     $("p.sub", progress).textContent = report.scope;
     $("[data-app-subtasks]", progress).innerHTML = table(
       ["采集项", "目标", "状态", "日志"],
@@ -867,6 +868,7 @@ async function appDetail(store, id, rev = ++revision, previousProgress = null) {
         }[t.kind]),
         esc(t.label),
         esc({
+          expired: "已过期",
           configuring: "配置中",
           scheduled: "等待执行",
           pending: "等待领取",

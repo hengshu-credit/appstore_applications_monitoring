@@ -297,10 +297,12 @@ class AppAdTrackingTest(OceanBaseTestCase):
         source_registry.save(self.db,self.cfg,'ad_meta',{'access_token':'test-meta-token'})
         self.db.execute('UPDATE ad_tracking_schedules SET next_due=0')
         ad_tracking.schedule_due(self.db)
-        self.assertEqual(ad_tracking.schedule_for(self.db,self.m)['run_number'],1)
+        self.assertEqual(ad_tracking.schedule_for(self.db,self.m)['run_number'],2)
         with patch('appmon.ad_sources.fetch',side_effect=self.empty_source):
             for _ in first['tasks']:
                 self.assertEqual(source_tasks.work(self.db,self.cfg)['ok'],1)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) n FROM collection_source_tasks').fetchone()['n'],len(first['tasks']))
+        self.db.execute('UPDATE ad_tracking_schedules SET next_due=0')
         def tick(_):
             db=connect(self.cfg)
             try:ad_tracking.schedule_due(db)
@@ -308,7 +310,7 @@ class AppAdTrackingTest(OceanBaseTestCase):
         with ThreadPoolExecutor(max_workers=3) as pool:
             list(pool.map(tick,range(3)))
         second=client.get(path,params=self.m).json()['schedule']
-        self.assertEqual(second['run_number'],2)
+        self.assertEqual(second['run_number'],3)
         count=self.db.execute('SELECT COUNT(*) n FROM collection_source_tasks').fetchone()['n']
         self.assertEqual(count,2*len(first['tasks']))
         self.assertIsNone(self.db.execute("SELECT id FROM collection_source_tasks WHERE kind='ad_meta'").fetchone())

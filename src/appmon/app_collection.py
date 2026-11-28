@@ -33,9 +33,9 @@ def schedule_action(db,action,submitted_at=None):
     # Explicit app refresh activates these targets. Existing periods/depth are kept.
     existing=action_target(db,action)
     if not existing:
-        if action['kind']=='details':watch(db,action['value'],initial_due=PAGE_DUE)
-        elif action['kind']=='keywords':add_targets(db,[action['value']],initial_due=PAGE_DUE)
-        else:add_observation_target(db,action['value'],initial_due=PAGE_DUE)
+        if action['kind']=='details':watch(db,action['value'],initial_due=PAGE_DUE,record_page=False)
+        elif action['kind']=='keywords':add_targets(db,[action['value']],initial_due=PAGE_DUE,record_page=False)
+        else:add_observation_target(db,action['value'],initial_due=PAGE_DUE,record_page=False)
     ref=action_target(db,action)
     table={'watchlist':'watchlist','keywords':'keyword_targets','targets':'observation_targets'}[ref['resource']]
     with db:
@@ -70,9 +70,11 @@ def report(db,identifier,allow_plan=False):
             explicit = bool(spec.get('input_source') and spec.get('ad_requested_by'))
             origin = 'user-ad-plan' if ad and explicit else 'collection-plan'
             row = source_tasks.request_task(db,origin,f'{identifier}:{index}')
-            task = source_tasks.receipt(db, row['id']) if row else None
+            task = source_tasks.receipt(db,row['id'],origin,f'{identifier}:{index}') if row else None
             state = task['status'] if task else 'configuring'
-            if state == 'done':
+            if state=='expired':
+                finished+=1;skipped+=1
+            elif state == 'done':
                 state = 'complete'
                 finished += 1
             elif task and task['failures'] >= 3 and (state=='error' or ad and not explicit):
@@ -102,7 +104,10 @@ def report(db,identifier,allow_plan=False):
             else:
                 table='keyword_runs' if ref['resource']=='keywords' else 'observation_runs'
                 attempted=db.execute(f'SELECT observed_at,outcome FROM {table} WHERE target_id=%s ORDER BY id DESC LIMIT 1',(ref['id'],)).fetchone()
-            if attempted and attempted['observed_at']>=plan['created_at']:
+            from .task_windows import is_expired
+            if is_expired(db,ref['resource'],ref['id'],'plan-action',f'{identifier}:{index}'):
+                state='expired';finished+=1;skipped+=1
+            elif attempted and attempted['observed_at']>=plan['created_at']:
                 observed=attempted['observed_at'];outcome=attempted['outcome'];finished+=1;errors+=int(outcome=='error');state='failed' if outcome=='error' else 'complete'
         label=action['value'].get('keyword') or action['value'].get('app_id') or 'Apple Today'
         if action['kind']=='chart':
@@ -110,14 +115,16 @@ def report(db,identifier,allow_plan=False):
         tasks.append({'kind':action['kind'],'label':label,
                       'ref':ref,'state':state,'observed_at':observed,'outcome':outcome})
     state='failed' if plan['status']=='error' else ('partial_failure' if errors else 'complete') if finished==len(actions) else 'running'
+    expired=sum(task['state']=='expired' for task in tasks)
+    if expired and expired==len(tasks):state='expired'
     deferred=max(0,json.loads(plan['specification']).get('keyword_total',0)-100)
     scope = '共享目标执行进度，多个计划复用同一目标的实际采集结果。' if allow_plan else (
         '采集当前市场的公开详情、素材、最多100条近期评论、总榜和分类榜，并搜索应用名和最多100个已跟踪关键词。')
     if skipped:
-        scope += f'已跳过旧计划附带的 {skipped} 项广告任务。'
+        scope += f'已跳过或过期 {skipped} 项。'
     if deferred:
         scope += f'另有{deferred}个词需在采集中心分批安排。'
-    return {'id':identifier,'state':state,'requested_at':plan['created_at'],'total':len(actions),'finished':finished,'errors':errors,'skipped':skipped,'tasks':tasks,'deferred_keywords':deferred,
+    return {'id':identifier,'state':state,'requested_at':plan['created_at'],'total':len(actions),'finished':finished,'errors':errors,'skipped':skipped,'expired':expired,'tasks':tasks,'deferred_keywords':deferred,
             'scope':scope}
 
 
@@ -135,8 +142,6 @@ def collect(db,value):
     app=db.execute('SELECT name,category FROM apps WHERE store=%s AND app_id=%s',(m['store'],m['app_id'])).fetchone()
     if not app:raise ValueError('应用尚未进入应用池')
     with db.named_lock('collect-app:'+dump(m),timeout=10):
-        previous=latest(db,m)
-        if previous and previous['state']=='running':return previous
         actions=[{'kind':'details','value':m|{'group_name':'应用详情采集','refresh_hours':24}},
                  {'kind':'reviews','value':m|{'kind':'reviews','depth':100,'refresh_hours':24}}]
         category=category_id(m['store'],app['category'])

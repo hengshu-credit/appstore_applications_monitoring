@@ -70,7 +70,7 @@ class QueueLoopTest(OceanBaseTestCase):
         self.assertEqual(merged['total'],1)
         collection.work_plans(self.db)
         row=self.db.execute("SELECT depth,refresh_hours FROM keyword_targets WHERE keyword='word 0'").fetchone()
-        self.assertEqual(row,{'depth':20,'refresh_hours':3})
+        self.assertEqual(row,{'depth':20,'refresh_hours':24})
 
     def test_legacy_queued_plans_share_one_receipt_after_upgrade(self):
         from appmon import intake

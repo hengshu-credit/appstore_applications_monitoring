@@ -684,16 +684,22 @@ def collect(db, identifier, value):
     markets=sorted({(r['store'],r['country'],r['language']) for r in members});now=time.time()
     prepared=[validate_target(dict(store=s,country=c,language=l,keyword=w)) for s,c,l in markets for w in words] if 'keywords' in kinds else []
     prepared=list({tuple(r[k] for k in ('store','country','language','keyword')):r for r in prepared}.values())
+    from .task_windows import page_submitted
     counts={}
     with db:
         if 'details' in kinds:
             db.execute('''UPDATE watchlist w JOIN app_group_members m USING(store,app_id,country,language) SET w.enabled=1 WHERE '''+where,args)
             db.execute('''UPDATE jobs j JOIN app_group_members m USING(store,app_id,country,language) SET j.due=LEAST(j.due,%s) WHERE '''+where+' AND j.lease_until<=%s',(PAGE_DUE,*args,now))
+            ids=db.execute('SELECT w.id FROM watchlist w JOIN app_group_members m USING(store,app_id,country,language) WHERE '+where,args).fetchall()
+            page_submitted(db,'watchlist',[r['id'] for r in ids])
             counts['details']=len(members)
         if 'permissions' in kinds:
             counts['permissions']=app_permissions.enqueue(db,members)
             db.execute('''UPDATE app_permission_targets p JOIN app_group_members m ON m.store=p.store AND m.app_id=p.app_id AND m.country=p.country
                 SET p.enabled=1,p.due=IF(p.lease_until<=%s,LEAST(p.due,%s),p.due) WHERE '''+where,(now,PAGE_DUE,*args))
+            ids=db.execute('''SELECT DISTINCT p.id FROM app_permission_targets p JOIN app_group_members m
+                ON m.store=p.store AND m.app_id=p.app_id AND m.country=p.country WHERE '''+where,args).fetchall()
+            page_submitted(db,'permissions',[r['id'] for r in ids])
         targets=[]
         if 'reviews' in kinds:targets.extend(('reviews',r['store'],r['app_id'],r['country'],r['language'],'','',100,24) for r in members);counts['reviews']=len(members)
         if 'charts' in kinds:
@@ -708,6 +714,12 @@ def collect(db, identifier, value):
             db.executemany('''INSERT INTO keyword_targets(store,country,language,keyword,depth,refresh_hours,due) VALUES(%s,%s,%s,%s,%s,%s,%s)
                 ON DUPLICATE KEY UPDATE enabled=1,due=IF(keyword_targets.lease_until<=UNIX_TIMESTAMP(),LEAST(keyword_targets.due,VALUES(due)),keyword_targets.due)''',[(*r.values(),PAGE_DUE) for r in prepared])
             counts['keywords']=len(prepared)
+        for resource,table,columns,keys in [
+            ('targets','observation_targets','kind,store,app_id,country,language,collection,category',[t[:7] for t in targets]),
+            ('keywords','keyword_targets','store,country,language,keyword',[tuple(r[k] for k in ('store','country','language','keyword')) for r in prepared])]:
+            for i in range(0,len(keys),500):
+                ids=db.execute(f'SELECT id FROM {table} WHERE ({columns}) IN %s',(tuple(keys[i:i+500]),)).fetchall()
+                page_submitted(db,resource,[r['id'] for r in ids])
     return dict(queued=counts,note='已安排采集，遵守共享限速和暂停设置；已有目标的周期及深度保持不变。')
 
 

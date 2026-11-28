@@ -1,7 +1,7 @@
 """One paginated task registry and atomic controls for all observation workers."""
 import time
 import json
-from . import intake, source_tasks
+from . import intake, source_tasks, task_windows
 from .collection_batch import PAGE_DUE
 from .intelligence import hours, text
 from .app_search import LISTING_NAME
@@ -153,6 +153,17 @@ def list_tasks(db, *, page=1, limit=50, **filters):
     if refs:
         detail,detail_args=task_query(refs=refs)
         rows=db.execute(detail+' ORDER BY resource,id DESC',detail_args).fetchall()
+        policies=db.execute('''SELECT resource,target_id,validity_minutes,last_expired_at FROM collection_task_windows
+            WHERE (resource,target_id) IN %s''',(tuple((r['resource'],r['id']) for r in rows),)).fetchall() if rows else []
+        by_key={(p['resource'],p['target_id']):p for p in policies}
+        icons=tuple(r['id'] for r in rows if r['resource']=='icons')
+        periodic_icons={i['id'] for i in db.execute(
+            "SELECT id FROM app_icons WHERE request_mode='periodic' AND id IN %s",(icons,)).fetchall()} if icons else set()
+        for row in rows:
+            row['supports_validity']=row['resource'] in task_windows.TABLES and (row['resource']!='icons' or row['id'] in periodic_icons)
+            p=by_key.get((row['resource'],row['id']),{})
+            minutes=p.get('validity_minutes',0)
+            row.update(validity_minutes=minutes if row['supports_validity'] and minutes!=task_windows.DISABLED else None,last_expired_at=p.get('last_expired_at'))
     return {'items':rows,'total':total,'summary':summary,'categories':list(categories.values()),'page':page,'limit':limit,'has_more':page*limit<total,'data_revision':data_revision,'observed_at':time.time()}
 
 
@@ -186,6 +197,10 @@ def edit_task(db, resource, identifier, value):
             db.execute(f'''UPDATE {table} SET refresh_hours=%s,depth=%s,
                 due=LEAST(due,%s),token=NULL,lease_until=0 WHERE id=%s''',
                        (interval,depth,time.time()+interval*3600,identifier))
+        if 'validity_minutes' in value:
+            minutes=task_windows.validate(value['validity_minutes'])
+            native=task_windows.rows_for(db,resource,[identifier])
+            if native:task_windows.configure(db,resource,native[0],minutes,time.time())
         emit(db,resource,identifier,'settings_updated',f'采集设置已更新，刷新周期 {interval} 小时')
     return {'id':identifier,'resource':resource,'saved':True}
 
@@ -204,7 +219,7 @@ def _enqueue_selected(db, cfg, resource, table, row, action, due, now):
         if action=='refresh':
             db.execute('''INSERT INTO jobs(store,app_id,country,language) VALUES(%s,%s,%s,%s)
                 ON DUPLICATE KEY UPDATE app_id=jobs.app_id''',key)
-        row = db.execute('SELECT due,failures,lease_until FROM jobs WHERE '+where+' FOR UPDATE',key).fetchone()
+        row = db.execute('SELECT *,%s watch_id,%s refresh_hours FROM jobs WHERE '+where+' FOR UPDATE',(row['id'],row['refresh_hours'],*key)).fetchone()
     if not row or (action=='retry' and not row['failures']):
         return 'skipped'
     if row['lease_until']>now:
@@ -218,7 +233,16 @@ def _enqueue_selected(db, cfg, resource, table, row, action, due, now):
         from .app_media import active_predicate
         if not db.execute('SELECT 1 FROM app_media_assets a WHERE id=%s AND '+active_predicate(),key).fetchone():
             return 'out_of_scope'
-    if row['due'] is not None and row['due']<0 and not row['failures']:
+    if action=='refresh' and resource=='sources':
+        origin=dict(request_source=row['source'],request_id=row['request_id'],submitted_at=row['created_at'],
+                    pending=row['due'] is not None and not row['failures'] and not source_tasks.has_progress(row))
+        task_windows.latest(db,resource,row['id'],now,fallback=origin)
+    elif action=='refresh':
+        # Preserve an existing slot, including a stronger manual priority.
+        slot=row['due'] if row['due'] is not None and (row['due']<=-2 or row['due']==PAGE_DUE and due==PAGE_DUE) else due
+        task_windows.latest(db,resource,task_windows.identifier(resource,row),now)
+        task_windows.submitted(db,resource,row,now,new_due=slot)
+    if row['due'] is not None and row['due']<=PAGE_DUE and not row['failures']:
         if row['due'] < PAGE_DUE or due == PAGE_DUE:
             return 'skipped'
     reset = ',failures=0,last_error=NULL' if resource=='sources' else ''
@@ -235,8 +259,8 @@ def control_tasks(db, value, cfg=None):
     if scope not in ('selected','filtered','all'):
         raise ValueError('未知选择范围')
     if scope != 'selected':
-        if action not in ('pause','resume','interval','retry') or refs is not None:
-            raise ValueError('跨页支持暂停、恢复、修改周期和重试失败，不能同时指定任务列表')
+        if action not in ('pause','resume','interval','retry','validity') or refs is not None:
+            raise ValueError('跨页支持暂停、恢复、修改周期、设置有效期和重试失败，不能同时指定任务列表')
         filters = value.get('filters', {})
         if not isinstance(filters,dict) or set(filters)-{'kind','store','country','language','state','q'}:
             raise ValueError('筛选参数无效')
@@ -252,10 +276,15 @@ def control_tasks(db, value, cfg=None):
             query = f"SELECT * FROM ({query}) retryable WHERE enabled=1 AND failures>0 AND lease_until<=%s"
             args.append(time.time())
         interval = hours(value.get('refresh_hours')) if action=='interval' else None
+        if action=='validity':
+            if 'validity_minutes' not in value:raise ValueError('缺少有效期设置')
+            interval=task_windows.validate(value['validity_minutes'])
         return _control_scope(db, query, args, action, interval)
-    elif not isinstance(refs,list) or not 1<=len(refs)<=200 or action not in ('pause','resume','refresh','interval','retry'):
+    elif not isinstance(refs,list) or not 1<=len(refs)<=200 or action not in ('pause','resume','refresh','interval','retry','validity'):
         raise ValueError('每次请选择1–200个任务及有效操作')
     interval = hours(value.get('refresh_hours')) if action=='interval' else None
+    minutes = task_windows.validate(value['validity_minutes']) if action=='validity' and 'validity_minutes' in value else None
+    if action=='validity' and 'validity_minutes' not in value:raise ValueError('缺少有效期设置')
     counts = dict(updated=0,running=0,out_of_scope=0,skipped=0)
     network_queued = 0
     due = PAGE_DUE if page_refresh else -time.time()
@@ -271,6 +300,16 @@ def control_tasks(db, value, cfg=None):
             resource, identifier = ref.get('resource'), ref.get('id')
             if resource=='sources' and action=='interval':raise ValueError('一次性任务不设置周期，请仅选择周期任务')
             table, row = _target(db, resource, identifier)
+            if action=='validity':
+                if resource not in task_windows.TABLES or resource=='icons' and row['request_mode']!='periodic':
+                    counts['skipped']+=1
+                    continue
+                native=task_windows.rows_for(db,resource,[identifier])
+                if native:
+                    task_windows.configure(db,resource,native[0],minutes,time.time())
+                    counts['updated']+=1
+                else:counts['skipped']+=1
+                continue
             if resource=='sources' and action!='pause' and not db.execute(
                     f'SELECT 1 FROM collection_source_tasks WHERE id=%s AND {admitted()}',(identifier,)).fetchone():
                 counts['skipped'] += 1
@@ -332,6 +371,7 @@ def _control_scope(db, query, args, action, interval):
     try:
         with db:
             db.execute(f'INSERT INTO collection_selection SELECT resource,id FROM ({query}) matched',args)
+            if action=='validity':return task_windows.configure_selection(db,interval,time.time())
             if action=='retry' and db.execute("SELECT 1 FROM collection_selection WHERE resource='sources' LIMIT 1").fetchone():
                 intake.lock_source_intake(db)
                 # Retry at most one receipt per unfinished source request.

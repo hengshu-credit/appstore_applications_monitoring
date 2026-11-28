@@ -207,6 +207,8 @@ def request_icon(db,cfg,value,force=False):
             db.execute("""UPDATE app_icons SET request_mode=IF(request_mode='periodic','periodic','once'),
                 requested=1,enabled=1,status=IF(lease_until<=%s,'queued',status),due=LEAST(due,%s)
                 WHERE id=%s""",(time.time(),PAGE_DUE,row['id']))
+            from .task_windows import page_submitted
+            page_submitted(db,'icons',[row['id']])
         elif row['enabled'] and not source_url(row['source_url']) and not cached_path(cfg,row) and (not row['requested'] or row['file_path'] or row['source_url']):
             db.execute("UPDATE app_icons SET requested=1,status='queued',source_url=NULL,file_path=NULL,due=LEAST(due,0) WHERE id=%s",(row['id'],))
         return public(cfg,find())

@@ -53,6 +53,9 @@ def claim(db,cfg,limit,client,*,due_by=None):
         rows=list(db.execute('SELECT i.* FROM app_icons i WHERE i.id IN ('+','.join('%s' for _ in ids)+') AND '+ready+
             ' AND '+condition+' ORDER BY i.id FOR UPDATE SKIP LOCKED',(*ids,due_by,time.time(),*args)).fetchall())
         if not rows:return []
+        from .task_windows import before_claim
+        rows=before_claim(db,'icons',rows,time.time())
+        if not rows:return []
         selected=[r['id'] for r in rows]
         db.execute("UPDATE app_icons SET token=%s,lease_until=%s,status='running' WHERE id IN ("+','.join('%s' for _ in selected)+')',
             (token,time.time()+max(600,cfg['lease_seconds']),*selected))

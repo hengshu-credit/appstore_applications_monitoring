@@ -378,6 +378,10 @@ def claim_details(db, countries, language, lease_seconds, limit=50, watchlist=Fa
                     AND j.store=%s AND j.country=%s AND j.language=%s AND j.app_id<>%s AND {retry_condition('j.')}'''+extra+'''
                     ORDER BY j.due LIMIT %s FOR UPDATE SKIP LOCKED''',
                     (*args,first['store'],first['country'],first['language'],first['app_id'],NETWORK_ERRORS,remaining),**candidate_options).fetchall())
+        if watchlist:
+            from .task_windows import before_claim
+            jobs=before_claim(db,'watchlist',jobs,now)
+            if not jobs:return []
         token = uuid.uuid4().hex
         db.execute('UPDATE jobs SET token=%s,lease_until=%s WHERE store=%s AND country=%s AND language=%s AND app_id IN ('+
                    ','.join('%s' for _ in jobs)+')',

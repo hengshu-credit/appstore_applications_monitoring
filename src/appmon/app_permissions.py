@@ -125,6 +125,8 @@ def work(cfg, db, limit=5, client=None):
                 row=db.claim('''SELECT * FROM app_permission_targets WHERE enabled=1 AND due<=%s AND lease_until<=%s
                     ORDER BY due,id LIMIT 1 FOR UPDATE SKIP LOCKED''',(time.time(),time.time())).fetchone()
                 if not row:break
+                from .task_windows import before_claim
+                if not before_claim(db,'permissions',[row],time.time()):continue
                 token=uuid.uuid4().hex
                 db.execute('UPDATE app_permission_targets SET token=%s,lease_until=%s WHERE id=%s',(token,time.time()+cfg['lease_seconds'],row['id']))
             payload=raw_path=None;error=None;delay=0

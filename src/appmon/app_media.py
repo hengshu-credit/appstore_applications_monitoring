@@ -103,6 +103,8 @@ def work(cfg,db,client,*,due_by=None):
         row=db.execute('SELECT * FROM app_media_assets WHERE id=%s AND enabled=1 AND due<=%s AND lease_until<=%s FOR UPDATE SKIP LOCKED',
             (candidate['id'],due_by,now)).fetchone()
         if not row:return {'processed':0}
+        from .task_windows import before_claim
+        if not before_claim(db,'media',[row],time.time()):return {'processed':0}
         db.execute('UPDATE app_media_assets SET token=%s,lease_until=%s WHERE id=%s',(token,now+600,row['id']))
     row['token']=token;log=Execution(db,'media',row['id']);log.write('started','开始下载共享图片：'+row['label'])
     from .collection_lineage import record_dispatch

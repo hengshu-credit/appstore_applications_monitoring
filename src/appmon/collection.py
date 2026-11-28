@@ -11,7 +11,7 @@ from .collection_batch import PAGE_DUE
 from .task_logs import emit
 from .log_details import diagnostics
 from .source_tasks import KINDS as SOURCE_KINDS
-from . import ad_sources, intake
+from . import ad_sources, intake, task_windows
 from .listing_status import CURRENT_STATE
 
 SOURCES = [
@@ -33,24 +33,27 @@ SOURCES = [
 ]
 
 
+def target_key(action):
+    value=action['value']
+    if action['kind'] not in SOURCE_KINDS:
+        value={k:v for k,v in value.items() if k not in ('refresh_hours','depth','group_name')}
+    return dump([action['kind'],value])
+
+
 def unique_actions(actions):
-    """Keep the first position and combine compatible requirements on one target."""
+    """Keep the latest settings at the first occurrence of each queue target."""
     unique = {}
     for action in actions:
         value = action['value'].copy()
         settings = {}
         if action['kind'] not in SOURCE_KINDS:
-            for key in ('refresh_hours','depth'):
+            for key in ('refresh_hours','depth','group_name'):
                 if key in value:
                     number = value.pop(key)
                     settings[key] = int(number) if isinstance(number,float) and number.is_integer() else number
-        identity = dump(action | {'value':value})
-        if identity not in unique:
-            unique[identity] = action | {'value':value | settings}
-        else:
-            target = unique[identity]['value']
-            for key, number in settings.items():
-                target[key] = (max if key=='depth' else min)(target[key],number)
+        identity = target_key(action)
+        # Replacing a dictionary value retains the first occurrence's queue position.
+        unique[identity] = action | {'value':value | settings}
     return list(unique.values())
 
 
@@ -67,23 +70,47 @@ def active_plan(db,fingerprint):
         ON DUPLICATE KEY UPDATE fingerprint=collection_plan_keys.fingerprint""",(fingerprint,))
     current = db.execute('SELECT plan_id FROM collection_plan_keys WHERE fingerprint=%s FOR UPDATE',(fingerprint,)).fetchone()
     old = db.execute('SELECT id,total,status FROM collection_plans WHERE id=%s',(current['plan_id'],)).fetchone()
-    if old and (old['status'] in ('queued','running') or
-                old['status']=='complete' and report(db,old['id'],True)['state']=='running'):
-        return old
+    if old and old['status']=='queued':return old
+    if old and old['status'] in ('running','complete'):
+        progress=report(db,old['id'],True)
+        if progress['state']=='running' and not progress['expired']:return old
 
 
 def save_plan(db,name,spec,actions,mode,source=None,request_id=None):
     fingerprint = plan_key(mode,actions,spec)
-    now = time.time()
+    slots_key=intake.digest(['pending-targets',mode,sorted(target_key(a) for a in actions)])
     with db:
+        # A plan may still be waiting to create its first queue target. Keep
+        # its position among other plans even when the new settings differ.
+        db.execute("""INSERT INTO collection_plan_keys VALUES(%s,0)
+            ON DUPLICATE KEY UPDATE fingerprint=collection_plan_keys.fingerprint""",(slots_key,))
+        slots=db.execute('SELECT plan_id FROM collection_plan_keys WHERE fingerprint=%s FOR UPDATE',(slots_key,)).fetchone()
+        waiting=db.execute("SELECT * FROM collection_plans WHERE id=%s AND status='queued' AND completed=0 FOR UPDATE",
+                           (slots['plan_id'],)).fetchone()
         old = active_plan(db,fingerprint)
+        now=time.time()
+        if waiting and not old:
+            previous=json.loads(waiting['actions'])
+            previous_hash=plan_key(mode,previous,json.loads(waiting['specification']))
+            by_target={target_key(a):a for a in actions}
+            ordered=[by_target[target_key(a)] for a in previous]
+            if waiting['request_source'] and not intake.find_alias(db,'plans',waiting['request_source'],waiting['request_id']):
+                intake.record_alias(db,'plans',waiting['request_source'],waiting['request_id'],waiting['id'],previous_hash)
+            db.execute('UPDATE collection_plan_keys SET plan_id=0 WHERE fingerprint=%s AND plan_id=%s',(previous_hash,waiting['id']))
+            db.execute('UPDATE collection_plan_keys SET plan_id=%s WHERE fingerprint=%s',(waiting['id'],fingerprint))
+            db.execute('UPDATE collection_plans SET specification=%s,actions=%s WHERE id=%s',(dump(spec),dump(ordered),waiting['id']))
+            old={k:waiting[k] for k in ('id','total','status')}
         if old:
+            origin=db.execute('SELECT request_source,request_id,created_at FROM collection_plans WHERE id=%s',(old['id'],)).fetchone()
+            accepted=task_windows.latest(db,'plans',old['id'],now,source,request_id,
+                fallback={'request_source':origin['request_source'],'request_id':origin['request_id'],'submitted_at':origin['created_at'],'pending':True})
+            if accepted:db.execute('UPDATE collection_plans SET name=%s,updated_at=%s WHERE id=%s',(name,now,old['id']))
             if source:
                 intake.record_alias(db,'plans',source,request_id,old['id'],fingerprint)
-            return old | {'reused':True}
+            return old | {'reused':True} if accepted else old | {'reused':True,'status':'expired'}
         identifier = db.execute("""INSERT INTO collection_plans(name,specification,actions,total,created_at,updated_at,request_source,request_id)
             VALUES(%s,%s,%s,%s,%s,%s,%s,%s)""",(name,dump(spec),dump(actions),len(actions),now,now,source,request_id)).lastrowid
-        db.execute('UPDATE collection_plan_keys SET plan_id=%s WHERE fingerprint=%s',(identifier,fingerprint))
+        db.execute('UPDATE collection_plan_keys SET plan_id=%s WHERE fingerprint IN %s',(identifier,(fingerprint,slots_key)))
         emit(db,'plans',identifier,'queued',f'采集计划已创建，待配置 {len(actions)} 个目标')
     return {'id':identifier,'total':len(actions),'status':'queued','reused':False}
 
@@ -131,6 +158,9 @@ def preview_plan(value):
     if flags['featured']:
         if m['store']!='apple':raise ValueError('Today推荐只支持Apple')
         actions.append({'kind':'featured','value':base|{'kind':'featured','depth':depth,'refresh_hours':interval}})
+    if 'validity_minutes' in value:
+        minutes=task_windows.validate(value['validity_minutes'])
+        for action in actions:action['validity_minutes']=minutes
     actions=unique_actions(actions)
     if not actions:raise ValueError('请至少选择一个有目标的采集任务')
     return {'actions':actions,'total':len(actions),'market':base,
@@ -141,6 +171,14 @@ def create_plan(db, value):
     result=preview_plan(value)
     name=text(value.get('name','采集计划'))
     return save_plan(db,name,value,result['actions'],'configure')
+
+
+def expired_plan_receipt(db,row,source,request_id):
+    if task_windows.is_expired(db,'plans',row['id'],source,request_id):return True
+    if row['status']=='complete':
+        from .app_collection import report
+        return report(db,row['id'],True)['state']=='expired'
+    return False
 
 
 def enqueue(db, value, *, ad_requested_by=None):
@@ -168,7 +206,9 @@ def enqueue(db, value, *, ad_requested_by=None):
             target = market(task)
             if kind=='permissions' and target['store']!='google':raise ValueError('权限采集仅支持 Google Play')
             if kind=='permissions':target['language']='en'
-            actions.append({'kind':kind,'value':target|{'refresh_hours':hours(task.get('refresh_hours',24))}})
+            action={'kind':kind,'value':target|{'refresh_hours':hours(task.get('refresh_hours',24))}}
+            if 'validity_minutes' in task:action['validity_minutes']=task_windows.validate(task['validity_minutes'])
+            actions.append(action)
         elif kind in ('details','keywords','chart','reviews','featured'):
             spec = task | {k:k==kind for k in ('details','chart','reviews','featured','icons')}
             spec['app_ids'] = [task.get('app_id','')] if kind in ('details','reviews') else []
@@ -187,12 +227,15 @@ def enqueue(db, value, *, ad_requested_by=None):
             if alias['fingerprint'] != plan_key('collect',actions):
                 raise ValueError('同一来源请求编号不能对应不同任务')
             row = db.execute('SELECT id,total,status FROM collection_plans WHERE id=%s',(alias['task_id'],)).fetchone()
+            if expired_plan_receipt(db,row,source,request_id):row['status']='expired'
             return row | {'reused':True,'request_id':request_id}
         old = db.execute('''SELECT id,total,status,actions,specification FROM collection_plans WHERE
             request_source=%s AND request_id=%s LIMIT 1''',(source,request_id)).fetchone()
         if old:
             stored_actions = json.loads(old['actions'])
             if plan_key('collect',unique_actions(stored_actions))!=plan_key('collect',actions):raise ValueError('同一来源请求编号不能对应不同任务')
+            if expired_plan_receipt(db,old,source,request_id):
+                return dict(id=old['id'],total=old['total'],status='expired',reused=True,request_id=request_id)
             spec = json.loads(old['specification'])
             if ad_actions and not spec.get('ad_requested_by'):
                 # An authenticated user has now explicitly re-submitted an old
@@ -243,22 +286,24 @@ def retry_plan(db,identifier):
     return {'id':identifier,'status':'queued'}
 
 
-def configure_asset(db, action, initial_due=0):
+def configure_asset(db, action, initial_due=0, replace=False):
     target=action['value']
+    interval='VALUES(refresh_hours)' if replace else 'LEAST(app_icons.refresh_hours,VALUES(refresh_hours))'
     with db:
         if action['kind']=='permissions':
             from .app_permissions import enqueue as enqueue_permissions
             enqueue_permissions(db,[target])
-            db.execute('''UPDATE app_permission_targets SET refresh_hours=LEAST(refresh_hours,%s)
+            setting='%s' if replace else 'LEAST(refresh_hours,%s)'
+            db.execute(f'''UPDATE app_permission_targets SET refresh_hours={setting}
                 WHERE store=%s AND app_id=%s AND country=%s''',
                 (target['refresh_hours'],target['store'],target['app_id'],target['country']))
         else:
-            db.execute("""INSERT INTO app_icons(store,app_id,country,language,requested,status,refresh_hours,request_mode,due)
+            db.execute(f"""INSERT INTO app_icons(store,app_id,country,language,requested,status,refresh_hours,request_mode,due)
                 VALUES(%s,%s,%s,%s,1,'queued',%s,'periodic',%s) ON DUPLICATE KEY UPDATE
                 status=IF(app_icons.requested=0,'queued',app_icons.status),
                 due=IF(app_icons.failures=0 AND app_icons.lease_until<=UNIX_TIMESTAMP() AND
-                    (app_icons.requested=0 OR app_icons.due<=UNIX_TIMESTAMP()),LEAST(app_icons.due,VALUES(due)),app_icons.due),requested=1,
-                refresh_hours=IF(app_icons.request_mode='periodic',LEAST(app_icons.refresh_hours,VALUES(refresh_hours)),VALUES(refresh_hours)),
+                    (app_icons.requested=0 OR VALUES(due)<0 AND app_icons.due<=UNIX_TIMESTAMP()),LEAST(app_icons.due,VALUES(due)),app_icons.due),requested=1,
+                refresh_hours=IF(app_icons.request_mode='periodic',{interval},VALUES(refresh_hours)),
                 request_mode='periodic'""",
                 (target['store'],target['app_id'],target['country'],target['language'],target['refresh_hours'],initial_due))
 
@@ -268,18 +313,61 @@ def schedule_submission(db, action, submitted_at):
     ref=action_target(db,action)
     if ref['resource']=='watchlist':
         db.execute('''UPDATE jobs j JOIN watchlist w USING(store,app_id,country,language)
-            LEFT JOIN listings l USING(store,app_id,country,language) SET j.due=LEAST(j.due,0)
+            LEFT JOIN listings l USING(store,app_id,country,language) SET j.due=IF(j.due<=UNIX_TIMESTAMP(),j.due,0)
             WHERE w.id=%s AND w.enabled=1 AND j.failures=0 AND (l.checked_at IS NULL OR l.checked_at<%s)''',
             (ref['id'],submitted_at))
     elif ref['resource'] in ('keywords','targets'):
         table,runs = ('keyword_targets','keyword_runs') if ref['resource']=='keywords' else ('observation_targets','observation_runs')
-        db.execute(f'''UPDATE {table} t LEFT JOIN {runs} r ON r.id=t.latest_success_id SET t.due=LEAST(t.due,0)
+        db.execute(f'''UPDATE {table} t LEFT JOIN {runs} r ON r.id=t.latest_success_id SET t.due=IF(t.due<=UNIX_TIMESTAMP(),t.due,0)
             WHERE t.id=%s AND t.enabled=1 AND t.failures=0 AND (r.observed_at IS NULL OR r.observed_at<%s)''',
             (ref['id'],submitted_at))
     else:
         table='app_icons' if ref['resource']=='icons' else 'app_permission_targets'
-        db.execute(f'''UPDATE {table} SET due=LEAST(due,0) WHERE id=%s AND enabled=1 AND failures=0
+        db.execute(f'''UPDATE {table} SET due=IF(due<=UNIX_TIMESTAMP(),due,0) WHERE id=%s AND enabled=1 AND failures=0
             AND (checked_at IS NULL OR checked_at<%s)''',(ref['id'],submitted_at))
+
+
+def apply_target(db,action,plan,index,spec,initial_due,at):
+    """Serialize replacement, settings and receipt on the same queue slot."""
+    from .app_collection import action_target,schedule_action
+    from .collection_batch import BatchWriter
+    with db:
+        writer=BatchWriter(db)
+        ref=action_target(writer,action)
+        native=task_windows.rows_for(writer,ref['resource'],[ref['id']]) if ref else []
+        row=native[0] if native else None
+        receipt=('plan-action',f'{plan}:{index}')
+        if row and not row['token'] and not task_windows.admit_plan(writer,ref['resource'],row,at,receipt):return
+        replace=bool(row and row['due']<=time.time() and not row['token'] and not row['failures'])
+        if row is None:writer.execute('SAVEPOINT create_target')
+        if action.get('immediate'):
+            schedule_action(writer,action,at)
+        elif action['kind']=='details':
+            watch(writer,action['value'],merge_existing=not replace,initial_due=initial_due,record_page=False)
+        elif action['kind']=='keywords':
+            add_targets(writer,[action['value']],merge_existing=not replace,initial_due=initial_due,record_page=False)
+        elif action['kind'] in ('icons','permissions'):
+            configure_asset(writer,action,initial_due,replace)
+        else:
+            preserve=action.get('preserve_existing',False)
+            add_observation_target(writer,action['value'],preserve_existing=preserve,merge_existing=not (replace or preserve),initial_due=initial_due,record_page=False)
+        if 'input_source' in spec and (not row or not row['token']):schedule_submission(writer,action,at)
+        ref=ref or action_target(writer,action)
+        current=task_windows.rows_for(writer,ref['resource'],[ref['id']])[0]
+        if row is None and not task_windows.latest(writer,ref['resource'],ref['id'],at,*receipt):
+            # A page can create this same target after the initial lookup.
+            # Undo our upsert before acknowledging the superseded action.
+            writer.execute('ROLLBACK TO SAVEPOINT create_target')
+            task_windows.expire_receipt(writer,ref['resource'],ref['id'],*receipt,time.time())
+            return
+        if 'validity_minutes' in action or row is None:
+            task_windows.configure(writer,ref['resource'],current,action.get('validity_minutes',0),at)
+        if current['due']>time.time():
+            task_windows.end_pending(writer,ref['resource'],[ref['id']])
+        elif row and not row['token']:
+            changed=row['refresh_hours']!=current['refresh_hours']
+            row['refresh_hours']=current['refresh_hours']
+            task_windows.submitted(writer,ref['resource'],row,at,new_due=current['due'],interval_changed=changed)
 
 
 def work_plans(db, limit=20):
@@ -287,12 +375,15 @@ def work_plans(db, limit=20):
     # process disconnects. A crash between action and checkpoint safely replays it.
     try:
         with db.named_lock('collection-plans'):
-            row=db.execute("SELECT * FROM collection_plans WHERE status IN ('queued','running') ORDER BY request_source IS NOT NULL,id LIMIT 1").fetchone()
+            with db:
+                row=db.execute("SELECT * FROM collection_plans WHERE status IN ('queued','running') ORDER BY request_source IS NOT NULL,id LIMIT 1 FOR UPDATE").fetchone()
+                if row:db.execute("UPDATE collection_plans SET status='running',updated_at=%s WHERE id=%s",(time.time(),row['id']))
             if not row:return {'processed':0,'error':0}
             actions=json.loads(row['actions']);completed=row['completed']
             specification=json.loads(row['specification'])
             initial_due = PAGE_DUE if row['request_source'] is None else 0
-            db.execute("UPDATE collection_plans SET status='running',updated_at=%s WHERE id=%s",(time.time(),row['id']))
+            stamp=db.execute("SELECT submitted_at FROM collection_latest_submissions WHERE resource='plans' AND target_id=%s",(row['id'],)).fetchone()
+            submitted_at=stamp['submitted_at'] if stamp else row['created_at']
             processed=0
             emit(db,'plans',row['id'],'started',f'开始配置目标，从 {completed}/{len(actions)} 继续')
             try:
@@ -301,21 +392,14 @@ def work_plans(db, limit=20):
                         if specification.get('input_source') and specification.get('ad_requested_by'):
                             from .source_tasks import enqueue as enqueue_source
                             enqueue_source(db,action['kind'],action['value'],source='user-ad-plan',request_id=f'{row["id"]}:{completed}',
-                                           submitted_by=specification['ad_requested_by'],submitted_at=row['created_at'])
+                                           submitted_by=specification['ad_requested_by'],submitted_at=submitted_at)
                         else:
                             emit(db,'plans',row['id'],'skipped','已跳过旧计划附带的广告任务')
                     elif action['kind'] in SOURCE_KINDS:
                         from .source_tasks import enqueue as enqueue_source
-                        enqueue_source(db,action['kind'],action['value'],source='collection-plan',request_id=f'{row["id"]}:{completed}',submitted_at=row['created_at'])
-                    elif action.get('immediate'):
-                        from .app_collection import schedule_action
-                        schedule_action(db,action,row['created_at'])
-                    elif action['kind']=='details':watch(db,action['value'],merge_existing=True,initial_due=initial_due)
-                    elif action['kind']=='keywords':add_targets(db,[action['value']],merge_existing=True,initial_due=initial_due)
-                    elif action['kind'] in ('icons','permissions'):configure_asset(db,action,initial_due)
-                    else:add_observation_target(db,action['value'],preserve_existing=action.get('preserve_existing',False),merge_existing=not action.get('preserve_existing',False),initial_due=initial_due)
-                    if 'input_source' in specification and action['kind'] not in SOURCE_KINDS:
-                        schedule_submission(db,action,row['created_at'])
+                        enqueue_source(db,action['kind'],action['value'],source='collection-plan',request_id=f'{row["id"]}:{completed}',submitted_at=submitted_at)
+                    else:
+                        apply_target(db,action,row['id'],completed,specification,initial_due,submitted_at)
                     completed+=1;processed+=1
                     db.execute("UPDATE collection_plans SET completed=%s,updated_at=%s WHERE id=%s",(completed,time.time(),row['id']))
                     emit(db,'plans',row['id'],'progress',f'已处理 {completed}/{len(actions)} 个目标；类型 {action["kind"]}')

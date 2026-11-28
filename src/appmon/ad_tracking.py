@@ -104,7 +104,7 @@ def schedule_due(db):
         row = db.claim('''SELECT * FROM ad_tracking_schedules s WHERE s.enabled=1 AND s.next_due<=%s
             AND NOT EXISTS(SELECT 1 FROM collection_source_tasks t WHERE (t.source=s.receipt_source OR EXISTS
                            (SELECT 1 FROM collection_request_aliases r WHERE r.resource='sources' AND r.task_id=t.id AND r.source=s.receipt_source))
-                           AND t.due IS NOT NULL AND t.failures<3)
+                           AND t.due IS NOT NULL AND t.failures<3 AND (t.token IS NOT NULL OR t.failures>0 OR JSON_EXTRACT(t.result,'$.progress') IS NOT NULL))
             ORDER BY s.next_due,s.id LIMIT 1 FOR UPDATE SKIP LOCKED''',(now,)).fetchone()
         if not row:
             return

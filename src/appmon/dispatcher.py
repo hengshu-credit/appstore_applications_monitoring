@@ -6,7 +6,7 @@ import time
 
 from .collection_limits import blocked
 from .db import connect
-from .collection_batch import PAGE_DUE, IMMEDIATE_DUE_MAX
+from .collection_batch import PAGE_DUE, IMMEDIATE_DUE_MAX, RECOVERY_DUE_MAX
 from .batch_limits import APPLE_DETAIL_MAX,GOOGLE_RPC_MAX,BatchWindow
 
 log = logging.getLogger(__name__)
@@ -53,13 +53,19 @@ def ready(db, cfg, lane, now, *, due_by=None):
 
 
 def choose_batch(db, cfg):
+    from .task_windows import advance,enroll_defaults
+    now=time.time()
+    advance(db,now)
     if blocked(db,cfg):
+        enroll_defaults(db,now)
         from .storage_policy import storage_guard
         if not storage_guard(db,cfg) and db.execute("""SELECT 1 FROM collection_source_tasks WHERE enabled=1 AND due<=%s
             AND lease_until<=%s AND failures<3 AND kind IN ('aso_import','aso_report') LIMIT 1""",(time.time(),time.time())).fetchone():
             return 'sources', None
         return None, None
     with db:
+        from .collection_batch import BatchWriter
+        enroll_defaults(BatchWriter(db),now)
         # Serialize only the scheduling decision. HTTP happens outside this lock.
         db.execute("INSERT INTO schedules VALUES('dispatch:turn',0) ON DUPLICATE KEY UPDATE name=schedules.name")
         turn = db.execute("SELECT next_at FROM schedules WHERE name='dispatch:turn' FOR UPDATE").fetchone()['next_at']
@@ -72,12 +78,16 @@ def choose_batch(db, cfg):
         priority_lanes = [lane for lane in lanes if lane != 'pool']
         # Most turns have only ordinary work. Probe each lane for either kind
         # of priority work before making a narrower pass for explicit refreshes.
-        lane = next((lane for lane in priority_lanes if ready(db,cfg,lane,now,due_by=PAGE_DUE)), None)
+        lane = next((lane for lane in priority_lanes if ready(db,cfg,lane,now,due_by=RECOVERY_DUE_MAX)), None)
         cutoff = None
         if lane is not None:
             candidates = priority_lanes[priority_lanes.index(lane):]
             urgent = next((name for name in candidates if ready(db,cfg,name,now,due_by=IMMEDIATE_DUE_MAX)), None)
-            lane, cutoff = (urgent, IMMEDIATE_DUE_MAX) if urgent else (lane, PAGE_DUE)
+            if urgent:
+                lane,cutoff=urgent,IMMEDIATE_DUE_MAX
+            else:
+                page=next((name for name in candidates if ready(db,cfg,name,now,due_by=PAGE_DUE)),None)
+                lane,cutoff=(page,PAGE_DUE) if page else (lane,RECOVERY_DUE_MAX)
         else:
             # Reserve routine turns for the daily chart backlog. Explicit
             # submissions were handled above; turn ten still serves the pool.

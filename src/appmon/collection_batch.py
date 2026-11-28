@@ -13,6 +13,7 @@ NETWORK_ERRORS = r'^(HTTP [0-9]{3}|ConnectTimeout|ReadTimeout|ConnectionError|Pr
 # those requests and ordinary due times (zero for new work).
 PAGE_DUE = -1
 IMMEDIATE_DUE_MAX = -2
+RECOVERY_DUE_MAX = -0.25
 
 
 def pending_due_on_insert(table):
@@ -37,7 +38,8 @@ def target_settings_update(table, initial_due, merge_existing, preserve_existing
 def batch_due_limit(first_due, now):
     if first_due < PAGE_DUE:
         return IMMEDIATE_DUE_MAX
-    return PAGE_DUE if first_due == PAGE_DUE else now
+    if first_due == PAGE_DUE:return PAGE_DUE
+    return RECOVERY_DUE_MAX if first_due < 0 else now
 
 
 def can_batch(row):

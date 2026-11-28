@@ -47,11 +47,12 @@ class DispatcherTest(OceanBaseTestCase):
         b=create_plan(self.db,base|{'keyword_depth':50,'refresh_hours':24})['id'];work_plans(self.db)
         targets=self.db.execute('SELECT * FROM keyword_targets').fetchall()
         self.assertEqual(len(targets),1)
-        self.assertEqual((targets[0]['depth'],targets[0]['refresh_hours']),(50,6))
+        self.assertEqual((targets[0]['depth'],targets[0]['refresh_hours']),(50,24))
         with patch('appmon.keyword_stores.KeywordClient.search',return_value=SearchResult([],b'empty','test')):
             result=dispatcher.dispatch_once(self.db,self.cfg,'fixture')
         self.assertEqual(result['processed'],1)
         self.assertEqual(dispatcher.status(self.db)['workers'][0]['name'],'fixture')
+        self.assertEqual(report(self.db,a,True)['tasks'][0]['state'],'expired')
         self.assertEqual(report(self.db,a,True)['finished'],1)
         self.assertEqual(report(self.db,b,True)['finished'],1)
         self.assertEqual(report(self.db,a,True)['tasks'][0]['ref'],report(self.db,b,True)['tasks'][0]['ref'])
